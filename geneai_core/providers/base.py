@@ -76,23 +76,62 @@ class AgentWorkflowProvider(Protocol):
 _FENCE = re.compile(r"^```(?:json)?\s*|\s*```$", re.IGNORECASE)
 
 
-def parse_json_object(text: str) -> dict[str, Any]:
+def strip_json_fences(text: str) -> str:
     raw = text.strip()
     if raw.startswith("```"):
         raw = _FENCE.sub("", raw).strip()
+    return raw
+
+
+def first_balanced_json(text: str) -> Any:
+    """First balanced JSON object or array, ignoring fences and surrounding prose."""
+
+    raw = strip_json_fences(text)
     try:
-        parsed = json.loads(raw)
+        return json.loads(raw)
     except json.JSONDecodeError:
-        start = raw.find("{")
-        end = raw.rfind("}")
-        if start < 0 or end <= start:
-            raise ProviderError("provider response was not a JSON object") from None
-        try:
-            parsed = json.loads(raw[start : end + 1])
-        except json.JSONDecodeError as exc:
-            raise ProviderError("provider response was not a JSON object") from exc
+        pass
+    start: int | None = None
+    depth = 0
+    in_string = False
+    escape = False
+    for index, char in enumerate(raw):
+        if in_string:
+            if escape:
+                escape = False
+            elif char == "\\":
+                escape = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+            continue
+        if char in "{[":
+            if depth == 0:
+                start = index
+            depth += 1
+            continue
+        if char in "}]" and depth:
+            depth -= 1
+            if depth == 0 and start is not None:
+                blob = raw[start : index + 1]
+                try:
+                    return json.loads(blob)
+                except json.JSONDecodeError:
+                    start = None
+    return None
+
+
+def parse_json_object(text: str) -> dict[str, Any]:
+    parsed = first_balanced_json(text)
+    if isinstance(parsed, list):
+        for item in parsed:
+            if isinstance(item, dict):
+                parsed = item
+                break
     if not isinstance(parsed, dict):
-        raise ProviderError("provider response JSON was not an object")
+        raise ProviderError("provider response was not a JSON object")
     return parsed
 
 

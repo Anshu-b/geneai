@@ -18,7 +18,9 @@ that cannot run elsewhere and still prefers short work on cheap CPUs.
 
 from __future__ import annotations
 
+import copy
 import hashlib
+import json
 import random
 import time
 from dataclasses import dataclass
@@ -485,6 +487,258 @@ def baseline_payload(name: str) -> dict[str, Any]:
 
 
 BASELINE_NAMES = ("round_robin", "shortest_job", "least_loaded", "deadline_weighted")
+_TIE_PAD = ("duration", "arrival", "job_id", "machine_id")
+_LOCAL_SAMPLE_BIAS = {
+    "short_job": 0.55,
+    "deadline_urgency": 0.45,
+    "class_affinity": 0.85,
+    "hard_deadline": 0.5,
+    "energy_frugal": 0.25,
+}
+
+
+def _clamp_unit(value: float) -> float:
+    return round(max(-1.0, min(1.0, float(value))), 6)
+
+
+def _normalize_weights(value: Any, notes: list[str], label: str) -> dict[str, float]:
+    raw = value if isinstance(value, dict) else {}
+    if not isinstance(value, dict):
+        notes.append(f"{label} defaulted to zeros")
+    cleaned: dict[str, float] = {}
+    for key, item in raw.items():
+        if key not in SCORE_TERMS:
+            notes.append(f"dropped unknown {label} key {key}")
+            continue
+        if isinstance(item, bool) or not isinstance(item, (int, float)):
+            cleaned[str(key)] = 0.0
+            notes.append(f"{label}.{key} defaulted to 0")
+            continue
+        number = float(item)
+        clamped = _clamp_unit(number)
+        if clamped != number:
+            notes.append(f"clamped {label}.{key}")
+        cleaned[str(key)] = clamped
+    for term in SCORE_TERMS:
+        if term not in cleaned:
+            cleaned[term] = 0.0
+            notes.append(f"{label}.{term} filled with 0")
+    return cleaned
+
+
+def _normalize_tie(value: Any, notes: list[str]) -> list[str]:
+    raw = value if isinstance(value, list) else []
+    if not isinstance(value, list):
+        notes.append("tie_break defaulted")
+    kept: list[str] = []
+    for key in raw:
+        text = str(key)
+        if text not in TIE_BREAKS:
+            notes.append(f"dropped unknown tie_break key {text}")
+            continue
+        if text in kept:
+            notes.append(f"dropped duplicate tie_break key {text}")
+            continue
+        kept.append(text)
+    for key in _TIE_PAD:
+        if len(kept) >= 3:
+            break
+        if key not in kept:
+            kept.append(key)
+            notes.append(f"padded tie_break with {key}")
+    if len(kept) > 4:
+        notes.append("truncated tie_break to 4 keys")
+        kept = kept[:4]
+    return kept
+
+
+def _normalize_overrides(value: Any, notes: list[str]) -> list[dict[str, Any]]:
+    if value is None:
+        notes.append("class_overrides defaulted to []")
+        return []
+    if not isinstance(value, list):
+        notes.append("class_overrides defaulted to []")
+        return []
+    kept: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    dropped_extra = False
+    for item in value:
+        if len(kept) >= 2:
+            dropped_extra = True
+            continue
+        if not isinstance(item, dict):
+            notes.append("dropped non-object class override")
+            continue
+        job_class = item.get("job_class")
+        if job_class not in JOB_CLASSES:
+            notes.append(f"dropped class override with job_class {job_class}")
+            continue
+        if job_class in seen:
+            notes.append(f"dropped duplicate class override {job_class}")
+            continue
+        seen.add(str(job_class))
+        weights = _normalize_weights(item.get("score_weights"), notes, f"class_overrides.{job_class}")
+        kept.append({"job_class": job_class, "score_weights": weights})
+    if dropped_extra:
+        notes.append("truncated class_overrides to 2")
+    return kept
+
+
+def normalize_cloud_payload(payload: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+    """Fill the fields Veri omits and drop tie-break keys that are not in the enum."""
+
+    notes: list[str] = []
+    if not isinstance(payload, dict):
+        return payload, notes
+    body = dict(payload)
+    inner = body.get("payload")
+    if isinstance(inner, dict) and "rules" not in body and "policy_family" not in body:
+        notes.append("unwrapped payload")
+        body = dict(inner)
+    if body.get("policy_family") not in POLICY_FAMILIES:
+        body["policy_family"] = "composed"
+        notes.append("policy_family defaulted to composed")
+    description = body.get("description")
+    if not isinstance(description, str) or not description.strip():
+        body["description"] = "normalized scheduling policy"
+        notes.append("description defaulted")
+    rules_in = body.get("rules")
+    rules = dict(rules_in) if isinstance(rules_in, dict) else {}
+    if not isinstance(rules_in, dict):
+        notes.append("rules defaulted to an object")
+    depth = rules.get("max_queue_depth")
+    if isinstance(depth, bool) or not isinstance(depth, (int, float)):
+        rules["max_queue_depth"] = 36
+        notes.append("max_queue_depth defaulted to 36")
+    else:
+        coerced = int(round(float(depth)))
+        if coerced != depth:
+            notes.append("max_queue_depth coerced to int")
+        if coerced < 1 or coerced > 36:
+            notes.append("max_queue_depth clamped to 1..36")
+        rules["max_queue_depth"] = min(36, max(1, coerced))
+    rules["score_weights"] = _normalize_weights(rules.get("score_weights"), notes, "score_weights")
+    rules["tie_break"] = _normalize_tie(rules.get("tie_break"), notes)
+    rules["class_overrides"] = _normalize_overrides(rules.get("class_overrides"), notes)
+    allowed = {"max_queue_depth", "score_weights", "tie_break", "class_overrides"}
+    for key in list(rules):
+        if key not in allowed:
+            del rules[key]
+            notes.append(f"dropped rules.{key}")
+    body["rules"] = rules
+    for key in list(body):
+        if key not in {"policy_family", "rules", "description"}:
+            del body[key]
+            notes.append(f"dropped {key}")
+    return body, notes
+
+
+def _tie_sample(rng: random.Random) -> list[str]:
+    keys = list(TIE_BREAKS)
+    rng.shuffle(keys)
+    return keys[: rng.choice((3, 4))]
+
+
+def _biased_weights(rng: random.Random, bias: dict[str, float]) -> dict[str, float]:
+    weights = {term: 0.0 for term in SCORE_TERMS}
+    for term in SCORE_TERMS:
+        if rng.random() < 0.35:
+            weights[term] = round(rng.uniform(-0.2, 1.0), 3)
+    for key, value in bias.items():
+        weights[key] = round(max(-1.0, min(1.0, value + rng.uniform(-0.2, 0.2))), 3)
+    return weights
+
+
+def objective_local_payload(rng: random.Random) -> dict[str, Any]:
+    """One train-only sample biased toward the published objective, not the test split."""
+
+    bias = dict(_LOCAL_SAMPLE_BIAS)
+    overrides: list[dict[str, Any]] = []
+    classes = ["gpu", "batch", "high_mem", "sla"]
+    rng.shuffle(classes)
+    for job_class in classes[: rng.choice((1, 1, 2))]:
+        tilted = dict(bias)
+        if job_class == "gpu":
+            tilted.update(class_affinity=1.0, short_job=0.25, hard_deadline=0.6)
+        elif job_class == "batch":
+            tilted.update(energy_frugal=0.85, class_affinity=-0.3, short_job=0.7)
+        elif job_class == "high_mem":
+            tilted.update(class_affinity=0.9, hard_deadline=0.5)
+        overrides.append({"job_class": job_class, "score_weights": _biased_weights(rng, tilted)})
+    payload = {
+        "policy_family": "composed",
+        "rules": {
+            "max_queue_depth": rng.choice((18, 24, 36)),
+            "score_weights": _biased_weights(rng, bias),
+            "tie_break": _tie_sample(rng),
+            "class_overrides": overrides,
+        },
+        "description": "local objective sample",
+    }
+    normalized, _notes = normalize_cloud_payload(payload)
+    return normalized
+
+
+def _nudge_weight(value: float, rng: random.Random) -> float:
+    updated = float(value) + rng.choice((-0.4, -0.15, 0.15, 0.4))
+    return round(max(-1.0, min(1.0, updated)), 3)
+
+
+def perturb_cloud_payload(payload: dict[str, Any], rng: random.Random) -> dict[str, Any]:
+    """One local edit of a feasible policy. Scored later on train only."""
+
+    child = copy.deepcopy(payload)
+    normalized, _notes = normalize_cloud_payload(child)
+    child = normalized
+    child["policy_family"] = "composed"
+    child["description"] = "local perturbation"
+    rules = child["rules"]
+    kind = rng.randrange(5)
+    if kind == 0:
+        term = rng.choice(SCORE_TERMS)
+        rules["score_weights"][term] = _nudge_weight(float(rules["score_weights"][term]), rng)
+    elif kind == 1:
+        rules["tie_break"] = _tie_sample(rng)
+    elif kind == 2:
+        rules["max_queue_depth"] = rng.choice((12, 18, 24, 36))
+    elif kind == 3 and rules["class_overrides"]:
+        override = rules["class_overrides"][rng.randrange(len(rules["class_overrides"]))]
+        term = rng.choice(SCORE_TERMS)
+        override["score_weights"][term] = _nudge_weight(float(override["score_weights"][term]), rng)
+    else:
+        used = {item["job_class"] for item in rules["class_overrides"]}
+        free = [name for name in JOB_CLASSES if name not in used]
+        if free and len(rules["class_overrides"]) < 2:
+            rules["class_overrides"].append(
+                {"job_class": rng.choice(free), "score_weights": _biased_weights(rng, _LOCAL_SAMPLE_BIAS)}
+            )
+        elif rules["class_overrides"] and rng.random() < 0.5:
+            rules["class_overrides"].pop(rng.randrange(len(rules["class_overrides"])))
+        else:
+            term = rng.choice(SCORE_TERMS)
+            rules["score_weights"][term] = _nudge_weight(float(rules["score_weights"][term]), rng)
+    normalized, _notes = normalize_cloud_payload(child)
+    return normalized
+
+
+def _cloud_prompt_contract() -> str:
+    example = baseline_payload("deadline_weighted")
+    return (
+        "rules.max_queue_depth is required (integer 1 to 36). "
+        "rules.score_weights is required and must include every score term, each in [-1, 1]. "
+        "rules.class_overrides is required. Use [] when there is no override, or 1 or 2 objects. "
+        "Each override has job_class (gpu, high_mem, sla, or batch) and a full score_weights object. "
+        "rules.tie_break is required and lists 3 or 4 keys. "
+        f"Allowed tie_break keys only: {', '.join(TIE_BREAKS)}. "
+        "Do not put weight names (short_job, class_affinity) or job classes (gpu, batch) in tie_break. "
+        f"Example genome: {json.dumps(example, separators=(',', ':'))}"
+    )
+
+
+MUTATOR_RETURN = (
+    'Return JSON exactly as {"children":[{"genome": <one payload object>, "rationale": "one line"}]}. '
+    "No markdown and no prose outside the JSON."
+)
 
 
 def _weight_map_ok(weights: Any, label: str) -> str | None:
@@ -639,6 +893,26 @@ class CloudSchedulingAdapter(DomainAdapter):
             return f"composed:{dominant}"
         return str(dominant)
 
+    def prepare_payload(self, payload: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+        return normalize_cloud_payload(payload)
+
+    def random_seed_payloads(self, rng: random.Random, count: int) -> list[dict[str, Any]]:
+        return [objective_local_payload(rng) for _ in range(max(0, count))]
+
+    def local_perturbations(self, payload: dict[str, Any], rng: random.Random, count: int) -> list[dict[str, Any]]:
+        found: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for _ in range(max(0, count) * 4):
+            if len(found) >= count:
+                break
+            child = perturb_cloud_payload(payload, rng)
+            key = json.dumps(child.get("rules"), sort_keys=True)
+            if key in seen:
+                continue
+            seen.add(key)
+            found.append(child)
+        return found
+
     def seeded_baselines(self) -> list[dict[str, Any]]:
         return [
             {
@@ -666,28 +940,31 @@ class CloudSchedulingAdapter(DomainAdapter):
 
     def seed_instructions(self, objective: ObjectiveSpec) -> str:
         return (
-            "Propose one scheduling policy as JSON with keys payload and hypothesis. "
-            "Behavior comes from rules.score_weights, rules.tie_break, and up to two "
-            "rules.class_overrides. Weights are numbers in [-1, 1]. "
-            "A class override replaces the weight vector for gpu, high_mem, sla, or batch jobs. "
+            "Propose scheduling policies as compact JSON. "
+            "Each candidate is {\"payload\": <genome>, \"hypothesis\": \"one line\"}. "
+            "Several candidates use {\"candidates\": [{\"payload\": <genome>, \"hypothesis\": \"one line\"}]}. "
+            f"{_cloud_prompt_contract()} "
             "Use class_affinity and hard_deadline together with short_job so accelerator "
             "jobs are not stuck behind short batch work, and keep batch work off the GPU. "
-            "policy_family is a label: round_robin, shortest_job, least_loaded, weighted_queue, or composed. "
-            "Do not emit Python. The simulator rejects any assignment that would exceed CPU, memory, or GPU.\n"
+            "policy_family is one of round_robin, shortest_job, least_loaded, weighted_queue, composed. "
+            "Do not emit Python.\n"
             f"Objective: {objective.prompt}"
         )
 
     def mutate_instructions(self, parent: Genome, feedback: Evaluation) -> str:
         return (
-            "Change one weight, the tie break, or a class override. Stay inside the schema. "
-            "Return JSON with keys payload and hypothesis.\n"
+            "Change one weight, one tie_break key, or one class override. "
+            f"{_cloud_prompt_contract()} "
+            f"{MUTATOR_RETURN}\n"
             f"Parent: {parent.payload}\nFeedback: {feedback.feedback}"
         )
 
     def crossover_instructions(self, a: Genome, b: Genome) -> str:
         return (
-            "Combine the two policies. Average weights and keep at most two class overrides. "
-            "Return JSON with keys payload and hypothesis.\n"
+            "Combine the two policies. Average weights. "
+            "rules.class_overrides is a required array of 0, 1, or 2 objects. "
+            f"{_cloud_prompt_contract()} "
+            f"{MUTATOR_RETURN}\n"
             f"Parent A: {a.payload}\nParent B: {b.payload}"
         )
 

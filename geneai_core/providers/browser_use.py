@@ -94,7 +94,7 @@ class BrowserUseClient:
         *,
         api_key: str,
         client: httpx.AsyncClient | None = None,
-        timeout_s: float = 180.0,
+        timeout_s: float = 420.0,
         poll_s: float = 2.0,
         sleeper: Any | None = None,
     ) -> None:
@@ -111,7 +111,9 @@ class BrowserUseClient:
         key = os.environ.get("BROWSER_USE_API_KEY", "").strip()
         if not key:
             raise CredentialsError(browser_use_blocker_message())
-        return cls(api_key=key)
+        raw_timeout = os.environ.get("BROWSER_USE_TIMEOUT_SECONDS", "").strip()
+        timeout_s = float(raw_timeout) if raw_timeout else 420.0
+        return cls(api_key=key, timeout_s=timeout_s)
 
     def _headers(self) -> dict[str, str]:
         return {
@@ -124,8 +126,12 @@ class BrowserUseClient:
         if not catalog_url.startswith("https://") and not catalog_url.startswith("http://"):
             raise ProviderError("catalog_url must be an http(s) URL. No request was sent.")
         task = (
-            "Read the public catalog page. Collect 30 to 40 products spread across roles. "
+            "Read the public catalog page. Collect 30 to 40 products. "
+            "Cover tops, bottoms, shoes, and accessories. "
             "Each role must be one of top, bottom, shoes, layer, accessory. "
+            "If this page is a single category, open the related category pages on the same site. "
+            "Prefer a multi-category retailer such as a department store that sells "
+            "tops, bottoms, shoes, and accessories when the opened page is only one category. "
             "For every product return title, price, product_url, image_url, retailer, availability, "
             "role, colors, and style tags. Include occasion tags when the page states them. "
             "Do not sign in, do not add to cart, and do not enter payment. "
@@ -184,6 +190,7 @@ class BrowserUseClient:
             if status in TERMINAL:
                 return await self._request("GET", f"{API_ORIGIN}/tasks/{task_id}", None)
             if time.monotonic() >= deadline:
+                await self._stop(task_id)
                 raise ProviderError(
                     f"Browser Use task {task_id} did not finish within {self.timeout_s:.0f}s",
                     provider_run_id=task_id,
@@ -191,6 +198,14 @@ class BrowserUseClient:
                     retryable=True,
                 )
             await self._sleep(self.poll_s)
+
+    async def _stop(self, task_id: str) -> None:
+        """Ask Browser Use to stop the remote task when the local wait is over."""
+
+        try:
+            await self._request("POST", f"{API_ORIGIN}/tasks/{task_id}/stop", {})
+        except ProviderError:
+            return
 
     async def _request(self, method: str, url: str, body: dict[str, Any] | None) -> dict[str, Any]:
         if not url.startswith(API_ORIGIN + "/") and url != API_ORIGIN:

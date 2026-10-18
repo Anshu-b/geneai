@@ -6,6 +6,7 @@ The evolution controller depends only on this interface.
 from __future__ import annotations
 
 import hashlib
+import random
 from abc import ABC, abstractmethod
 from typing import Any
 
@@ -47,6 +48,23 @@ class DomainAdapter(ABC):
 
     def species_of(self, payload: dict[str, Any]) -> str:
         return self.family_of(payload)
+
+    def prepare_payload(self, payload: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+        """Deterministic cleanup before validation. Notes are provenance."""
+
+        return payload, []
+
+    def random_seed_payloads(self, rng: random.Random, count: int) -> list[dict[str, Any]]:
+        """Extra generation-0 payloads labeled provider=random. Empty by default."""
+
+        del rng, count
+        return []
+
+    def local_perturbations(self, payload: dict[str, Any], rng: random.Random, count: int) -> list[dict[str, Any]]:
+        """Small edits of an elite, labeled provider=random. Empty by default."""
+
+        del payload, rng, count
+        return []
 
     def seeded_baselines(self) -> list[dict[str, Any]]:
         """Generation-0 payloads inserted before model seeds.

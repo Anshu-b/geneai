@@ -31,7 +31,8 @@ without crowding the two primary domains.
   The OpenAI model field is `geneai-qwen7b`. Cap in-flight calls at 8 and
   retry 429/503 (`deployment_waking`) with Retry-After.
   `VERI_TIMEOUT_SECONDS` defaults to 120. Keep each call to about 400 tokens
-  per genome and at most two genomes. The L4 generates about 16 tokens/s.
+  per genome and at most two genomes. Repairs use about 1400 tokens so the
+  JSON object is not truncated. The L4 generates about 16 tokens/s.
 - Mock output stays `provider_mode=mock`. Do not relabel a run live or recorded.
   A Browser Use catalog cache may be `source: recorded`; that is the file, not the run.
 - The controller must not import a concrete domain or sponsor client.

@@ -13,15 +13,27 @@ class Budget:
         self.model_calls = 0
         self.evaluations = 0
         self.spend_usd = 0.0
-        self.started = time.monotonic()
+        self.wall_started = time.monotonic()
+        self.started = self.wall_started
+        self._clock = time.monotonic
         self.exhausted_reason: str | None = None
         self.cancelled = False
 
     def elapsed_seconds(self) -> float:
-        return time.monotonic() - self.started
+        """True wall time. A test clock does not replace this."""
+
+        return time.monotonic() - self.wall_started
+
+    def decision_elapsed(self) -> float:
+        """Clock used for the wall cap. Tests may replace ``_clock``."""
+
+        return self._clock() - self.started
+
+    def remaining_seconds(self) -> float:
+        return max(0.0, float(self.config.max_wall_seconds) - self.decision_elapsed())
 
     def _mark_wall(self) -> bool:
-        if self.elapsed_seconds() >= self.config.max_wall_seconds:
+        if self.decision_elapsed() >= self.config.max_wall_seconds:
             self.exhausted_reason = self.exhausted_reason or "max_wall_seconds"
             return True
         return False

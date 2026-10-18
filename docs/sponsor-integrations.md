@@ -105,11 +105,16 @@ The mutator has no seed operator. Initial genomes and random immigrants go
 through the model provider. Mutation and crossover go through CREAO in hybrid
 mode. If `result.chatText` is empty, an `application/json` artifact is read
 instead (`children` in the name is preferred; `geneai_mutate_result.json` is
-accepted). `result.text` is still ignored.
+accepted). Artifact downloads follow redirects (the URL 302s to object storage)
+and treat any non-2xx response as a failure. `result.text` is still ignored.
+The parser accepts `{children:[{genome}]}`, `{payload: ...}`, a bare list, or
+one genome object.
 
 Veri completions use `VERI_TIMEOUT_SECONDS` (default 120). The L4 deployment
 generates about 16 tokens per second, so a 30 second cap timed out. Each call
-asks for at most two genomes and about 400 tokens per genome.
+asks for at most two genomes and about 400 tokens per genome. A repair call
+uses about 1400 tokens and `response_format=json_object` when the deployment
+accepts it. Replies are parsed from the first balanced JSON object.
 
 `UnverifiedCreaoCliProvider` raises on construction. It is not wired to the
 controller or the smoke script.
@@ -144,11 +149,14 @@ collection is cached at `data/catalogs/shopping_recorded.json` with
 `source`, `label`, and `mode` set to `recorded`. That file is not a fixture
 and is not committed.
 
-The task forbids login, cart, and payment. A product row is kept only when the
-run returns an `http` or `https` `product_url`. Rows without one are dropped.
-An empty collection fails. The fixture catalog is not substituted and then
-called live. There is no default retailer host. `BROWSER_USE_API_KEY` plus
-`--catalog-url` are both required.
+The task forbids login, cart, and payment, and asks for 30 to 40 products
+covering tops, bottoms, shoes, and accessories. It suggests a multi-category
+retailer when the opened page is a single category. There is no default host.
+`BROWSER_USE_TIMEOUT_SECONDS` defaults to 420. On timeout the client POSTs
+`/api/v2/tasks/{task_id}/stop`. A product row is kept only when the run returns
+an `http` or `https` `product_url`. Rows without one are dropped. An empty
+collection fails. The fixture catalog is not substituted and then called live.
+`BROWSER_USE_API_KEY` plus `--catalog-url` are both required.
 
 The committed file `data/fixtures/shopping_catalog.json` has `source: fixture`,
 null `product_url` and `image_url`, and `availability: unknown`. Those rows

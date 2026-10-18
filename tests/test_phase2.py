@@ -525,7 +525,7 @@ async def test_seeded_baselines_and_child_provider_are_on_the_export(tmp_path: P
     ]
     assert {genome["metadata"]["baseline_name"] for genome in seeded} == set(BASELINE_NAMES)
     assert all(genome["provider"] == "baseline" for genome in seeded)
-    allowed = {"mock", "baseline", "creao", "veri"}
+    allowed = {"mock", "baseline", "creao", "veri", "random"}
     for genome in document["genomes"]:
         assert genome["provider"] in allowed
     for event in document["events"]:

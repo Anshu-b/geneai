@@ -607,9 +607,9 @@ def materialize(instruction: str, schema: dict[str, Any]) -> tuple[dict[str, Any
     invalid = context.get("invalid_payload") if isinstance(context.get("invalid_payload"), dict) else None
     avoid = {str(item) for item in (context.get("avoid_hashes") or [])}
     batch = int(context.get("batch_size") or 1)
-    if operation not in {"seed", "immigrant"}:
+    if operation == "repair":
         batch = 1
-    batch = max(1, min(batch, 8))
+    batch = max(1, min(batch, 2))
     candidates: list[dict[str, Any]] = []
     for index in range(batch):
         child_rng = random.Random(token + index * 997 + int(context.get("sample_seed") or 0))

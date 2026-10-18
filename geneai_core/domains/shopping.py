@@ -350,9 +350,38 @@ class ShoppingAdapter(DomainAdapter):
     def family_of(self, payload: dict[str, Any]) -> str:
         return str(payload.get("family") or "outfit")
 
+    def prepare_payload(self, payload: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+        """Correct an item role from the catalog instead of rejecting it."""
+
+        notes: list[str] = []
+        if not isinstance(payload, dict):
+            return payload, notes
+        body = dict(payload)
+        items = body.get("items")
+        if not isinstance(items, list):
+            return body, notes
+        corrected: list[Any] = []
+        for item in items:
+            if not isinstance(item, dict):
+                corrected.append(item)
+                continue
+            row = dict(item)
+            product = self._by_id.get(str(row.get("product_id")))
+            if product is not None and row.get("role") != product["role"]:
+                notes.append(
+                    f"{row.get('product_id')} role {row.get('role')!r} corrected to {product['role']}"
+                )
+                row["role"] = product["role"]
+            corrected.append(row)
+        body["items"] = corrected
+        return body, notes
+
     def validate(self, payload: dict[str, Any], objective: ObjectiveSpec) -> None:
         if not isinstance(payload, dict):
             raise ValueError("payload must be an object")
+        prepared, _notes = self.prepare_payload(payload)
+        payload.clear()
+        payload.update(prepared)
         if payload.get("family") not in FAMILIES:
             raise ValueError("family is not allowed")
         items = payload.get("items")
@@ -419,14 +448,16 @@ class ShoppingAdapter(DomainAdapter):
     def mutate_instructions(self, parent: Genome, feedback: Evaluation) -> str:
         return (
             "Swap one product, color, or size. Keep ids inside the catalog. "
-            "Return JSON with keys payload and hypothesis.\n"
+            "One item per role. role must match that product's catalog role. "
+            'Return JSON exactly as {"children":[{"genome":{"family":"...","items":[...],"styling_notes":"..."},"rationale":"one line"}]}.\n'
             f"Parent: {parent.payload}\nFeedback: {feedback.feedback}"
         )
 
     def crossover_instructions(self, a: Genome, b: Genome) -> str:
         return (
             "Inherit items from both parents without repeating a role. "
-            "Return JSON with keys payload and hypothesis.\n"
+            "One item per role. role must match that product's catalog role. "
+            'Return JSON exactly as {"children":[{"genome":{"family":"...","items":[...],"styling_notes":"..."},"rationale":"one line"}]}.\n'
             f"Parent A: {a.payload}\nParent B: {b.payload}"
         )
 
@@ -573,21 +604,15 @@ def _hand_baselines(catalog: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]
         if isinstance(product, dict) and product.get("role") in ROLES:
             by_role.setdefault(str(product["role"]), []).append(product)
     outfits: list[tuple[str, dict[str, Any]]] = []
-    for name, roles in (("neutral_outfit", ("top", "bottom", "layer")), ("gym_outfit", ("top", "bottom"))):
-        items = []
-        for role in roles:
-            choices = by_role.get(role) or []
-            if not choices:
-                items = []
-                break
-            product = choices[0 if name == "neutral_outfit" else min(1, len(choices) - 1)]
-            colors = list(product.get("colors") or [])
-            color = "catalog_default" if "catalog_default" in colors or not colors else str(colors[0])
-            sizes = list(product.get("sizes") or ["M"])
-            size = "M" if "M" in sizes else str(sizes[0])
-            items.append(
-                {"product_id": product["product_id"], "color_id": color, "size": size, "role": product["role"]}
-            )
+    present = [role for role in ROLES if by_role.get(role)]
+    plans = (
+        ("neutral_outfit", ("top", "bottom", "layer", "shoes", "accessory")),
+        ("gym_outfit", ("top", "bottom", "shoes", "accessory")),
+    )
+    for name, preferred in plans:
+        items = _items_for_roles(by_role, preferred, index=0 if name == "neutral_outfit" else 1)
+        if len(items) < 2:
+            items = _items_for_roles(by_role, present, index=0 if name == "neutral_outfit" else 1)
         if len(items) >= 2:
             family = "neutral_layers" if name == "neutral_outfit" else "bright_training"
             outfits.append(
@@ -595,12 +620,35 @@ def _hand_baselines(catalog: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]
                     name,
                     {
                         "family": family,
-                        "items": items,
+                        "items": items[:3],
                         "styling_notes": f"hand baseline {name} from catalog {catalog.get('catalog_id')}",
                     },
                 )
             )
     return outfits
+
+
+def _item_from_product(product: dict[str, Any]) -> dict[str, Any]:
+    colors = list(product.get("colors") or [])
+    color = "catalog_default" if "catalog_default" in colors or not colors else str(colors[0])
+    sizes = list(product.get("sizes") or ["M"])
+    size = "M" if "M" in sizes else str(sizes[0])
+    return {"product_id": product["product_id"], "color_id": color, "size": size, "role": product["role"]}
+
+
+def _items_for_roles(by_role: dict[str, list[dict[str, Any]]], roles: tuple[str, ...] | list[str], *, index: int) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    used: set[str] = set()
+    for role in roles:
+        choices = by_role.get(role) or []
+        if not choices or role in used:
+            continue
+        product = choices[index % len(choices)]
+        items.append(_item_from_product(product))
+        used.add(role)
+        if len(items) == 3:
+            break
+    return items
 
 
 def neutral_outfit() -> dict[str, Any]:

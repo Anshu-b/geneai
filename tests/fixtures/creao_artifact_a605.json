@@ -1,0 +1,53 @@
+
+{
+  "payload": [
+    {
+      "family": "neutral_layers",
+      "items": [
+        {"color_id": "catalog_default", "product_id": "bu_003", "role": "shoes", "size": "M"},
+        {"color_id": "catalog_default", "product_id": "bu_004", "role": "top", "size": "M"}
+      ],
+      "styling_notes": "Crossover silhouette covering shoes, top with a coherent neutral layering.",
+      "rationale": "crossover #1: inherits bu_003 from parent A and bu_004 from parent B; unique roles (shoes,top) keep the genome valid."
+    },
+    {
+      "family": "neutral_layers",
+      "items": [
+        {"color_id": "catalog_default", "product_id": "bu_003", "role": "shoes", "size": "M"},
+        {"color_id": "catalog_default", "product_id": "bu_024", "role": "accessory", "size": "M"}
+      ],
+      "styling_notes": "Crossover silhouette covering accessory, shoes with a coherent neutral layering.",
+      "rationale": "crossover #2: inherits bu_003 from parent A and bu_024 from parent B; unique roles (accessory,shoes) keep the genome valid."
+    },
+    {
+      "family": "neutral_layers",
+      "items": [
+        {"color_id": "catalog_default", "product_id": "bu_026", "role": "top", "size": "M"},
+        {"color_id": "catalog_default", "product_id": "bu_024", "role": "accessory", "size": "M"}
+      ],
+      "styling_notes": "Crossover silhouette covering accessory, top with a coherent neutral layering.",
+      "rationale": "crossover #3: inherits bu_026 from parent A and bu_024 from parent B; unique roles (accessory,top) keep the genome valid."
+    },
+    {
+      "family": "neutral_layers",
+      "items": [
+        {"color_id": "catalog_default", "product_id": "bu_003", "role": "shoes", "size": "M"},
+        {"color_id": "catalog_default", "product_id": "bu_026", "role": "top", "size": "M"},
+        {"color_id": "catalog_default", "product_id": "bu_024", "role": "accessory", "size": "M"}
+      ],
+      "styling_notes": "Crossover silhouette covering accessory, shoes, top with a coherent neutral layering.",
+      "rationale": "crossover #4: inherits bu_003/bu_026 from parent A and bu_024 from parent B; unique roles (accessory,shoes,top) keep the genome valid."
+    },
+    {
+      "family": "neutral_layers",
+      "items": [
+        {"color_id": "catalog_default", "product_id": "bu_003", "role": "shoes", "size": "M"},
+        {"color_id": "catalog_default", "product_id": "bu_004", "role": "top", "size": "M"},
+        {"color_id": "catalog_default", "product_id": "bu_024", "role": "accessory", "size": "M"}
+      ],
+      "styling_notes": "Crossover silhouette covering accessory, shoes, top with a coherent neutral layering.",
+      "rationale": "crossover #5: inherits bu_003 from parent A and bu_004/bu_024 from parent B; unique roles (accessory,shoes,top) keep the genome valid."
+    }
+  ],
+  "hypothesis": "A fitness-weighted crossover of the two neutral_layers parents that inherits complementary items from each while keeping every role unique should yield a coherent, more versatile genome than either parent alone."
+}

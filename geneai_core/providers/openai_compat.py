@@ -89,7 +89,14 @@ class OpenAICompatibleProvider:
         batch_size = _positive_int(context.get("batch_size"), default=1, cap=2)
         temperature = context.get("temperature")
         sample_seed = context.get("sample_seed")
-        token_cap = completion_token_cap(batch_size=batch_size, max_tokens=self.max_tokens)
+        repairing = context.get("operation") == "repair"
+        if repairing:
+            # A cloud genome is larger than 400 tokens. The old cap truncated
+            # repairs into non-JSON. One genome, enough room to finish.
+            token_cap = repair_token_cap()
+            batch_size = 1
+        else:
+            token_cap = completion_token_cap(batch_size=batch_size, max_tokens=self.max_tokens)
         if batch_size > 1:
             system = (
                 f"Return compact JSON only: {batch_size} distinct genomes. "
@@ -98,8 +105,10 @@ class OpenAICompatibleProvider:
             )
         else:
             system = (
-                "Return compact JSON only: one object with payload and hypothesis. "
-                "hypothesis is one line. No markdown and no rationale."
+                "Return compact JSON only. "
+                'Preferred: {"payload": {}, "hypothesis": "one line"}. '
+                'Also accepted: {"children":[{"genome": {}, "rationale": "one line"}]}. '
+                "No markdown."
             )
         schema_text = prompt_schema_text(schema)
         user = f"{instruction}\n\nJSON schema:\n{schema_text}"
@@ -117,8 +126,9 @@ class OpenAICompatibleProvider:
         try:
             parsed = parse_json_object(text)
         except ProviderError:
-            # One repair-oriented reparse is not a second generation. If the
-            # text is still not JSON, the controller may request one repair call.
+            # Fences and a first balanced object are already tried inside
+            # parse_json_object. If it is still not JSON, the controller may
+            # request one repair call.
             raise
         payload, hypothesis = coerce_proposal_body(parsed)
         candidates = _candidate_bodies(parsed, payload, hypothesis)
@@ -261,6 +271,12 @@ def completion_token_cap(*, batch_size: int, max_tokens: int) -> int:
     return per_genome * batch
 
 
+def repair_token_cap() -> int:
+    """One repaired genome. 1400 tokens finishes inside the 120s Veri timeout at ~16 tok/s."""
+
+    return 1400
+
+
 def estimate_tokens(text: str) -> int:
     return max(1, (len(text) + 3) // 4)
 
@@ -337,6 +353,8 @@ def _candidate_bodies(parsed: dict[str, Any], payload: Any, hypothesis: str) -> 
     raw = parsed.get("candidates")
     if raw is None:
         raw = parsed.get("children")
+    if raw is None and isinstance(parsed.get("payload"), list):
+        raw = parsed.get("payload")
     bodies: list[dict[str, Any]] = []
     if isinstance(raw, list):
         for item in raw:
@@ -346,10 +364,17 @@ def _candidate_bodies(parsed: dict[str, Any], payload: Any, hypothesis: str) -> 
                 bodies.append(
                     {
                         "payload": item["payload"],
-                        "hypothesis": str(item.get("hypothesis") or hypothesis),
+                        "hypothesis": str(item.get("hypothesis") or item.get("rationale") or hypothesis),
                     }
                 )
-            elif "payload" not in item and "hypothesis" not in item:
+            elif isinstance(item.get("genome"), dict):
+                bodies.append(
+                    {
+                        "payload": item["genome"],
+                        "hypothesis": str(item.get("rationale") or item.get("hypothesis") or hypothesis),
+                    }
+                )
+            elif "payload" not in item and "hypothesis" not in item and "genome" not in item:
                 bodies.append({"payload": item, "hypothesis": hypothesis})
     if bodies:
         return bodies

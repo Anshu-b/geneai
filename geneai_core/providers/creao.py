@@ -309,21 +309,63 @@ def _as_child(item: Any) -> dict[str, Any] | None:
     return {"genome": genome, "rationale": str(rationale)}
 
 
+def _rationale_of(item: dict[str, Any], fallback: str = "") -> str:
+    for key in ("rationale", "hypothesis"):
+        value = item.get(key)
+        if isinstance(value, str) and value.strip():
+            return value
+    return fallback
+
+
+def _is_genome_dict(item: dict[str, Any]) -> bool:
+    return _looks_like_genome(item) or "items" in item or "rules" in item or "params" in item
+
+
+def _children_from_list(items: list[Any], fallback: str) -> list[dict[str, Any]]:
+    found: list[dict[str, Any]] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        child = _as_child(item)
+        if child is not None:
+            if not child["rationale"]:
+                child["rationale"] = _rationale_of(item, fallback)
+            found.append(child)
+            continue
+        if _is_genome_dict(item):
+            found.append({"genome": item, "rationale": _rationale_of(item, fallback)})
+    return found
+
+
 def children_from_parsed(parsed: Any) -> list[dict[str, Any]]:
-    if isinstance(parsed, dict):
-        children = parsed.get("children")
-        if isinstance(children, list):
-            return [child for item in children if (child := _as_child(item))]
-        direct = _as_child(parsed)
-        if direct:
-            return [direct]
-        if isinstance(parsed.get("payload"), dict) or _looks_like_genome(parsed):
-            rationale = str(parsed.get("hypothesis") or parsed.get("rationale") or "")
-            genome = parsed.get("payload") if isinstance(parsed.get("payload"), dict) else parsed
-            if isinstance(genome, dict):
-                return [{"genome": genome, "rationale": rationale}]
+    """Accept the mutator shape and the shapes live agents actually return.
+
+    ``{children:[{genome}]}``, ``{payload:[...]}``, ``{payload:{...}}``,
+    a bare list, or a single genome object.
+    """
+
     if isinstance(parsed, list):
-        return [child for item in parsed if (child := _as_child(item))]
+        return _children_from_list(parsed, "")
+    if not isinstance(parsed, dict):
+        return []
+    children = parsed.get("children")
+    if isinstance(children, list):
+        found = _children_from_list(children, str(parsed.get("hypothesis") or ""))
+        if found:
+            return found
+    payload = parsed.get("payload")
+    hypothesis = str(parsed.get("hypothesis") or parsed.get("rationale") or "")
+    if isinstance(payload, list):
+        found = _children_from_list(payload, hypothesis)
+        if found:
+            return found
+    if isinstance(payload, dict):
+        return [{"genome": payload, "rationale": hypothesis or _rationale_of(payload)}]
+    if _is_genome_dict(parsed):
+        return [{"genome": parsed, "rationale": hypothesis}]
+    direct = _as_child(parsed)
+    if direct:
+        return [direct]
     return []
 
 
@@ -449,6 +491,7 @@ def _repair(value: Any, schema: dict[str, Any], path: str, notes: list[str]) -> 
 def interpret_mutator_output(
     text: str,
     schema: dict[str, Any] | None = None,
+    prepare: Any | None = None,
 ) -> tuple[dict[str, Any], str, dict[str, Any]]:
     """Return genome, rationale, and notes. Raise when no child satisfies the schema."""
 
@@ -456,10 +499,14 @@ def interpret_mutator_output(
     candidates = extract_json_values(text)
     children: list[dict[str, Any]] = []
     for parsed in candidates:
-        children.extend(children_from_parsed(parsed))
+        found = children_from_parsed(parsed)
+        if found:
+            children = found
+            break
     if not children:
         raise ProviderError(
-            "GeneAI Mutator output did not contain children[].genome",
+            "GeneAI Mutator output did not contain a genome. "
+            "Accepted shapes: children[].genome, payload object or list, a bare list, or one genome object.",
             code="INVALID_PROPOSAL_JSON",
         )
     failures: list[str] = []
@@ -469,6 +516,12 @@ def interpret_mutator_output(
         if not isinstance(repaired, dict):
             failures.append(f"child {index} genome was not an object")
             continue
+        if callable(prepare):
+            prepared, extra = prepare(repaired)
+            if isinstance(prepared, dict):
+                repaired = prepared
+            if extra:
+                notes.extend(str(item) for item in extra)
         repaired = normalize_payload(repaired)
         errors = schema_errors(repaired, payload_schema)
         if errors:
@@ -560,7 +613,10 @@ class CreaoProvider:
                 provider_run_id=run_id,
             )
         schema = inputs.get("response_schema") if isinstance(inputs.get("response_schema"), dict) else None
-        genome, rationale, notes, answer_source, text = await self._read_answer(document, schema, run_id)
+        prepare = inputs.get("prepare") if callable(inputs.get("prepare")) else None
+        genome, rationale, notes, answer_source, text = await self._read_answer(
+            document, schema, run_id, prepare
+        )
         result = document.get("result") if isinstance(document.get("result"), dict) else {}
         artifacts = result.get("artifacts") if isinstance(result, dict) else None
         local_ms = int((time.perf_counter() - started) * 1000)
@@ -607,19 +663,20 @@ class CreaoProvider:
         document: dict[str, Any],
         schema: dict[str, Any] | None,
         run_id: str,
+        prepare: Any | None = None,
     ) -> tuple[dict[str, Any], str, dict[str, Any], str, str]:
         chat = chat_answer_text(document)
         chat_error: ProviderError | None = None
         if chat.strip():
             try:
-                genome, rationale, notes = interpret_mutator_output(chat, schema)
+                genome, rationale, notes = interpret_mutator_output(chat, schema, prepare)
                 return genome, rationale, notes, "chatText", chat
             except ProviderError as exc:
                 chat_error = exc
         artifact_text = await self._download_children_artifact(document)
         if artifact_text and artifact_text.strip():
             try:
-                genome, rationale, notes = interpret_mutator_output(artifact_text, schema)
+                genome, rationale, notes = interpret_mutator_output(artifact_text, schema, prepare)
                 return genome, rationale, notes, "artifact", artifact_text
             except ProviderError as exc:
                 chat_error = chat_error or exc
@@ -641,8 +698,9 @@ class CreaoProvider:
         if not isinstance(url, str) or not url.startswith("https://agent.creao.ai/"):
             return None
         async with self._open_client() as client:
+            client.follow_redirects = True
             response = await client.get(url, headers=self._headers())
-        if response.status_code >= 400:
+        if response.status_code < 200 or response.status_code >= 300:
             return None
         return response.text
 
@@ -742,7 +800,7 @@ class _ClientContext:
     async def __aenter__(self) -> httpx.AsyncClient:
         if self._client is not None:
             return self._client
-        self._owned = httpx.AsyncClient(timeout=60.0)
+        self._owned = httpx.AsyncClient(timeout=60.0, follow_redirects=True)
         return self._owned
 
     async def __aexit__(self, *exc: object) -> None:

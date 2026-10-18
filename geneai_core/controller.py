@@ -47,6 +47,8 @@ from geneai_core.store import RunRepository
 # One seed call asks for several genomes. Temperatures rotate so repeated
 # calls are not samples from the same narrow distribution.
 _SEED_BATCH = 2
+_VARIATION_BATCH = 2
+_LOCAL_SAMPLES = 20
 _SEED_TEMPERATURES = (0.4, 0.8, 1.1, 0.6)
 
 
@@ -85,8 +87,8 @@ class EvolutionController:
         rng = random.Random(config.seed)
         budget = budget or Budget(config)
         if self._clock is not time.monotonic:
+            budget._clock = self._clock
             budget.started = self._clock()
-            budget.elapsed_seconds = lambda: self._clock() - budget.started  # type: ignore[method-assign]
         datasets = adapter.dataset_hashes(config.seed)
         repository.bind(
             objective=objective,
@@ -146,6 +148,10 @@ class EvolutionController:
             nonlocal call_serial
             if not budget.allows_model_call():
                 return None
+            wait_s = budget.remaining_seconds()
+            if wait_s <= 0:
+                budget.exhausted_reason = budget.exhausted_reason or "max_wall_seconds"
+                return None
             call_serial += 1
             call_id = f"c{call_serial:04d}"
             event_prefix = "agent" if channel == "workflow" else "model"
@@ -173,23 +179,40 @@ class EvolutionController:
                 call_provenance,
             )
             budget.consume_model_call()
+
+            async def _invoke() -> Proposal:
+                if channel == "workflow":
+                    wire_parents = _wire_parents(parents, invalid_payload)
+                    return await provider.run_workflow(
+                        _workflow_name(operation),
+                        {
+                            "task": task,
+                            "parents": wire_parents,
+                            "operator": "crossover" if operation == "crossover" else "mutate",
+                            "response_schema": adapter.genome_schema(),
+                            "mutation_goal": instruction,
+                            "prepare": adapter.prepare_payload,
+                        },
+                        call_id=call_id,
+                    )
+                return await provider.propose(instruction, schema, call_id=call_id)
+
             try:
                 async with semaphore:
-                    if channel == "workflow":
-                        wire_parents = _wire_parents(parents, invalid_payload)
-                        proposal = await provider.run_workflow(
-                            _workflow_name(operation),
-                            {
-                                "task": task,
-                                "parents": wire_parents,
-                                "operator": "crossover" if operation == "crossover" else "mutate",
-                                "response_schema": adapter.genome_schema(),
-                                "mutation_goal": instruction,
-                            },
-                            call_id=call_id,
-                        )
-                    else:
-                        proposal = await provider.propose(instruction, schema, call_id=call_id)
+                    proposal = await asyncio.wait_for(_invoke(), timeout=max(wait_s, 0.05))
+            except TimeoutError:
+                repository.emit(
+                    f"{event_prefix}.failed",
+                    {
+                        "call_id": call_id,
+                        "operation": operation,
+                        "error": f"provider wait capped at {wait_s:.1f}s of remaining wall budget",
+                        "code": "max_wall_seconds",
+                    },
+                    call_provenance,
+                )
+                budget.exhausted_reason = budget.exhausted_reason or "max_wall_seconds"
+                return None
             except ProviderError as exc:
                 repository.emit(
                     f"{event_prefix}.failed",
@@ -244,6 +267,11 @@ class EvolutionController:
             provider_role: str | None = None,
         ) -> tuple[Genome | None, str | None]:
             payload = normalize_payload(proposal.payload)
+            normalization_notes: list[str] = []
+            if isinstance(payload, dict):
+                prepared, normalization_notes = adapter.prepare_payload(payload)
+                if isinstance(prepared, dict):
+                    payload = prepared
             if not isinstance(payload, dict):
                 repository.emit(
                     "genome.rejected",
@@ -304,6 +332,7 @@ class EvolutionController:
                     "model": proposal.model,
                     "deployment_id": proposal.deployment_id,
                     "thread_id": proposal.extra.get("thread_id"),
+                    "normalizations": list(normalization_notes),
                 },
             )
             try:
@@ -318,7 +347,10 @@ class EvolutionController:
             seen_hashes.add(digest)
             repository.emit(
                 creation_event_type(operator, origin),
-                lineage_payload(genome),
+                lineage_payload(
+                    genome,
+                    extra={"normalizations": list(normalization_notes)} if normalization_notes else None,
+                ),
                 provenance.model_copy(
                     update={
                         **_proposal_provenance(proposal),
@@ -391,9 +423,12 @@ class EvolutionController:
         ) -> list[Individual]:
             nonlocal strategist_used
             token = rng.randrange(2**30)
-            effective_batch = 1 if invalid_payload is not None else max(1, min(int(batch_size), 8))
-            if operation not in {"seed", "immigrant"}:
+            if invalid_payload is not None or operation == "repair":
                 effective_batch = 1
+            elif operation in {"seed", "immigrant"}:
+                effective_batch = max(1, min(int(batch_size), _SEED_BATCH))
+            else:
+                effective_batch = max(1, min(int(batch_size) if batch_size else _VARIATION_BATCH, _VARIATION_BATCH))
             context: dict[str, Any] = {
                 "operation": "repair" if invalid_payload is not None else operation,
                 "slot": generation,
@@ -529,10 +564,24 @@ class EvolutionController:
                     continue
                 counters["seed"] += 1
                 population.append(Individual(genome=genome, evaluation=evaluation))
+            _seed_local_samples(
+                adapter=adapter,
+                config=config,
+                population=population,
+                budget=budget,
+                accept_payload=accept_payload,
+                evaluate_genome=evaluate_genome,
+                counters=counters,
+            )
             attempts = 0
             attempt_cap = config.population_size * 4
             temperature_index = 0
+            model_wait = _provider_wait_seconds(model, "request_timeout_s")
             while len(population) < config.population_size and attempts < attempt_cap:
+                if budget.remaining_seconds() < model_wait:
+                    budget.exhausted_reason = budget.exhausted_reason or "max_wall_seconds"
+                    stop_reason = "max_wall_seconds"
+                    break
                 if not budget.allows_model_call():
                     stop_reason = budget.exhausted_reason or "budget"
                     break
@@ -624,10 +673,15 @@ class EvolutionController:
             )
             generations_completed = 0
 
+            generation_estimate = _generation_estimate_seconds(model, workflow, config)
             for generation in range(1, config.generations + 1):
                 if budget.cancelled:
                     stop_reason = "cancelled"
                     status = "cancelled"
+                    break
+                if budget.remaining_seconds() < generation_estimate:
+                    budget.exhausted_reason = budget.exhausted_reason or "max_wall_seconds"
+                    stop_reason = "max_wall_seconds"
                     break
                 if not budget.allows_model_call() or not budget.allows_evaluation():
                     stop_reason = budget.exhausted_reason or "budget"
@@ -670,6 +724,18 @@ class EvolutionController:
                     )
                 desired = config.population_size - len(elites)
                 children: list[Individual] = []
+                _add_local_perturbations(
+                    adapter=adapter,
+                    elites=elites,
+                    rng=rng,
+                    generation=generation,
+                    desired=desired,
+                    children=children,
+                    budget=budget,
+                    accept_payload=accept_payload,
+                    evaluate_genome=evaluate_genome,
+                    counters=counters,
+                )
                 child_attempts = 0
                 attempt_limit = max(desired * 8, 8)
                 while (
@@ -684,7 +750,12 @@ class EvolutionController:
                         config.max_concurrent_model_calls,
                     )
                     plans: list[dict[str, Any]] = []
-                    while len(plans) < room and budget.allows_model_call() and budget.allows_evaluation():
+                    while (
+                        len(plans) < room
+                        and budget.allows_model_call()
+                        and budget.allows_evaluation()
+                        and budget.remaining_seconds() >= generation_estimate
+                    ):
                         child_attempts += 1
                         plans.append(
                             _plan_variation(
@@ -842,6 +913,125 @@ class EvolutionController:
         return _result(repository, status, stop_reason, champion_id, generations_completed, summary)
 
 
+def _provider_wait_seconds(provider: Any, attr: str, default: float = 1.0) -> float:
+    value = getattr(provider, attr, None)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return default
+    if float(value) <= 0:
+        return default
+    return float(value)
+
+
+def _generation_estimate_seconds(model: Any, workflow: Any, config: EvolutionConfig) -> float:
+    """Do not start a generation that cannot finish one provider wave inside the wall."""
+
+    model_wait = _provider_wait_seconds(model, "request_timeout_s")
+    workflow_wait = 0.0
+    if config.strategist_calls_per_generation > 0:
+        workflow_wait = _provider_wait_seconds(workflow, "timeout_s")
+    return max(model_wait, workflow_wait, 1.0)
+
+
+def _seed_local_samples(
+    *,
+    adapter: DomainAdapter,
+    config: EvolutionConfig,
+    population: list[Individual],
+    budget: Budget,
+    accept_payload: Any,
+    evaluate_genome: Any,
+    counters: dict[str, int],
+) -> None:
+    """Train-scored random seeds. Only a slice enters the population; all stay in the archive."""
+
+    rng = random.Random(config.seed + 23)
+    room = max(0, config.max_evaluations - budget.evaluations)
+    payloads = adapter.random_seed_payloads(rng, min(_LOCAL_SAMPLES, room))
+    held: list[Individual] = []
+    for index, raw in enumerate(payloads):
+        if not isinstance(raw, dict) or not budget.allows_evaluation():
+            break
+        proposal = Proposal(
+            payload=raw,
+            hypothesis="objective-biased random seed",
+            provider="random",
+            provider_run_id=f"random-local-{index}",
+            mode="random",
+            extra={"random_seed": True, "local_search": True},
+        )
+        genome, _reason = accept_payload(
+            proposal,
+            operator="seed",
+            origin="seed",
+            parent_ids=[],
+            generation=0,
+            role="random_seed",
+            provider_role="random",
+        )
+        if genome is None:
+            continue
+        evaluation = evaluate_genome(genome, "train")
+        if evaluation is None or not evaluation.feasible or evaluation.fitness is None:
+            continue
+        counters["seed"] += 1
+        held.append(Individual(genome=genome, evaluation=evaluation))
+    held.sort(key=lambda item: (-(item.evaluation.fitness or float("-inf")), item.genome.id))
+    keep = max(0, config.population_size - len(population)) // 2
+    for item in held:
+        if keep <= 0 or len(population) >= config.population_size:
+            break
+        population.append(item)
+        keep -= 1
+
+
+def _add_local_perturbations(
+    *,
+    adapter: DomainAdapter,
+    elites: list[Individual],
+    rng: random.Random,
+    generation: int,
+    desired: int,
+    children: list[Individual],
+    budget: Budget,
+    accept_payload: Any,
+    evaluate_genome: Any,
+    counters: dict[str, int],
+) -> None:
+    for elite in elites:
+        if len(children) >= desired or not budget.allows_evaluation():
+            return
+        variants = adapter.local_perturbations(elite.genome.payload, rng, 2)
+        for index, raw in enumerate(variants):
+            if len(children) >= desired or not budget.allows_evaluation():
+                return
+            if not isinstance(raw, dict):
+                continue
+            proposal = Proposal(
+                payload=raw,
+                hypothesis="local perturbation of an elite",
+                provider="random",
+                provider_run_id=f"random-perturb-{elite.genome.id}-{index}",
+                mode="random",
+                extra={"local_perturbation": True},
+            )
+            genome, _reason = accept_payload(
+                proposal,
+                operator="mutation",
+                origin="mutation",
+                parent_ids=[elite.genome.id],
+                generation=generation,
+                role=None,
+                provider_role="random",
+            )
+            if genome is None:
+                continue
+            evaluation = evaluate_genome(genome, "train")
+            if evaluation is None:
+                continue
+            counters["mutation"] += 1
+            children.append(Individual(genome=genome, evaluation=evaluation))
+
+
 def _fill_random_seeds(
     *,
     adapter: DomainAdapter,
@@ -923,6 +1113,7 @@ def _plan_variation(
                 "role": None,
                 "channel": "model",
                 "provider_role": "bulk",
+                "batch_size": _VARIATION_BATCH,
             }
         operation = "mutation"
     if operation == "immigrant":
@@ -948,6 +1139,7 @@ def _plan_variation(
         "role": None,
         "channel": "model",
         "provider_role": "bulk",
+        "batch_size": _VARIATION_BATCH,
     }
 
 
