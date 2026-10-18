@@ -339,3 +339,131 @@ export function budgetLine(total: number, budget: number): string {
   if (delta >= 0) return `${money(total)} of ${money(budget)}, under by ${money(delta)}.`;
   return `${money(total)} of ${money(budget)}, over by ${money(Math.abs(delta))}.`;
 }
+
+export type Winner = "gene" | "other" | "tie";
+
+export interface ScoreRow {
+  key: string;
+  group: "case" | "heldout";
+  metric: string;
+  better: "lower" | "higher";
+  unit: string;
+  gene: number;
+  other: number;
+  winner: Winner;
+  /** Plain words, e.g. "GeneAI 3 · GPT-5.5 6 — GeneAI missed half as many." */
+  sentence: string;
+}
+
+export interface CloudScoreboard {
+  geneLabel: string;
+  otherLabel: string;
+  cases: number | null;
+  rows: ScoreRow[];
+  takeaway: string;
+}
+
+function shortName(label: string): string {
+  if (/gpt/i.test(label)) return "GPT-5.5";
+  if (/geneai/i.test(label)) return "GeneAI";
+  return label;
+}
+
+function fmt(value: number, unit: string): string {
+  if (unit === "") return compact(value, 3);
+  if (unit === "kWh") return compact(value, 2);
+  if (unit === "min") return compact(value, 2);
+  return compact(value, 0);
+}
+
+function ratioPhrase(winner: number, loser: number, noun: string): string {
+  if (winner === 0) return `none vs ${compact(loser, 0)}`;
+  const ratio = loser / winner;
+  if (Math.abs(ratio - 2) < 0.05) return `half as many ${noun}`;
+  return `${compact(loser - winner, 0)} fewer ${noun}`;
+}
+
+function scoreRow(
+  key: string,
+  group: ScoreRow["group"],
+  metric: string,
+  better: ScoreRow["better"],
+  unit: string,
+  gene: number,
+  other: number,
+  names: [string, string],
+): ScoreRow {
+  const eps = unit === "" ? 1e-4 : 1e-3;
+  const diff = gene - other;
+  const winner: Winner = Math.abs(diff) < eps ? "tie" : (better === "lower" ? diff < 0 : diff > 0) ? "gene" : "other";
+  const [g, o] = names;
+  const u = unit && unit !== "deadlines" ? ` ${unit}` : "";
+  const head = `${g} ${fmt(gene, unit)}${u} · ${o} ${fmt(other, unit)}${u}`;
+  let tail: string;
+  if (winner === "tie") tail = "a tie";
+  else {
+    const who = winner === "gene" ? g : o;
+    const win = winner === "gene" ? gene : other;
+    const lose = winner === "gene" ? other : gene;
+    if (unit === "deadlines") tail = `${who} missed ${ratioPhrase(win, lose, "")}`.trim();
+    else if (unit === "") tail = `${who} scores higher by ${compact(Math.abs(diff), 3)}`;
+    else {
+      const pct = (Math.abs(diff) / Math.max(Math.abs(lose), 1e-9)) * 100;
+      const amount = `${pct < 1 ? "<1" : compact(pct, 0)}%`;
+      tail = unit === "kWh" ? `${who} uses ${amount} less energy` : `${who} finishes ${amount} faster`;
+    }
+  }
+  return { key, group, metric, better, unit, gene, other, winner, sentence: `${head} — ${tail}.` };
+}
+
+/** GeneAI champion vs GPT-5.5 one-shot, per metric, with the winner marked from the data. */
+export function cloudScoreboard(file: ShowcaseFile): CloudScoreboard | null {
+  if (file.domain !== "cloud_scheduling" || !file.cloud) return null;
+  const agentic = file.cloud.policies.filter((policy) => !isManualBaseline(policy.key, policy.provider));
+  const pair = agenticPair(agentic);
+  if (!pair) return null;
+  const [gene, other] = pair;
+  const names: [string, string] = [shortName(gene.label), shortName(other.label)];
+  const rows: ScoreRow[] = [];
+  if (gene.summary && other.summary && gene.feasible && other.feasible) {
+    rows.push(scoreRow("case_missed", "case", "Missed deadlines", "lower", "deadlines", gene.summary.sla_misses, other.summary.sla_misses, names));
+    rows.push(scoreRow("case_finish", "case", "Average finish", "lower", "min", gene.summary.avg_completion_min, other.summary.avg_completion_min, names));
+    rows.push(scoreRow("case_energy", "case", "Energy", "lower", "kWh", gene.summary.energy_kwh, other.summary.energy_kwh, names));
+  }
+  const ga = gene.aggregate;
+  const oa = other.aggregate;
+  let cases: number | null = null;
+  if (ga && oa && ga.n_cases > 0) {
+    cases = ga.n_cases;
+    rows.push(scoreRow("all_missed", "heldout", "Missed deadlines", "lower", "deadlines", ga.sla_misses, oa.sla_misses, names));
+    rows.push(scoreRow("all_finish", "heldout", "Mean finish", "lower", "min", ga.avg_completion_min, oa.avg_completion_min, names));
+    rows.push(scoreRow("all_energy", "heldout", "Energy", "lower", "kWh", ga.energy_kwh, oa.energy_kwh, names));
+    if (ga.fitness != null && oa.fitness != null) {
+      rows.push(scoreRow("all_fitness", "heldout", "Overall score", "higher", "", ga.fitness, oa.fitness, names));
+    }
+  }
+  return { geneLabel: names[0], otherLabel: names[1], cases, rows, takeaway: scoreTakeaway(rows, names, cases) };
+}
+
+function scoreTakeaway(rows: ScoreRow[], names: [string, string], cases: number | null): string {
+  const held = rows.filter((row) => row.group === "heldout");
+  const pool = held.length > 0 ? held : rows;
+  if (pool.length === 0) return "";
+  const [g, o] = names;
+  const wins = pool.filter((row) => row.winner === "gene");
+  const losses = pool.filter((row) => row.winner === "other");
+  const scope = held.length > 0 && cases ? `Across ${cases} held-out cases` : "On this case";
+  const describe = (row: ScoreRow) => {
+    const u = row.unit && row.unit !== "deadlines" ? ` ${row.unit}` : "";
+    return `${row.metric.toLowerCase()} (${fmt(row.gene, row.unit)}${u} vs ${fmt(row.other, row.unit)}${u})`;
+  };
+  if (losses.length === 0) return `${scope}, ${g} wins every metric here: ${wins.map(describe).join(", ")}.`;
+  if (wins.length === 0) return `${scope}, ${o} wins every metric here: ${losses.map(describe).join(", ")}.`;
+  const flip = (row: ScoreRow) => {
+    const u = row.unit && row.unit !== "deadlines" ? ` ${row.unit}` : "";
+    return `${row.metric.toLowerCase()} (${fmt(row.other, row.unit)}${u} vs ${fmt(row.gene, row.unit)}${u})`;
+  };
+  const list = (items: string[]) => (items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`);
+  const fitnessWin = wins.some((row) => row.key === "all_fitness");
+  return `${scope}, ${o} wins on ${list(losses.map(flip))}, but ${g} wins on ${list(wins.map(describe))}${fitnessWin ? `, so ${g} takes the overall score` : ""}.`;
+}

@@ -23,6 +23,10 @@ interface Hud {
   history: number[];
 }
 
+/** Calm hero: a few hundred dots at most, and a run that ends. */
+export const PARTICLES = 180;
+export const MAX_GENERATION = 60;
+
 function spawn(count: number): Particle[] {
   return Array.from({ length: count }, (_, index) => {
     const right = index % 5 !== 0;
@@ -33,8 +37,8 @@ function spawn(count: number): Particle[] {
       x,
       y: Math.random(),
       z: Math.random(),
-      vx: (Math.random() - 0.5) * 0.0004,
-      vy: (Math.random() - 0.5) * 0.0004,
+      vx: (Math.random() - 0.5) * 0.00015,
+      vy: (Math.random() - 0.5) * 0.00015,
       r: 0.8 + Math.random() * 2.2,
       kind,
       life: 0.55 + Math.random() * 0.45,
@@ -59,7 +63,7 @@ export function LivingField() {
     let width = 1;
     let height = 1;
     let dpr = 1;
-    let particles = spawn(800);
+    let particles = spawn(PARTICLES);
     let generation = 1;
     let frame = 0;
     let visible = true;
@@ -87,8 +91,8 @@ export function LivingField() {
       canvas.width = Math.floor(width * dpr);
       canvas.height = Math.floor(height * dpr);
       context.setTransform(dpr, 0, 0, dpr, 0, 0);
-      const next = Math.min(1500, Math.max(640, Math.floor((width * height) / 920)));
-      if (Math.abs(next - particles.length) > 80) particles = spawn(next);
+      const next = Math.min(PARTICLES, Math.max(120, Math.floor((width * height) / 6500)));
+      if (Math.abs(next - particles.length) > 20) particles = spawn(next);
     };
 
     const colorOf = (kind: Kind) => (kind === 0 ? palette.veri : kind === 1 ? palette.creao : palette.baseline);
@@ -125,8 +129,8 @@ export function LivingField() {
         slot.x = Math.min(0.98, Math.max(0.02, parent.x + (Math.random() - 0.5) * 0.055));
         slot.y = Math.min(0.98, Math.max(0.02, parent.y + (Math.random() - 0.5) * 0.055));
         slot.z = Math.min(1, Math.max(0, parent.z + (Math.random() - 0.5) * 0.25));
-        slot.vx = (Math.random() - 0.5) * 0.0006;
-        slot.vy = (Math.random() - 0.5) * 0.0006;
+        slot.vx = (Math.random() - 0.5) * 0.0002;
+        slot.vy = (Math.random() - 0.5) * 0.0002;
         slot.r = 0.9 + Math.random() * 2;
         slot.kind = roll < 0.7 ? parent.kind : roll < 0.88 ? 0 : roll < 0.96 ? 1 : 2;
         slot.life = 1;
@@ -160,7 +164,7 @@ export function LivingField() {
         context.moveTo(from.x * width + ox, from.y * height + oy);
         context.lineTo(particle.x * width + ox, particle.y * height + oy);
       }
-      context.globalAlpha = palette.light ? 0.35 : 0.55;
+      context.globalAlpha = palette.light ? 0.2 : 0.3;
       context.stroke();
       context.globalAlpha = 1;
 
@@ -178,11 +182,11 @@ export function LivingField() {
           const fill = pruning ? palette.ember : colorOf(particle.kind);
           const radius = particle.r * (0.65 + depth) * (pruning ? 0.45 + particle.life * 0.55 : 1);
           context.fillStyle = fill;
-          context.globalAlpha = (palette.light ? 0.16 : 0.22) * particle.life * depth;
+          context.globalAlpha = (palette.light ? 0.07 : 0.1) * particle.life * depth;
           context.beginPath();
           context.arc(x, y, radius * 4.2, 0, Math.PI * 2);
           context.fill();
-          context.globalAlpha = (palette.light ? 0.82 : 0.92) * particle.life;
+          context.globalAlpha = (palette.light ? 0.5 : 0.55) * particle.life;
           context.beginPath();
           context.arc(x, y, Math.max(0.6, radius), 0, Math.PI * 2);
           context.fill();
@@ -204,19 +208,19 @@ export function LivingField() {
       }
       if (!reduced) {
         for (const particle of particles) {
-          if (particle.state === 2) particle.life = Math.max(0, particle.life - 0.012);
+          if (particle.state === 2) particle.life = Math.max(0, particle.life - 0.006);
           if (pointer.on) {
             const dx = pointer.x - particle.x;
             const dy = pointer.y - particle.y;
             const dist = Math.hypot(dx, dy) || 0.0001;
             if (dist < 0.24) {
-              const force = dist < 0.045 ? -0.0011 : 0.00042;
+              const force = dist < 0.045 ? -0.0005 : 0.00018;
               particle.vx += (dx / dist) * force * (0.5 + particle.z);
               particle.vy += (dy / dist) * force * (0.5 + particle.z);
             }
           }
-          particle.vx += (Math.random() - 0.5) * 0.00012;
-          particle.vy += (Math.random() - 0.5) * 0.00012;
+          particle.vx += (Math.random() - 0.5) * 0.00004;
+          particle.vy += (Math.random() - 0.5) * 0.00004;
           particle.x += particle.vx;
           particle.y += particle.vy;
           if (particle.x < 0.02 || particle.x > 0.98) particle.vx *= -1;
@@ -235,7 +239,9 @@ export function LivingField() {
     const scheduleBreed = () => {
       if (reduced) return;
       breed();
-      breedTimer = window.setTimeout(scheduleBreed, 1100);
+      // Stop at the cap: the hero shows a finished run, not an endless counter.
+      if (generation >= MAX_GENERATION) return;
+      breedTimer = window.setTimeout(scheduleBreed, 1600);
     };
 
     resize();
@@ -290,7 +296,7 @@ export function LivingField() {
     <div className="absolute inset-0">
       <canvas ref={ref} data-testid="living-field" className="absolute inset-0 h-full w-full" aria-hidden />
       <div className="pointer-events-none absolute bottom-6 right-4 z-20 w-52 rounded-2xl border border-line bg-raise/75 p-3 backdrop-blur-md md:right-8" data-testid="field-hud">
-        <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-faint">Generation {hud.generation}</p>
+        <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-faint">Generation {Math.min(hud.generation, MAX_GENERATION)} of {MAX_GENERATION}{hud.generation >= MAX_GENERATION ? " · done" : ""}</p>
         <p className="mt-1 font-serif text-3xl leading-none text-ivory">{hud.fitness.toFixed(2)}</p>
         <svg viewBox="0 0 120 36" className="mt-2 h-9 w-full" aria-hidden>
           <polyline fill="none" stroke="var(--teal)" strokeWidth="1.6" points={points} />

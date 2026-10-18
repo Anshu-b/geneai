@@ -12,8 +12,10 @@ test("cloud lab renders a recorded lineage without console errors", async ({ pag
   await expect(page.getByRole("button", { name: "Toggle color theme" })).toBeVisible();
   await expect(page.getByTestId("mode-badge")).toHaveText(/Recorded/);
   await expect(page.getByTestId("output-showcase")).toBeVisible();
-  await expect(page.getByTestId("showcase-sample")).toBeVisible();
-  await expect(page.getByTestId("key-scores")).toContainText("Missed deadlines: 3 vs 6");
+  await expect(page.getByTestId("showcase-sample")).toHaveCount(0);
+  await expect(page.getByTestId("score-case_missed")).toContainText("GeneAI missed half as many");
+  await expect(page.getByTestId("score-takeaway")).toContainText("GPT-5.5 wins on missed deadlines (167 vs 177)");
+  await expect(page.getByTestId("architecture-line")).toContainText("CREAO proposed the crossover g0051");
   await expect(page.getByText("Round robin")).toHaveCount(0);
   await expect(page.getByText("Deadline weighted")).toHaveCount(0);
   await expect(page.getByTestId("behavior-origin")).toContainText("Found by CREAO crossover g0051");
@@ -34,9 +36,9 @@ test("shopping shows the agentic outfits and hides the manual baseline", async (
   await expect(page.getByTestId("lineage-svg")).toBeVisible({ timeout: 30_000 });
   await expect(page.getByTestId("output-showcase")).toBeVisible();
   await expect(page.getByTestId("outfit-card")).toHaveCount(2);
-  await expect(page.getByText("over the $220 budget")).toBeVisible();
+  await expect(page.getByText(/over by \$\d+/).first()).toBeVisible();
   await expect(page.getByText("Neutral outfit")).toHaveCount(0);
-  await expect(page.getByTestId("key-scores")).toContainText("18 of 20");
+  await expect(page.getByTestId("key-scores")).toContainText("3 of 3");
   await expect(page.getByRole("link", { name: /product/i })).toHaveCount(0);
 });
 

@@ -143,7 +143,13 @@ export function LineageSvg({
     const fitW = (scroller.clientWidth - 16) / layout.width;
     const fitH = (scroller.clientHeight - 16) / layout.height;
     const narrow = scroller.clientWidth < 760;
-    const next = narrow ? Math.min(1, Math.max(0.5, fitW)) : Math.min(1, Math.max(0.32, Math.min(fitW, fitH)));
+    // Compact plates (demo pages) may scale up to fill the full-width stage.
+    const cap = compact ? 2.2 : 1;
+    const next = compact
+      ? Math.min(cap, Math.max(0.5, fitW))
+      : narrow
+        ? Math.min(cap, Math.max(0.5, fitW))
+        : Math.min(cap, Math.max(0.32, Math.min(fitW, fitH)));
     userScaled.current = false;
     setScale(next);
   }
@@ -175,7 +181,7 @@ export function LineageSvg({
           Fit
         </button>
       </div>}
-      <div ref={scrollerRef} className={`lineage-stage ghost-scroll overflow-auto rounded-md border border-line ${compact ? "h-[340px]" : "h-[68vh] min-h-[520px]"}`} data-testid="lineage-svg">
+      <div ref={scrollerRef} className={`lineage-stage ghost-scroll overflow-auto rounded-md border border-line ${compact ? "" : "h-[68vh] min-h-[520px]"}`} style={compact ? { height: Math.max(560, Math.min(1100, layout.height * scale + 18)) } : undefined} data-testid="lineage-svg">
         <svg
           ref={svgRef}
           width={layout.width * scale}

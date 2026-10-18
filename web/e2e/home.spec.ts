@@ -89,3 +89,22 @@ test.describe("light hero", () => {
     expect(colors.color).toBe("rgb(255, 250, 240)");
   });
 });
+
+test("test split stays sealed until the champion is frozen, then reads once", async ({ page }) => {
+  await page.goto("/");
+  const test_ = page.getByTestId("split-test");
+  await test_.scrollIntoViewIfNeeded();
+  await expect(test_).toContainText("Sealed");
+  await page.getByTestId("freeze-champion").click();
+  await expect(test_).toContainText("Read once");
+  await expect(page.getByTestId("freeze-champion")).toBeDisabled();
+});
+
+test("cloud scoreboard marks a winner on every row", async ({ page }) => {
+  await page.goto("/cloud");
+  const board = page.getByTestId("cloud-scoreboard");
+  await expect(board).toBeVisible();
+  await expect(page.getByTestId("score-all_missed")).toHaveAttribute("data-winner", "other");
+  await expect(page.getByTestId("score-all_fitness")).toHaveAttribute("data-winner", "gene");
+  await expect(page.getByTestId("gantt-legend").first()).toContainText("Late");
+});

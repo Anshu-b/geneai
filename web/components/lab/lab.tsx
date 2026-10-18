@@ -62,6 +62,12 @@ export function Lab({ fixture, title, showcase }: { fixture: string; title: stri
     [projection?.championFrozen, exp?.champion_id, genomes],
   );
   const presentation = exp ? presentationMode(exp.run.mode, false) : null;
+  const facts = useMemo(() => {
+    if (!exp || exp.genomes.length === 0) return null;
+    const lastGeneration = Math.max(...exp.genomes.map((genome) => genome.generation));
+    const champion = exp.champion_id ? exp.genomes.find((genome) => genome.id === exp.champion_id) : undefined;
+    return { lastGeneration, championId: exp.champion_id ?? null, championGeneration: champion?.generation ?? null };
+  }, [exp]);
 
   return (
     <div>
@@ -76,7 +82,7 @@ export function Lab({ fixture, title, showcase }: { fixture: string; title: stri
           </h1>
         ) : null}
 
-        {showcase ? <OutputShowcase src={showcase} /> : null}
+        {showcase ? <OutputShowcase src={showcase} facts={facts} /> : null}
 
         {exp && projection && layout ? (
           <section className="mt-10">
@@ -111,25 +117,31 @@ export function Lab({ fixture, title, showcase }: { fixture: string; title: stri
 function FitnessStrip({ projection }: { projection: Projection }) {
   const points = fitnessByGeneration(projection);
   if (points.length < 2) return null;
-  const width = 640;
-  const height = 72;
-  const pad = 8;
+  const width = 1200;
+  const height = 180;
+  const pad = 34;
   const min = Math.min(...points.map((point) => point.fitness));
   const max = Math.max(...points.map((point) => point.fitness));
   const span = Math.max(1e-6, max - min);
-  const xOf = (index: number) => pad + (index / (points.length - 1)) * (width - pad * 2);
-  const yOf = (fitness: number) => pad + (1 - (fitness - min) / span) * (height - pad * 2);
+  const padX = 56;
+  const xOf = (index: number) => padX + (index / (points.length - 1)) * (width - padX * 2);
+  const flat = max - min < 1e-9;
+  // A flat run would pin every point to the floor; centre it instead and say so.
+  const yOf = (fitness: number) => (flat ? height / 2 : pad + (1 - (fitness - min) / span) * (height - pad * 2));
   const d = points.map((point, index) => `${index === 0 ? "M" : "L"}${xOf(index)},${yOf(point.fitness)}`).join(" ");
   return (
     <figure className="mt-4 mb-3" data-testid="fitness-generations">
-      <figcaption className="kicker">Best fitness by generation. Higher is better.</figcaption>
-      <svg viewBox={`0 0 ${width} ${height}`} className="mt-2 h-16 w-full max-w-3xl" role="img" aria-label="Best fitness by generation">
-        <path d={d} fill="none" stroke="var(--teal)" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
+      <figcaption className="kicker">Best fitness by generation. Higher is better.{flat ? " The best training score did not change in this run." : ""}</figcaption>
+      <svg viewBox={`0 0 ${width} ${height}`} className="mt-2 h-auto w-full" role="img" aria-label="Best fitness by generation">
+        <path d={d} fill="none" stroke="var(--teal)" strokeWidth="3"  strokeLinejoin="round" strokeLinecap="round" />
         {points.map((point, index) => (
           <g key={point.generation}>
-            <circle cx={xOf(index)} cy={yOf(point.fitness)} r="3.5" fill="var(--teal)" />
-            <text x={xOf(index)} y={height - 1} textAnchor="middle" fill="var(--faint)" fontSize="11" fontFamily="IBM Plex Mono, ui-monospace, monospace">
-              {point.generation}
+            <circle cx={xOf(index)} cy={yOf(point.fitness)} r="6" fill="var(--teal)" />
+            <text x={xOf(index)} y={yOf(point.fitness) - 12} textAnchor="middle" fill="var(--ivory)" fontSize="15" fontFamily="IBM Plex Mono, ui-monospace, monospace">
+              {point.fitness.toFixed(3)}
+            </text>
+            <text x={xOf(index)} y={height - 2} textAnchor="middle" fill="var(--faint)" fontSize="14" fontFamily="IBM Plex Mono, ui-monospace, monospace">
+              gen {point.generation}
             </text>
           </g>
         ))}

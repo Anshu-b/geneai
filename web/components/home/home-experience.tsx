@@ -208,13 +208,34 @@ export function HomeExperience() {
           <h2 className="mt-3 max-w-3xl font-serif text-4xl tracking-tight text-ivory md:text-6xl">The test stays sealed.</h2>
           <p className="mt-4 max-w-2xl text-base leading-relaxed text-dim">Train is what the loop sees. Validation picks the champion. Test is not read until that champion is frozen, and then only once.</p>
           <div className="mt-8 grid gap-4 md:grid-cols-3">
-            <SplitPane label="Train" detail="Seen every generation." open dots={18} />
-            <SplitPane label="Validation" detail="Chooses the champion." open dots={8} highlight />
-            <SplitPane label="Test" detail={frozen ? "Read once, after the freeze." : "Sealed until champion.frozen."} open={frozen} dots={8} />
+            <SplitPane label="Train" detail="Seen every generation. Selection uses only this score." status="Open" open dots={18} />
+            <SplitPane label="Validation" detail="Picks the champion (amber) from the finalists." status="Open" open dots={8} highlight="first" />
+            <SplitPane
+              label="Test"
+              detail={frozen ? "Champion scored once, after the freeze. Nothing changes after this." : "Locked. No genome is scored here until the champion is frozen."}
+              status={frozen ? "Read once" : "Sealed"}
+              open={frozen}
+              dots={8}
+              highlight={frozen ? "first" : undefined}
+            />
           </div>
-          <button type="button" className="lift mt-4 rounded-full border border-line px-4 py-2 text-sm" aria-pressed={frozen} onClick={() => setFrozen((value) => !value)}>
-            {frozen ? "Seal the test again" : "Freeze the champion"}
-          </button>
+          <div className="mt-4 flex min-h-10 flex-wrap items-center gap-3">
+            <button
+              type="button"
+              data-testid="freeze-champion"
+              className={`lift h-10 rounded-full border px-4 text-sm ${frozen ? "border-teal text-teal" : "border-line"}`}
+              aria-pressed={frozen}
+              disabled={frozen}
+              onClick={() => setFrozen(true)}
+            >
+              {frozen ? "✓ Champion frozen, test read once" : "Freeze the champion"}
+            </button>
+            {frozen ? (
+              <button type="button" className="h-10 text-sm text-dim underline underline-offset-4" onClick={() => setFrozen(false)}>
+                Replay
+              </button>
+            ) : null}
+          </div>
         </motion.section>
 
         <motion.section className="pb-24 md:pb-32" initial={reduced ? false : "hidden"} whileInView="show" viewport={{ once: true, margin: "-12%" }} variants={rise}>
@@ -268,14 +289,40 @@ export function HomeExperience() {
   );
 }
 
-function SplitPane({ label, detail, open, dots, highlight = false }: { label: string; detail: string; open: boolean; dots: number; highlight?: boolean }) {
+function SplitPane({
+  label,
+  detail,
+  status,
+  open,
+  dots,
+  highlight,
+}: {
+  label: string;
+  detail: string;
+  status: string;
+  open: boolean;
+  dots: number;
+  highlight?: "first";
+}) {
+  const accent = highlight === "first";
   return (
-    <article className={`rounded-3xl border p-5 ${highlight ? "border-teal/50 bg-teal/5" : "border-line bg-raise/30"} ${open ? "" : "opacity-70"}`}>
-      <p className="kicker">{label}</p>
-      <p className="mt-3 text-sm text-ivory">{detail}</p>
-      <div className={`mt-4 flex flex-wrap gap-1.5 ${open ? "" : "blur-[2px]"}`} aria-hidden>
+    <article
+      data-testid={`split-${label.toLowerCase()}`}
+      className={`flex min-h-[148px] flex-col rounded-3xl border p-5 transition-colors ${accent ? "border-teal/50 bg-teal/5" : "border-line bg-raise/30"} ${open ? "" : "border-dashed"}`}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <p className="kicker">{label}</p>
+        <span className={`rounded-full border px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] ${open ? "border-teal/40 text-teal" : "border-line text-faint"}`}>
+          {open ? status : `🔒 ${status}`}
+        </span>
+      </div>
+      <p className={`mt-3 text-sm leading-relaxed ${open ? "text-ivory" : "text-dim"}`}>{detail}</p>
+      <div className="mt-auto flex flex-wrap gap-1.5 pt-4" aria-hidden>
         {Array.from({ length: dots }, (_, index) => (
-          <span key={index} className={`h-2 w-2 rounded-full ${highlight && index === 0 ? "bg-amber" : "bg-ivory/70"}`} />
+          <span
+            key={index}
+            className={`h-2 w-2 rounded-full ${accent && index === 0 ? "bg-amber" : open ? "bg-ivory/70" : "bg-ivory/20"}`}
+          />
         ))}
       </div>
     </article>
