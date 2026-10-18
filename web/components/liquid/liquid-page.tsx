@@ -106,38 +106,74 @@ function Body({ file }: { file: LiquidFile }) {
     <>
       <section className="mt-12" data-testid="liquid-portfolio">
         <h2 className="font-serif text-3xl tracking-tight text-ivory">The fictional portfolio</h2>
-        <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_1fr_2fr_1fr]">
+        <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           <Card title="Checking" value={usd(s.checking.balance_cents, 0)} note="Earns nothing." />
           <Card title="Savings" value={usd(s.savings.balance_cents, 0)} note={`${(s.savings.apy * 100).toFixed(1)}% APY · ${usd(s.savings.minimum_cents, 0)} emergency floor`} />
-          <div className="rounded-2xl border border-line bg-raise p-4">
-            <p className="kicker">Taxable stock lots</p>
-            <table className="mt-2 w-full text-sm">
-              <thead className="text-left text-faint">
-                <tr><th className="py-1 font-normal">Lot</th><th className="font-normal">Value</th><th className="font-normal">Paid</th><th className="font-normal">If sold (90 days)</th></tr>
-              </thead>
-              <tbody className="font-mono">
-                {s.lots.map((lot) => {
-                  const gain = lot.market_value_cents - lot.basis_cents;
-                  const locked = !lot.sellable || s.constraints.protect.includes(lot.symbol);
-                  return (
-                    <tr key={lot.lot_id} className="border-t border-line">
-                      <td className="py-1.5 text-ivory">{lot.symbol}{locked ? <span className="ml-2 rounded bg-amber/15 px-1.5 text-[10px] uppercase text-amber">protected</span> : null}</td>
-                      <td>{usd(lot.market_value_cents, 0)}</td>
-                      <td>{usd(lot.basis_cents, 0)}</td>
-                      <td className="text-dim">{`${usd(gain, 0)} gain · ${lot.holding_period === "short" ? "short-term " + (s.assumptions.short_term_gain_rate * 100).toFixed(0) : "long-term " + (s.assumptions.long_term_gain_rate * 100).toFixed(0)}% tax`}{lot.dividend_yield ? ` · ${(lot.dividend_yield * 100).toFixed(1)}% dividend lost` : ""}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          <div className="rounded-2xl border border-dashed border-danger/50 p-4">
+          <div className="rounded-2xl border border-dashed border-danger/50 p-4 md:col-span-2 xl:col-span-1" data-testid="liquid-credit">
             <p className="kicker">Credit (liabilities, not assets)</p>
-            <p className="mt-2 text-sm text-ivory"><span className="font-mono">Securities-backed line · {(s.sbl.apr * 100).toFixed(0)}% APR</span></p>
-            <p className="text-xs text-dim">Draw up to {(s.sbl.max_ltv * 100).toFixed(0)}% of the lots you pledge (max {usd(s.sbl.maximum_draw_cents, 0)}). Pledged lots are locked: they can&apos;t be sold. A 30% drop past {(s.sbl.max_ltv * 100).toFixed(0)}% LTV is a margin call.</p>
-            <p className="mt-2 text-sm text-ivory"><span className="font-mono">0%-intro card · up to {usd(s.intro_card.limit_cents, 0)}</span></p>
-            <p className="text-xs text-dim">{(s.intro_card.intro_apr * 100).toFixed(0)}% for {s.intro_card.intro_days} days, then {(s.intro_card.apr_after * 100).toFixed(0)}% APR.</p>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+              <div className="rounded-xl border border-line/70 bg-raise/40 px-3 py-2.5">
+                <p className="font-mono text-sm text-ivory">Securities-backed line</p>
+                <p className="mt-1 font-mono text-xs tabular-nums text-dim">{(s.sbl.apr * 100).toFixed(0)}% APR · up to {(s.sbl.max_ltv * 100).toFixed(0)}% LTV · max {usd(s.sbl.maximum_draw_cents, 0)}</p>
+                <p className="mt-1 text-xs leading-relaxed text-dim">Pledged lots are locked and cannot be sold. A 30% drop past {(s.sbl.max_ltv * 100).toFixed(0)}% LTV is a margin call.</p>
+              </div>
+              <div className="rounded-xl border border-line/70 bg-raise/40 px-3 py-2.5">
+                <p className="font-mono text-sm text-ivory">0%-intro card</p>
+                <p className="mt-1 font-mono text-xs tabular-nums text-dim">Up to {usd(s.intro_card.limit_cents, 0)}</p>
+                <p className="mt-1 text-xs leading-relaxed text-dim">{(s.intro_card.intro_apr * 100).toFixed(0)}% for {s.intro_card.intro_days} days, then {(s.intro_card.apr_after * 100).toFixed(0)}% APR.</p>
+              </div>
+            </div>
           </div>
+        </div>
+        <div className="mt-4 overflow-x-auto rounded-2xl border border-line bg-raise p-4" data-testid="liquid-lots">
+          <p className="kicker">Taxable stock lots</p>
+          <p className="mt-1 text-xs text-faint">If sold over the 90-day window. Money columns are right-aligned.</p>
+          <table className="mt-3 w-full min-w-[640px] border-separate border-spacing-0 text-sm">
+            <colgroup>
+              <col className="w-[18%]" />
+              <col className="w-[14%]" />
+              <col className="w-[14%]" />
+              <col className="w-[14%]" />
+              <col className="w-[20%]" />
+              <col className="w-[20%]" />
+            </colgroup>
+            <thead>
+              <tr className="text-faint">
+                <th className="py-2 pr-4 text-left font-normal">Lot</th>
+                <th className="py-2 px-3 text-right font-normal">Value</th>
+                <th className="py-2 px-3 text-right font-normal">Paid</th>
+                <th className="py-2 px-3 text-right font-normal">Gain</th>
+                <th className="py-2 px-3 text-right font-normal">Tax</th>
+                <th className="py-2 pl-3 text-right font-normal">Dividend lost</th>
+              </tr>
+            </thead>
+            <tbody className="font-mono tabular-nums">
+              {s.lots.map((lot) => {
+                const gain = lot.market_value_cents - lot.basis_cents;
+                const locked = !lot.sellable || s.constraints.protect.includes(lot.symbol);
+                const rate = lot.holding_period === "short" ? s.assumptions.short_term_gain_rate : s.assumptions.long_term_gain_rate;
+                const taxLabel = `${lot.holding_period === "short" ? "short" : "long"} ${(rate * 100).toFixed(0)}%`;
+                const taxCents = Math.round(Math.max(0, gain) * rate);
+                const divLost = lot.dividend_yield ? Math.round(lot.market_value_cents * lot.dividend_yield * (s.horizon_days / 365)) : 0;
+                return (
+                  <tr key={lot.lot_id} className="border-t border-line">
+                    <td className="border-t border-line py-2.5 pr-4 align-top">
+                      <span className="font-sans text-ivory">{lot.symbol}</span>
+                      {locked ? <span className="mt-1 block w-fit rounded bg-amber/15 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-amber">protected</span> : null}
+                    </td>
+                    <td className="border-t border-line py-2.5 px-3 text-right text-ivory">{usd(lot.market_value_cents, 0)}</td>
+                    <td className="border-t border-line py-2.5 px-3 text-right text-dim">{usd(lot.basis_cents, 0)}</td>
+                    <td className="border-t border-line py-2.5 px-3 text-right text-ivory">{usd(gain, 0)}</td>
+                    <td className="border-t border-line py-2.5 px-3 text-right text-dim">
+                      <span className="block text-ivory">{usd(taxCents, 0)}</span>
+                      <span className="block text-[11px]">{taxLabel}</span>
+                    </td>
+                    <td className="border-t border-line py-2.5 pl-3 text-right text-dim">{lot.dividend_yield ? usd(divLost, 0) : "—"}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
         <p className="mt-3 text-sm text-dim">Total assets {usd(totalAssetsCents(s), 0)} (credit excluded; pledged lots are still assets, just locked). Purchase {usd(s.purchase_cents, 0)} over {s.horizon_days} days. No source is free.</p>
       </section>
@@ -222,12 +258,22 @@ function Ledger({ e }: { e: ScenarioEval }) {
   return (
     <div className="mt-5">
       <p className="kicker">Modeled cost over 90 days</p>
-      <table className="mt-1 w-full text-sm">
-        <tbody className="font-mono">
+      <table className="mt-2 w-full table-fixed text-sm">
+        <colgroup>
+          <col className="w-[70%]" />
+          <col className="w-[30%]" />
+        </colgroup>
+        <tbody className="font-mono tabular-nums">
           {rows.map(([label, cents]) => (
-            <tr key={label} className="border-t border-line"><td className="py-1 font-sans text-dim">{label}</td><td className="text-right text-ivory">{usd(cents)}</td></tr>
+            <tr key={label} className="border-t border-line">
+              <td className="py-1.5 pr-4 font-sans text-dim">{label}</td>
+              <td className="py-1.5 text-right text-ivory">{usd(cents)}</td>
+            </tr>
           ))}
-          <tr className="border-t border-ivory/30"><td className="py-1.5 font-sans text-ivory">Total modeled cost</td><td className="text-right text-lg text-ivory">{usd(e.total_cost_cents)}</td></tr>
+          <tr className="border-t border-ivory/30">
+            <td className="py-2 pr-4 font-sans text-ivory">Total modeled cost</td>
+            <td className="py-2 text-right text-lg text-ivory">{usd(e.total_cost_cents)}</td>
+          </tr>
         </tbody>
       </table>
       {e.stress.post_purchase.pledged_lots?.length ? <p className="mt-1 text-xs text-faint">Pledged as collateral (locked, not sold): {e.stress.post_purchase.pledged_lots.map((l) => SOURCE_LABEL[l] ?? l).join(", ")} · {usd(e.stress.post_purchase.pledged_cents ?? 0, 0)}.</p> : null}
@@ -272,24 +318,24 @@ function Scoreboard({ file }: { file: LiquidFile }) {
       <h2 className="font-serif text-3xl tracking-tight text-ivory">Every policy, same evaluator</h2>
       <p className="mt-2 max-w-3xl text-sm text-dim">Fitness = −(modeled cost + risk penalty) in dollars, averaged over scenario variants; 0 is perfect. Fitness is a score, not a bill.</p>
       <div className="mt-5 overflow-x-auto">
-        <table className="w-full min-w-[760px] text-sm">
+        <table className="w-full min-w-[760px] border-separate border-spacing-0 text-sm">
           <thead>
             <tr className="text-left text-faint">
-              <th className="py-2 font-normal">Policy</th>
+              <th className="py-2 pr-4 font-normal">Policy</th>
               {cols.map((c) => (
-                <th key={c.key} className="font-normal">{c.label}<span className="block text-[11px] text-faint/80">{c.hint}</span></th>
+                <th key={c.key} className="px-3 py-2 text-right font-normal">{c.label}<span className="block text-[11px] text-faint/80">{c.hint}</span></th>
               ))}
             </tr>
           </thead>
-          <tbody className="font-mono">
+          <tbody className="font-mono tabular-nums">
             {rows.map((r, ri) => (
               <tr key={r.key} className={`border-t border-line ${r.key === "geneai" ? GENEAI_ROW : ""}`}>
-                <td className="py-2 pr-3 font-sans text-ivory">{r.label}<span className="block text-[11px] text-faint">{r.provider}</span></td>
+                <td className="border-t border-line py-2.5 pr-4 font-sans text-ivory">{r.label}<span className="block text-[11px] text-faint">{r.provider}</span></td>
                 {cols.map((c, ci) => {
                   const v = r.valid ? c.get(r) : null;
                   const rank = ranks[ci][ri];
                   return (
-                    <td key={c.key} className="py-1.5">
+                    <td key={c.key} className="border-t border-line px-3 py-2.5 text-right">
                       {v == null ? <span className="text-faint">{r.valid ? "Not recorded" : "invalid"}</span> : <span className={RANK_CLASS[rank]}>{rank === "best" ? "✓ " : ""}{c.fmt(v)}</span>}
                     </td>
                   );
