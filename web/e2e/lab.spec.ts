@@ -38,7 +38,9 @@ test("shopping shows the agentic outfits and hides the manual baseline", async (
   await expect(page.getByTestId("outfit-card")).toHaveCount(2);
   await expect(page.getByText(/over by \$\d+/).first()).toBeVisible();
   await expect(page.getByText("Neutral outfit")).toHaveCount(0);
-  await expect(page.getByTestId("key-scores")).toContainText("3 of 3");
+  await expect(page.getByTestId("shopping-board")).toContainText("3 of 3");
+  await expect(page.getByTestId("shop-score-feasible").locator('[data-rank="best"]')).toHaveCount(1);
+  await expect(page.getByTestId("shopping-board").getByTestId("rank-legend")).toContainText("best in column");
   await expect(page.getByRole("link", { name: /product/i })).toHaveCount(0);
 });
 

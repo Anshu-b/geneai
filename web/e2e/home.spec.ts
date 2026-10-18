@@ -67,9 +67,11 @@ test("tsp showdown races Held-Karp against the other three methods", async ({ pa
   await expect(page.getByTestId("tsp-heldout")).toContainText("5 of 5");
   await page.getByTestId("tsp-race").click();
   await expect(page.getByTestId("tsp-race")).toHaveAttribute("aria-pressed", "true");
-  await page.getByTestId("tsp-log").click();
-  await expect(page.getByTestId("tsp-log")).toHaveAttribute("aria-pressed", "true");
-  await expect(page.getByTestId("tsp-chart")).toContainText("log scale");
+  await expect(page.getByTestId("tsp-chart")).toHaveCount(0);
+  await expect(page.getByTestId("tsp-log")).toHaveCount(0);
+  await expect(page.getByTestId("tsp-table").getByTestId("rank-legend")).toContainText("best in column");
+  await expect(page.getByTestId("tsp-row-geneai")).toBeVisible();
+  await expect(page.getByTestId("tsp-row-held_karp").locator('[data-rank="best"]').first()).toBeVisible();
 });
 
 test.describe("light hero", () => {

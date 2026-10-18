@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   TSP_COLOR,
   TSP_KEYS,
@@ -15,13 +15,13 @@ import {
   isSampleTsp,
   provenanceLine,
   maxRaceMs,
-  timeFraction,
   tspVerdict,
   type TspFile,
   type TspLoad,
   type TspMethod,
-  type TspMethodKey,
 } from "@/lib/tsp";
+import { RankLegend } from "@/components/rank-legend";
+import { GENEAI_ROW, RANK_CLASS, rankColumn, type Rank } from "@/lib/rank";
 
 const RACE_MS = 9000;
 
@@ -71,13 +71,10 @@ export function TspShowdown() {
 function ShowdownBody({ file }: { file: TspFile }) {
   const reduced = usePrefersReducedMotion();
   const max = useMemo(() => maxRaceMs(file), [file]);
-  const [log, setLog] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [elapsed, setElapsed] = useState<number | null>(null);
   const [race, setRace] = useState(0);
   const [intro, setIntro] = useState(reduced ? 1 : 0);
-  const logRef = useRef(log);
-  logRef.current = log;
 
   useEffect(() => {
     if (reduced) return;
@@ -103,7 +100,7 @@ function ShowdownBody({ file }: { file: TspFile }) {
     const start = performance.now();
     const tick = (now: number) => {
       const portion = Math.min(1, (now - start) / RACE_MS);
-      setElapsed(elapsedFromFraction(portion, max, logRef.current));
+      setElapsed(elapsedFromFraction(portion, max, false));
       if (portion < 1) frame = requestAnimationFrame(tick);
       else {
         setPlaying(false);
@@ -114,7 +111,6 @@ function ShowdownBody({ file }: { file: TspFile }) {
     return () => cancelAnimationFrame(frame);
   }, [playing, race, max, reduced]);
 
-  const shown = elapsed == null ? max : elapsed;
 
   return (
     <div className="mt-8">
@@ -133,15 +129,6 @@ function ShowdownBody({ file }: { file: TspFile }) {
         >
           {playing ? "Racing" : "Race"}
         </button>
-        <button
-          type="button"
-          className={`lift rounded-full border px-4 py-2 text-sm ${log ? "border-teal text-teal" : "border-line"}`}
-          data-testid="tsp-log"
-          aria-pressed={log}
-          onClick={() => setLog((value) => !value)}
-        >
-          Log time
-        </button>
         <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-faint" data-testid="tsp-clock">
           {elapsed == null ? "Full routes" : formatDuration(elapsed)}
         </p>
@@ -154,7 +141,6 @@ function ShowdownBody({ file }: { file: TspFile }) {
       <p className="mt-3 max-w-3xl text-sm leading-relaxed text-dim">
         The solid line is the route that method handed in. While the race is running, each pen moves on the real clock, and the number above is the best length found by that moment.
       </p>
-      <ConvergenceChart file={file} log={log} elapsed={shown} racing={elapsed != null} />
       <ComparisonTable file={file} />
     </div>
   );
@@ -244,71 +230,21 @@ function RouteMap({ file, method, draw, ghost, color }: { file: TspFile; method:
   );
 }
 
-function ConvergenceChart({ file, log, elapsed, racing }: { file: TspFile; log: boolean; elapsed: number; racing: boolean }) {
-  const width = 760;
-  const height = 280;
-  const pad = { l: 52, r: 16, t: 18, b: 36 };
-  const max = maxRaceMs(file);
-  const lengths = [file.optimum.length, ...file.methods.flatMap((method) => method.convergence.map((point) => point.best_length))];
-  const minL = Math.min(...lengths);
-  const maxL = Math.max(...lengths);
-  const span = Math.max(1, maxL - minL);
-  const yMin = minL - span * 0.08;
-  const yMax = maxL + span * 0.12;
-  const xOf = (time: number) => pad.l + timeFraction(time, max, log) * (width - pad.l - pad.r);
-  const yOf = (length: number) => pad.t + (1 - (length - yMin) / (yMax - yMin)) * (height - pad.t - pad.b);
-  const ticks = [0, 0.5, 1].map((portion) => elapsedFromFraction(portion, max, log));
-  return (
-    <figure className="glass mt-8 rounded-3xl p-4 md:p-6" data-testid="tsp-chart">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <p className="kicker">Best length so far</p>
-          <h3 className="mt-2 font-serif text-3xl text-ivory">Who is ahead, and when.</h3>
-        </div>
-        <ul className="flex flex-wrap gap-3">
-          {file.methods.map((method) => (
-            <li key={method.key} className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-widest text-dim">
-              <span className="h-2 w-2 rounded-full" style={{ background: TSP_COLOR[method.key] }} />
-              {shortLabel(method.key)}
-            </li>
-          ))}
-        </ul>
-      </div>
-      <svg viewBox={`0 0 ${width} ${height}`} className="mt-4 h-auto w-full" role="img" aria-label="Best tour length against time">
-        {ticks.map((time) => (
-          <g key={time}>
-            <line x1={xOf(time)} x2={xOf(time)} y1={pad.t} y2={height - pad.b} stroke="var(--line)" />
-            <text x={xOf(time)} y={height - 12} fill="var(--faint)" fontSize="11" textAnchor="middle" fontFamily="IBM Plex Mono, ui-monospace, monospace">
-              {formatDuration(time)}
-            </text>
-          </g>
-        ))}
-        <line x1={pad.l} x2={width - pad.r} y1={yOf(file.optimum.length)} y2={yOf(file.optimum.length)} stroke="var(--ivory)" strokeOpacity="0.55" strokeDasharray="4 4" />
-        <text x={width - pad.r} y={yOf(file.optimum.length) - 6} fill="var(--dim)" fontSize="11" textAnchor="end" fontFamily="IBM Plex Mono, ui-monospace, monospace">
-          Held-Karp {formatLength(file.optimum.length)}
-        </text>
-        {file.methods.map((method) => {
-          const points = method.convergence.filter((point) => !racing || point.elapsed_ms <= elapsed + 1e-6);
-          if (points.length === 0) return null;
-          const d = points.map((point, index) => `${index === 0 ? "M" : "L"}${xOf(point.elapsed_ms)},${yOf(point.best_length)}`).join(" ");
-          const last = points[points.length - 1];
-          return (
-            <g key={method.key}>
-              <path d={d} fill="none" stroke={TSP_COLOR[method.key]} strokeWidth="2.25" strokeLinejoin="round" strokeLinecap="round" strokeDasharray={method.valid ? undefined : "5 4"} />
-              <circle cx={xOf(last.elapsed_ms)} cy={yOf(last.best_length)} r="3.5" fill={TSP_COLOR[method.key]} />
-            </g>
-          );
-        })}
-        {racing ? <line x1={xOf(elapsed)} x2={xOf(elapsed)} y1={pad.t} y2={height - pad.b} stroke="var(--teal)" strokeWidth="1.5" /> : null}
-      </svg>
-      <figcaption className="mt-2 max-w-3xl text-sm leading-relaxed text-dim">
-        Each line is the best length that method had found by that moment. The dashed line is the Held-Karp optimum. {log ? "Time is on a log scale, so the early search has room." : "Time is the real elapsed clock."}
-      </figcaption>
-    </figure>
-  );
-}
-
 function ComparisonTable({ file }: { file: TspFile }) {
+  const methods = file.methods;
+  const mapRanks = {
+    length: rankColumn(methods.map((method) => (method.valid ? method.length : null)), "lower"),
+    gap: rankColumn(methods.map((method) => (method.valid ? method.gap_pct : null)), "lower"),
+    time: rankColumn(methods.map((method) => method.time_ms), "lower"),
+    valid: rankColumn(methods.map((method) => (method.valid ? 1 : 0)), "higher"),
+  };
+  const held = TSP_KEYS.map((key) => file.heldout.summary[key]);
+  const heldRanks = {
+    gap: rankColumn(held.map((row) => row.mean_gap_pct), "lower"),
+    time: rankColumn(held.map((row) => row.mean_time_ms), "lower"),
+    hits: rankColumn(held.map((row) => row.optimal_hits), "higher"),
+    valid: rankColumn(held.map((row) => row.valid_count), "higher"),
+  };
   return (
     <div className="mt-8 overflow-x-auto" data-testid="tsp-table">
       <table className="w-full min-w-[720px] border-separate border-spacing-0 text-left text-sm">
@@ -324,14 +260,14 @@ function ComparisonTable({ file }: { file: TspFile }) {
           </tr>
         </thead>
         <tbody>
-          {file.methods.map((method) => (
-            <tr key={method.key}>
+          {file.methods.map((method, index) => (
+            <tr key={method.key} data-testid={`tsp-row-${method.key}`} className={method.key === "geneai" ? GENEAI_ROW : undefined}>
               <th className="border-b border-line px-3 py-3 font-serif text-base font-normal text-ivory" scope="row">{method.label}</th>
-              <td className="border-b border-line px-3 py-3 tabular-nums text-ivory">{formatLength(method.length)}</td>
-              <td className="border-b border-line px-3 py-3 tabular-nums text-ivory">{method.valid ? formatGap(method.gap_pct) : "—"}</td>
-              <td className="border-b border-line px-3 py-3 tabular-nums text-ivory">{formatDuration(method.time_ms)}</td>
-              <td className="border-b border-line px-3 py-3 tabular-nums text-ivory">{method.llm_calls}</td>
-              <td className="border-b border-line px-3 py-3 text-ivory">{method.valid ? "Yes" : "No"}</td>
+              <RankCell rank={mapRanks.length[index]}>{formatLength(method.length)}</RankCell>
+              <RankCell rank={mapRanks.gap[index]}>{method.valid ? formatGap(method.gap_pct) : "—"}</RankCell>
+              <RankCell rank={mapRanks.time[index]}>{formatDuration(method.time_ms)}</RankCell>
+              <td className="border-b border-line px-3 py-3 tabular-nums text-dim">{method.llm_calls}</td>
+              <RankCell rank={mapRanks.valid[index]}>{method.valid ? "Yes" : "No"}</RankCell>
             </tr>
           ))}
         </tbody>
@@ -349,22 +285,23 @@ function ComparisonTable({ file }: { file: TspFile }) {
             <th className="border-b border-line px-3 py-2 font-mono text-[10px] uppercase tracking-[0.16em] text-faint" scope="col">Optimal hits</th>
             <th className="border-b border-line px-3 py-2 font-mono text-[10px] uppercase tracking-[0.16em] text-faint" scope="col">Valid</th>
           </tr>
-          {TSP_KEYS.map((key) => {
+          {TSP_KEYS.map((key, index) => {
             const method = file.methods.find((item) => item.key === key)!;
             const row = file.heldout.summary[key];
             return (
-              <tr key={key}>
+              <tr key={key} data-testid={`tsp-heldout-row-${key}`} className={key === "geneai" ? GENEAI_ROW : undefined}>
                 <th className="border-b border-line px-3 py-3 font-serif text-base font-normal text-ivory" scope="row">{method.label}</th>
                 <td className="border-b border-line px-3 py-3 text-faint">—</td>
-                <td className="border-b border-line px-3 py-3 tabular-nums text-ivory">{formatGap(row.mean_gap_pct)}</td>
-                <td className="border-b border-line px-3 py-3 tabular-nums text-ivory">{formatDuration(row.mean_time_ms)}</td>
-                <td className="border-b border-line px-3 py-3 tabular-nums text-ivory">{row.optimal_hits} of {file.heldout.n}</td>
-                <td className="border-b border-line px-3 py-3 tabular-nums text-ivory">{row.valid_count} of {file.heldout.n}</td>
+                <RankCell rank={heldRanks.gap[index]}>{formatGap(row.mean_gap_pct)}</RankCell>
+                <RankCell rank={heldRanks.time[index]}>{formatDuration(row.mean_time_ms)}</RankCell>
+                <RankCell rank={heldRanks.hits[index]}>{row.optimal_hits} of {file.heldout.n}</RankCell>
+                <RankCell rank={heldRanks.valid[index]}>{row.valid_count} of {file.heldout.n}</RankCell>
               </tr>
             );
           })}
         </tbody>
       </table>
+      <RankLegend note="Lower is better for length, gap and time; higher for valid and optimal hits. LLM calls are for information only." />
       <p className="mt-3 max-w-3xl text-sm leading-relaxed text-dim" data-testid="tsp-heldout-line">{heldoutLine(file)} Mean gap counts only valid tours.</p>
       {provenanceLine(file) ? (
         <p className="mt-2 max-w-3xl text-sm leading-relaxed text-dim" data-testid="tsp-provenance">{provenanceLine(file)}</p>
@@ -379,12 +316,6 @@ function ComparisonTable({ file }: { file: TspFile }) {
   );
 }
 
-function shortLabel(key: TspMethodKey): string {
-  if (key === "held_karp") return "Held-Karp";
-  if (key === "classic_ga") return "Classic GA";
-  if (key === "llm_one_shot") return "GPT-5.5";
-  return "GeneAI";
-}
 
 function mapBounds(file: TspFile): string {
   const xs = file.cities.map((city) => city.x);
@@ -415,4 +346,15 @@ function usePrefersReducedMotion(): boolean {
     return () => media.removeEventListener("change", apply);
   }, []);
   return reduced;
+}
+
+function RankCell({ rank, children }: { rank: Rank; children: React.ReactNode }) {
+  return (
+    <td className="border-b border-line px-1 py-1.5 tabular-nums" data-rank={rank}>
+      <span className={`inline-block ${RANK_CLASS[rank]}`}>
+        {rank === "best" ? "✓ " : ""}
+        {children}
+      </span>
+    </td>
+  );
 }

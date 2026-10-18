@@ -217,13 +217,6 @@ export function maxRaceMs(file: TspFile): number {
   return Math.max(1, ...times);
 }
 
-export function timeFraction(elapsed: number, max: number, log: boolean): number {
-  if (max <= 0) return 0;
-  const clamped = Math.min(Math.max(elapsed, 0), max);
-  if (!log) return clamped / max;
-  return Math.log10(1 + clamped) / Math.log10(1 + max);
-}
-
 export function elapsedFromFraction(fraction: number, max: number, log: boolean): number {
   const portion = Math.min(Math.max(fraction, 0), 1);
   if (!log) return portion * max;

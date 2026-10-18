@@ -8,7 +8,6 @@ import {
   isSampleTsp,
   parseTsp,
   provenanceLine,
-  timeFraction,
   tspVerdict,
   type TspFile,
 } from "../lib/tsp";
@@ -85,7 +84,6 @@ describe("tsp benchmark", () => {
       }
       expect(file.heldout.summary[key].optimal_hits).toBe(rows.filter((row) => row.valid && row.gap_pct === 0).length);
     }
-    expect(timeFraction(10, 1000, true)).toBeGreaterThan(timeFraction(10, 1000, false));
     expect(interpretTspResponse(404, null)).toEqual({ status: "missing" });
     raw.methods[0].key = "heuristic";
     expect(interpretTspResponse(200, raw).status).toBe("invalid");

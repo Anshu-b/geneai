@@ -15,6 +15,8 @@ import {
   type ShowcaseFile,
   type ShowcaseLoad,
 } from "@/lib/showcase";
+import { RankLegend } from "@/components/rank-legend";
+import { RANK_CLASS, rankColumn, type Rank } from "@/lib/rank";
 import { cloudPolicySummary, outfitSummary, plainWhy, SHOPPING_WEIGHTS, shopperRequest, type Mark } from "@/lib/plain";
 
 const JOB_COLOR: Record<string, string> = {
@@ -81,7 +83,9 @@ function ShowcaseBody({ file, facts }: { file: ShowcaseFile; facts: RunFacts | n
       </div>
       {file.domain === "shopping" && file.shopping ? <ShoppingShowcase file={file} /> : null}
       {file.domain === "cloud_scheduling" && file.cloud ? <CloudShowcaseView file={file} /> : null}
-      {file.domain === "cloud_scheduling" && file.cloud ? <Scoreboard file={file} facts={facts} /> : <ScoreLines file={file} />}
+      {file.domain === "cloud_scheduling" && file.cloud ? <Scoreboard file={file} facts={facts} /> : null}
+      {file.domain === "shopping" && file.shopping ? <ShoppingBoard file={file} /> : null}
+      {file.domain !== "cloud_scheduling" && file.domain !== "shopping" ? <ScoreLines file={file} /> : null}
     </section>
   );
 }
@@ -280,10 +284,10 @@ function plainDescription(policy: CloudPolicy): string {
   return text;
 }
 
-const WIN_STYLE: Record<ScoreRow["winner"], { gene: string; other: string }> = {
-  gene: { gene: "bg-teal/15 text-teal font-semibold", other: "text-danger" },
-  other: { gene: "text-danger", other: "bg-teal/15 text-teal font-semibold" },
-  tie: { gene: "text-ivory", other: "text-ivory" },
+const WIN_RANK: Record<ScoreRow["winner"], { gene: Rank; other: Rank }> = {
+  gene: { gene: "best", other: "worst" },
+  other: { gene: "worst", other: "best" },
+  tie: { gene: "best", other: "best" },
 };
 
 function Scoreboard({ file, facts }: { file: ShowcaseFile; facts: RunFacts | null }) {
@@ -304,7 +308,7 @@ function Scoreboard({ file, facts }: { file: ShowcaseFile; facts: RunFacts | nul
           <thead>
             <tr className="font-mono text-[10px] uppercase tracking-[0.16em] text-faint">
               <th className="border-b border-line px-3 py-2" scope="col">Metric</th>
-              <th className="border-b border-line px-3 py-2" scope="col">{board.geneLabel}</th>
+              <th className="border-b border-line bg-teal/[0.06] px-3 py-2 text-teal shadow-[inset_3px_0_0_var(--teal)]" scope="col">{board.geneLabel}</th>
               <th className="border-b border-line px-3 py-2" scope="col">{board.otherLabel}</th>
               <th className="border-b border-line px-3 py-2" scope="col">Winner</th>
             </tr>
@@ -318,7 +322,7 @@ function Scoreboard({ file, facts }: { file: ShowcaseFile; facts: RunFacts | nul
                   <th colSpan={4} scope="colgroup" className="px-3 pt-4 pb-1 font-mono text-[10px] uppercase tracking-[0.16em] text-faint">{group.title}</th>
                 </tr>
                 {rows.map((row) => {
-                  const style = WIN_STYLE[row.winner];
+                  const rank = WIN_RANK[row.winner];
                   const u = row.unit && row.unit !== "deadlines" ? ` ${row.unit}` : "";
                   const winnerName = row.winner === "gene" ? board.geneLabel : row.winner === "other" ? board.otherLabel : "Tie";
                   return (
@@ -327,8 +331,8 @@ function Scoreboard({ file, facts }: { file: ShowcaseFile; facts: RunFacts | nul
                         {row.metric}
                         <span className="ml-2 font-mono text-[10px] uppercase tracking-widest text-faint">{row.better} is better</span>
                       </th>
-                      <td className="border-b border-line px-1 py-1.5 tabular-nums"><span className={`inline-block rounded-lg px-2 py-1 ${style.gene}`}>{row.winner === "gene" ? "✓ " : ""}{fmtCell(row.gene, row.unit)}{u}</span></td>
-                      <td className="border-b border-line px-1 py-1.5 tabular-nums"><span className={`inline-block rounded-lg px-2 py-1 ${style.other}`}>{row.winner === "other" ? "✓ " : ""}{fmtCell(row.other, row.unit)}{u}</span></td>
+                      <td className="border-b border-line bg-teal/[0.06] px-1 py-1.5 tabular-nums shadow-[inset_3px_0_0_var(--teal)]" data-rank={rank.gene}><span className={`inline-block ${RANK_CLASS[rank.gene]}`}>{rank.gene === "best" ? "✓ " : ""}{fmtCell(row.gene, row.unit)}{u}</span></td>
+                      <td className="border-b border-line px-1 py-1.5 tabular-nums" data-rank={rank.other}><span className={`inline-block ${RANK_CLASS[rank.other]}`}>{rank.other === "best" ? "✓ " : ""}{fmtCell(row.other, row.unit)}{u}</span></td>
                       <td className="border-b border-line px-3 py-2.5 text-dim">
                         <span className={row.winner === "tie" ? "text-ivory" : "font-medium text-teal"}>{winnerName}</span>
                         <span className="ml-2 text-xs">{row.sentence.split(" — ")[1] ?? ""}</span>
@@ -352,7 +356,7 @@ function Scoreboard({ file, facts }: { file: ShowcaseFile; facts: RunFacts | nul
             {" "}Validation picked it, and the test split was read once, after the freeze.
           </p>
         ) : null}
-        <p className="mt-2 text-xs text-faint">Green ✓ marks the better number on each row; red is the other side. Lower is better for deadlines, time and energy; higher is better for the overall score.</p>
+        <RankLegend note="Lower is better for deadlines, time and energy; higher is better for the overall score." />
       </div>
     </div>
   );
@@ -376,4 +380,66 @@ function MarkIcon({ mark }: { mark: Mark }) {
   if (mark === "yes") return <span className="w-4 shrink-0 text-teal" aria-label="yes">✓</span>;
   if (mark === "partial") return <span className="w-4 shrink-0 text-amber" aria-label="partly">◐</span>;
   return <span className="w-4 shrink-0 text-danger" aria-label="no">✗</span>;
+}
+
+interface BoardRow {
+  key: string;
+  metric: string;
+  better: "lower" | "higher";
+  values: (number | null)[];
+  show: (value: number | null) => string;
+}
+
+function ShoppingBoard({ file }: { file: ShowcaseFile }) {
+  const shopping = file.shopping!;
+  const outfits = shopping.outfits.filter((outfit) => !isManualBaseline(outfit.key, outfit.provider));
+  if (outfits.length < 2) return <ScoreLines file={file} />;
+  const budget = shopping.shopper.budget_usd;
+  const n = outfits[0].aggregate?.n_shoppers ?? null;
+  const rows: BoardRow[] = [
+    { key: "fits", metric: `Within the $${budget} budget (this shopper)`, better: "higher", values: outfits.map((o) => (o.total_usd <= budget ? 1 : 0)), show: (v) => (v === 1 ? "Yes" : "No") },
+    { key: "score", metric: "Score on this shopper (0 to 1)", better: "higher", values: outfits.map((o) => (o.feasible && o.score != null ? o.score : null)), show: (v) => (v == null ? "rejected" : v.toFixed(2)) },
+  ];
+  if (n) {
+    rows.push({ key: "feasible", metric: `Feasible on ${n} held-out shoppers`, better: "higher", values: outfits.map((o) => o.aggregate?.feasible_count ?? 0), show: (v) => `${v ?? 0} of ${n}` });
+    rows.push({ key: "mean", metric: "Mean held-out score (0 to 1)", better: "higher", values: outfits.map((o) => o.aggregate?.score_mean ?? null), show: (v) => (v == null ? "—" : v.toFixed(2)) });
+  }
+  return (
+    <div className="glass mt-6 overflow-x-auto rounded-3xl p-4" data-testid="shopping-board">
+      <table className="w-full min-w-[560px] border-separate border-spacing-0 text-left text-sm">
+        <caption className="pb-3 text-left font-serif text-2xl text-ivory">Who wins each metric</caption>
+        <thead>
+          <tr className="font-mono text-[10px] uppercase tracking-[0.16em] text-faint">
+            <th className="border-b border-line px-3 py-2" scope="col">Metric</th>
+            {outfits.map((o) => (
+              <th key={o.key} scope="col" className={`border-b border-line px-3 py-2 ${o.key === "champion" ? "bg-teal/[0.06] text-teal shadow-[inset_3px_0_0_var(--teal)]" : ""}`}>{o.label}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => {
+            const ranks = rankColumn(row.values, row.better);
+            return (
+              <tr key={row.key} data-testid={`shop-score-${row.key}`}>
+                <th scope="row" className="border-b border-line px-3 py-2.5 font-normal text-ivory">
+                  {row.metric}
+                  <span className="ml-2 font-mono text-[10px] uppercase tracking-widest text-faint">{row.better} is better</span>
+                </th>
+                {row.values.map((value, index) => {
+                  const rank: Rank = value == null || (outfits.length === 2 && ranks[index] === "mid") ? "worst" : ranks[index];
+                  const outfit = outfits[index];
+                  return (
+                    <td key={outfit.key} data-rank={rank} className={`border-b border-line px-1 py-1.5 tabular-nums ${outfit.key === "champion" ? "bg-teal/[0.06] shadow-[inset_3px_0_0_var(--teal)]" : ""}`}>
+                      <span className={`inline-block ${RANK_CLASS[rank]}`}>{rank === "best" ? "✓ " : ""}{row.show(value)}</span>
+                    </td>
+                  );
+                })}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      <RankLegend note="Ranked across the outfits shown. A rejected outfit scores nothing." />
+    </div>
+  );
 }
