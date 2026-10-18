@@ -48,6 +48,17 @@ from geneai_core.store import RunRepository
 # calls are not samples from the same narrow distribution.
 _SEED_BATCH = 2
 _VARIATION_BATCH = 2
+# Veri on the 7B deployment is about 15 tokens/s. A segment edit is a few dozen
+# tokens, so 20s is enough. The generation does not block on this cap.
+_LLM_CALL_S = 20.0
+# Harvest calls that already finished. Instant mocks land in the same generation.
+_MEMETIC_HARVEST_S = 0.05
+# Start another generation when a quarter-second remains. The 20s call cap is
+# not the gate, or 20 showcase generations cannot fit in 150s.
+_MEMETIC_GATE_S = 0.25
+# A strategist call that has not returned by now falls back. 180s left only two
+# shopping generations inside a 540s wall.
+_WORKFLOW_CALL_CAP_S = 45.0
 _SEED_TEMPERATURES = (0.4, 0.8, 1.1, 0.6)
 
 
@@ -127,10 +138,14 @@ class EvolutionController:
         repaired_hashes: set[str] = set()
         counters = {"mutation": 0, "crossover": 0, "immigrant": 0, "seed": 0, "repair": 0}
         memetic = adapter.uses_memetic_fallback()
-        slice_s = max(0.25, float(config.max_wall_seconds) / float(config.generations + 2)) if memetic else None
-        # provider_call reads this. A memetic wave sets it to the generation slice
-        # so one slow provider cannot consume the rest of the wall.
+        # provider_call reads this. A memetic wave sets it to the per-call cap
+        # so one slow model call cannot consume the rest of the wall. Unfinished
+        # calls stay pending and are harvested on a later generation.
         invoke_cap: dict[str, float | None] = {"seconds": None}
+        pending_llm: list[asyncio.Task[list[Individual]]] = []
+        llm_ready: list[Individual] = []
+        accepted_non_baseline = 0
+        fallback_accepts = 0
         if memetic:
             repository.provenance_counts = {"llm:veri": 0, "llm:creao": 0, "algorithmic": 0}
         call_serial = 0
@@ -161,15 +176,20 @@ class EvolutionController:
             if not budget.allows_model_call():
                 return None
             remaining_wall = budget.remaining_seconds()
-            capped = invoke_cap["seconds"]
-            wait_s = remaining_wall if capped is None else min(remaining_wall, float(capped))
-            if wait_s <= 0:
+            provider = workflow if channel == "workflow" else model
+            if channel == "workflow":
+                # Ignore the memetic model cap. A strategist poll gets its own ceiling.
+                provider_cap = _provider_wait_seconds(provider, "timeout_s", default=_WORKFLOW_CALL_CAP_S)
+                call_timeout = min(remaining_wall, _WORKFLOW_CALL_CAP_S, provider_cap)
+            else:
+                capped = invoke_cap["seconds"]
+                call_timeout = remaining_wall if capped is None else min(remaining_wall, float(capped))
+            if call_timeout <= 0:
                 budget.exhausted_reason = budget.exhausted_reason or "max_wall_seconds"
                 return None
             call_serial += 1
             call_id = f"c{call_serial:04d}"
             event_prefix = "agent" if channel == "workflow" else "model"
-            provider = workflow if channel == "workflow" else model
             call_provenance = provenance.model_copy(
                 update={
                     "model_provider": getattr(model, "name", None) if channel == "model" else None,
@@ -206,9 +226,10 @@ class EvolutionController:
                             "response_schema": adapter.genome_schema(),
                             "mutation_goal": instruction,
                             "prepare": adapter.prepare_payload,
-                            # CREAO waits at most 180s and never past the wall that is left.
+                            # The strategist wait is capped (45s, or the provider's own
+                            # smaller timeout) and never past the wall that is left.
                             # A timeout is a skipped child, not a failed run.
-                            "timeout_s": min(180.0, float(wait_s)),
+                            "timeout_s": float(call_timeout),
                         },
                         call_id=call_id,
                     )
@@ -216,14 +237,14 @@ class EvolutionController:
 
             try:
                 async with semaphore:
-                    proposal = await asyncio.wait_for(_invoke(), timeout=max(wait_s, 0.05))
+                    proposal = await asyncio.wait_for(_invoke(), timeout=max(call_timeout, 0.05))
             except TimeoutError:
                 repository.emit(
                     f"{event_prefix}.failed",
                     {
                         "call_id": call_id,
                         "operation": operation,
-                        "error": f"provider wait capped at {wait_s:.1f}s of remaining wall budget",
+                        "error": f"provider wait capped at {call_timeout:.1f}s of remaining wall budget",
                         "code": "max_wall_seconds",
                     },
                     call_provenance,
@@ -239,7 +260,7 @@ class EvolutionController:
                     {
                         "call_id": call_id,
                         "operation": operation,
-                        "error": "provider call cancelled after the generation slice",
+                        "error": "provider call cancelled",
                         "code": "cancelled",
                     },
                     call_provenance,
@@ -297,10 +318,15 @@ class EvolutionController:
             generation: int,
             role: str | None,
             provider_role: str | None = None,
+            parent_payloads: list[dict[str, Any]] | None = None,
         ) -> tuple[Genome | None, str | None]:
+            nonlocal accepted_non_baseline, fallback_accepts
             payload = normalize_payload(proposal.payload)
             normalization_notes: list[str] = []
             if isinstance(payload, dict):
+                realized = adapter.realize_proposal(payload, list(parent_payloads or []), rng)
+                if isinstance(realized, dict):
+                    payload = realized
                 prepared, normalization_notes = adapter.prepare_payload(payload)
                 if isinstance(prepared, dict):
                     payload = prepared
@@ -404,6 +430,10 @@ class EvolutionController:
                 )
                 return None, "lineage"
             seen_hashes.add(digest)
+            if not proposal.extra.get("seeded_baseline"):
+                accepted_non_baseline += 1
+                if _child_is_fallback(proposal, role):
+                    fallback_accepts += 1
             repository.emit(
                 creation_event_type(operator, origin),
                 lineage_payload(
@@ -519,11 +549,29 @@ class EvolutionController:
                 invalid_payload=invalid_payload,
                 provider_role=provider_role,
             )
+            if proposal is None and channel == "workflow":
+                # One model-channel substitute. Do not recurse into another workflow call.
+                proposal = await provider_call(
+                    "model",
+                    operation,
+                    instruction,
+                    parents,
+                    task=task,
+                    invalid_payload=invalid_payload,
+                    provider_role=provider_role,
+                )
+                if proposal is not None:
+                    extra = dict(proposal.extra)
+                    extra["fallback"] = "model"
+                    proposal = proposal.model_copy(update={"extra": extra})
             if proposal is None:
                 return []
             origin = operation if operation != "immigrant" else "seed"
             operator = "repair" if invalid_payload is not None else origin
             parent_ids = [item.id for item in context_parents]
+            parent_payloads = [
+                item.payload for item in context_parents if isinstance(item.payload, dict)
+            ]
             accepted: list[Individual] = []
             invalid_body: dict[str, Any] | None = None
             for payload, hypothesis in _proposal_bodies(proposal):
@@ -536,6 +584,7 @@ class EvolutionController:
                     generation=generation,
                     role=role,
                     provider_role=provider_role,
+                    parent_payloads=parent_payloads,
                 )
                 if genome is None:
                     if reason == "invalid_schema" and invalid_body is None:
@@ -662,48 +711,67 @@ class EvolutionController:
                     added += 1
             return added
 
-        async def memetic_model_wave(*, generation: int, plans: list[dict[str, Any]], sink: list[Individual]) -> None:
-            """One parallel provider wave. Finished calls are kept; the rest are cancelled at the slice."""
+        async def _harvest_llm(timeout: float) -> None:
+            if not pending_llm:
+                return
+            done, _still = await asyncio.wait(pending_llm, timeout=max(0.0, timeout))
+            kept: list[asyncio.Task[list[Individual]]] = []
+            for task in pending_llm:
+                if task not in done:
+                    if not task.done():
+                        kept.append(task)
+                    continue
+                if task.cancelled():
+                    continue
+                exc = task.exception()
+                if exc is not None:
+                    continue
+                group = task.result()
+                if group:
+                    llm_ready.extend(group)
+            pending_llm[:] = kept
 
-            if not plans or slice_s is None:
+        def _drain_llm(sink: list[Individual]) -> None:
+            if not llm_ready:
+                return
+            sink.extend(llm_ready)
+            llm_ready.clear()
+
+        async def memetic_model_wave(*, generation: int, plans: list[dict[str, Any]], sink: list[Individual]) -> None:
+            """Start one provider wave. Keep whatever finished; leave the rest running.
+
+            A 15 token/s model needs longer than a generation slice to emit even a
+            short edit. Cancelling at that slice accepted zero LLM children. The
+            call cap is 20s, and a later generation harvests anything that landed.
+            """
+
+            if not plans:
                 return
             if budget.remaining_seconds() <= 0.25 or not budget.allows_model_call() or not budget.allows_evaluation():
                 return
-            invoke_cap["seconds"] = float(slice_s)
-            tasks = [
-                asyncio.create_task(
-                    propose_many(
-                        operation=plan["operation"],
-                        generation=generation,
-                        parents=plan["parents"],
-                        channel=plan["channel"],
-                        task=plan["human"],
-                        human=plan["human"],
-                        context_parents=plan["context_parents"],
-                        role=plan["role"],
-                        provider_role=plan["provider_role"],
-                        batch_size=int(plan.get("batch_size") or 1),
-                        temperature=plan.get("temperature"),
-                        sample_seed=plan.get("sample_seed"),
-                    )
-                )
-                for plan in plans
-            ]
+            invoke_cap["seconds"] = _LLM_CALL_S
             try:
-                done, pending = await asyncio.wait(tasks, timeout=max(float(slice_s), 0.05))
-                for task in pending:
-                    task.cancel()
-                if pending:
-                    await asyncio.gather(*pending, return_exceptions=True)
-                for task in done:
-                    if task.cancelled():
-                        continue
-                    if task.exception() is not None:
-                        continue
-                    group = task.result()
-                    if not group:
-                        continue
-                    sink.extend(group)
+                for plan in plans:
+                    pending_llm.append(
+                        asyncio.create_task(
+                            propose_many(
+                                operation=plan["operation"],
+                                generation=generation,
+                                parents=plan["parents"],
+                                channel=plan["channel"],
+                                task=plan["human"],
+                                human=plan["human"],
+                                context_parents=plan["context_parents"],
+                                role=plan["role"],
+                                provider_role=plan["provider_role"],
+                                batch_size=int(plan.get("batch_size") or 1),
+                                temperature=plan.get("temperature"),
+                                sample_seed=plan.get("sample_seed"),
+                            )
+                        )
+                    )
+                await _harvest_llm(_MEMETIC_HARVEST_S)
+                _drain_llm(sink)
             finally:
                 invoke_cap["seconds"] = None
 
@@ -853,12 +921,9 @@ class EvolutionController:
                     evaluate_genome=evaluate_genome,
                     counters=counters,
                 )
-                if random_filled:
-                    degraded_reason = (
-                        f"model seeding left the population short; "
-                        f"filled {random_filled} deterministic random genomes "
-                        f"(provider=random) after the hand-written baselines"
-                    )
+                # Random fills are recorded. The run is degraded only when more
+                # than half of the non-baseline children are fallbacks, so one
+                # slow strategist call does not mark an otherwise real search.
             if not population:
                 status = "failed"
                 stop_reason = budget.exhausted_reason or "no_valid_seeds"
@@ -886,7 +951,7 @@ class EvolutionController:
             generations_completed = 0
 
             generation_estimate = (
-                float(slice_s) if memetic and slice_s is not None else _generation_estimate_seconds(model, workflow, config)
+                _MEMETIC_GATE_S if memetic else _generation_estimate_seconds(model, workflow, config)
             )
             for generation in range(1, config.generations + 1):
                 if budget.cancelled:
@@ -942,6 +1007,9 @@ class EvolutionController:
                     )
                 desired = config.population_size - len(elites)
                 children: list[Individual] = []
+                if memetic:
+                    await _harvest_llm(_MEMETIC_HARVEST_S)
+                    _drain_llm(children)
                 _add_local_perturbations(
                     adapter=adapter,
                     elites=elites,
@@ -1068,6 +1136,7 @@ class EvolutionController:
                     counters=counters,
                 )
                 nxt = next_population(elites, children, config.population_size, adapter)
+                nxt = _keep_population_size(population, nxt, config.population_size)
                 removed = pruned_individuals(population, nxt)
                 for item in removed:
                     repository.emit(
@@ -1133,6 +1202,16 @@ class EvolutionController:
                 evaluate_genome,
             )
             champion_id = None if champion is None else champion.genome.id
+            if accepted_non_baseline and fallback_accepts * 2 > accepted_non_baseline:
+                if random_filled:
+                    degraded_reason = (
+                        f"{fallback_accepts} of {accepted_non_baseline} children were fallbacks "
+                        f"including {random_filled} random fills"
+                    )
+                else:
+                    degraded_reason = (
+                        f"{fallback_accepts} of {accepted_non_baseline} children were fallbacks"
+                    )
             if status == "completed" and generations_completed == 0:
                 degraded_reason = degraded_reason or f"stopped before generation 1 ({stop_reason})"
             if degraded_reason and status == "completed":
@@ -1168,6 +1247,12 @@ class EvolutionController:
             repository.finalize(status=status, stop_reason=stop_reason, champion_id=None, summary=summary)
             raise
         finally:
+            for task in pending_llm:
+                if not task.done():
+                    task.cancel()
+            if pending_llm:
+                await asyncio.gather(*pending_llm, return_exceptions=True)
+            pending_llm.clear()
             for provider in (model, workflow):
                 closer = getattr(provider, "aclose", None)
                 if closer is not None:
@@ -1210,7 +1295,8 @@ def _generation_estimate_seconds(model: Any, workflow: Any, config: EvolutionCon
     model_wait = _provider_wait_seconds(model, "request_timeout_s")
     workflow_wait = 0.0
     if config.strategist_calls_per_generation > 0:
-        workflow_wait = _provider_wait_seconds(workflow, "timeout_s")
+        raw = _provider_wait_seconds(workflow, "timeout_s")
+        workflow_wait = min(_WORKFLOW_CALL_CAP_S, raw)
     return max(model_wait, workflow_wait, 1.0)
 
 
@@ -1780,9 +1866,66 @@ def _summary(
         "budget": budget.snapshot().model_dump(mode="json"),
         "provider_mode_note": _provider_mode_note(repository.mode, repository.providers_meta),
     }
+    if champion is not None:
+        summary["behavior_origin"] = {
+            "id": champion.id,
+            "provider": champion.provider,
+            "operator": champion.metadata.get("origin_operator") or champion.operator,
+            "provenance": champion.metadata.get("provenance"),
+            "generation": champion.generation,
+        }
     if repository.provenance_counts is not None:
         summary["provenance_counts"] = dict(repository.provenance_counts)
     return summary
+
+
+def _keep_population_size(
+    previous: list[Individual],
+    nxt: list[Individual],
+    population_size: int,
+) -> list[Individual]:
+    """Copy survivors forward when a generation accepted fewer children than slots.
+
+    ``next_population`` returns elites plus children and shrinks when children
+    are short. Canonical dedup used to leave two elites, and every later
+    generation then evaluated a population of two.
+    """
+
+    if len(nxt) >= population_size:
+        return nxt[:population_size]
+    chosen = list(nxt)
+    have = {item.genome.id for item in chosen}
+    ranked = sorted(
+        previous,
+        key=lambda item: (
+            0 if item.evaluation.feasible and item.evaluation.fitness is not None else 1,
+            -(item.evaluation.fitness or float("-inf")),
+            item.genome.id,
+        ),
+    )
+    for item in ranked:
+        if item.genome.id in have:
+            continue
+        chosen.append(item)
+        have.add(item.genome.id)
+        if len(chosen) >= population_size:
+            break
+    return chosen
+
+
+def _child_is_fallback(proposal: Proposal, role: str | None) -> bool:
+    """Random schema fills and substitutes for a timed-out strategist call.
+
+    Designed algorithmic offspring are real children. Counting them as fallbacks
+    would mark every memetic run degraded.
+    """
+
+    extra = proposal.extra or {}
+    if extra.get("random_seed") or role == "random_seed":
+        return True
+    if extra.get("fallback"):
+        return True
+    return False
 
 
 def _provenance_label(provider: str | None, provider_role: str | None, memetic: bool) -> str | None:
@@ -1794,10 +1937,10 @@ def _provenance_label(provider: str | None, provider_role: str | None, memetic: 
     role = str(provider_role or "").lower()
     if name in {"mock", "mock-agent"}:
         return None
-    if name == "creao" or role == "strategist":
-        return "llm:creao"
     if name == "veri":
         return "llm:veri"
+    if name == "creao" or role == "strategist":
+        return "llm:creao"
     if name in {"algorithmic", "random", "baseline"} or role in {"algorithmic", "random", "baseline"}:
         return "algorithmic"
     return None

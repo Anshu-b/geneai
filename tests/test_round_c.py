@@ -361,6 +361,50 @@ async def test_browser_task_covers_categories_and_stops_on_timeout(monkeypatch: 
 
 
 @pytest.mark.asyncio
+async def test_slow_strategist_falls_back_and_finishes_four_generations(tmp_path: Path) -> None:
+    class SlowCreao:
+        name = "creao"
+        mode = "live"
+        timeout_s = 0.2
+        calls = 0
+
+        async def run_workflow(self, workflow_name, inputs, *, call_id):
+            del workflow_name, inputs, call_id
+            self.calls += 1
+            await asyncio.sleep(30)
+            raise AssertionError("strategist call should have timed out")
+
+        async def aclose(self):
+            return None
+
+    workflow = SlowCreao()
+    started = time.perf_counter()
+    result = await EvolutionController().evolve(
+        objective=toy_objective(),
+        adapter=ToyOptimizationAdapter(seed=1),
+        config=EvolutionConfig(
+            seed=1,
+            population_size=4,
+            generations=4,
+            elite_count=1,
+            strategist_calls_per_generation=1,
+            max_concurrent_model_calls=4,
+            max_model_calls=80,
+            max_evaluations=80,
+            max_wall_seconds=30,
+        ),
+        providers={"model": MockModelProvider(), "workflow": workflow},
+        mode="mock",
+        repository=RunRepository(tmp_path),
+    )
+    elapsed = time.perf_counter() - started
+    assert workflow.calls >= 1
+    assert result.generations_completed == 4
+    assert result.status == "completed"
+    assert elapsed < 8
+
+
+@pytest.mark.asyncio
 async def test_wall_clock_does_not_issue_calls_it_cannot_finish(tmp_path: Path) -> None:
     class Slow(MockModelProvider):
         def __init__(self) -> None:

@@ -318,7 +318,26 @@ def _rationale_of(item: dict[str, Any], fallback: str = "") -> str:
 
 
 def _is_genome_dict(item: dict[str, Any]) -> bool:
-    return _looks_like_genome(item) or "items" in item or "rules" in item or "params" in item or "tour" in item
+    return (
+        _looks_like_genome(item)
+        or "items" in item
+        or "rules" in item
+        or "params" in item
+        or "tour" in item
+        or "edit" in item
+        or "op" in item
+    )
+
+
+def _is_operator_edit(item: dict[str, Any]) -> bool:
+    """A segment edit or operator name. The domain applies it to the parents."""
+
+    edit = item.get("edit")
+    if isinstance(edit, dict) and (edit.get("op") or edit.get("operator")):
+        return True
+    if (item.get("op") or item.get("operator")) and "tour" not in item and "items" not in item and "rules" not in item:
+        return True
+    return False
 
 
 def _children_from_list(items: list[Any], fallback: str) -> list[dict[str, Any]]:
@@ -512,6 +531,16 @@ def interpret_mutator_output(
     failures: list[str] = []
     for index, child in enumerate(children):
         genome = child["genome"]
+        # Schema repair drops keys that are not tour/description. An edit has to
+        # leave here intact so the controller can apply it to the parent tours.
+        if isinstance(genome, dict) and _is_operator_edit(genome):
+            return genome, child["rationale"], {
+                "repairs": ["operator edit deferred to the domain"],
+                "child_count": len(children),
+                "selected_index": index,
+                "schema_valid": False,
+                "edit": True,
+            }
         repaired, notes = repair_to_schema(genome, payload_schema)
         if not isinstance(repaired, dict):
             failures.append(f"child {index} genome was not an object")

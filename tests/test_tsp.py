@@ -35,6 +35,7 @@ from geneai_core.domains.tsp import (
     tsp_objective,
     two_opt_improve,
 )
+from geneai_core.providers.base import Proposal
 from geneai_core.providers.mock import MockAgentProvider, MockModelProvider
 from geneai_core.schemas import EvolutionConfig, ObjectiveSpec
 from geneai_core.store import RunRepository
@@ -190,6 +191,12 @@ def test_mock_benchmark_schema_and_hybrid_refuses_missing_keys(tmp_path: Path) -
     assert "LLM-guided operators plus 2-opt local search" in document["notes"]
     assert max(point["gen"] for point in geneai["convergence"]) >= 20
     assert geneai["provenance_counts"]["algorithmic"] > 0
+    assert isinstance(geneai.get("behavior_origin"), dict)
+    assert geneai["behavior_origin"]["operator"]
+    for instance in heldout["instances"]:
+        row = instance["by_method"]["geneai"]
+        assert row["provenance_counts"]["algorithmic"] > 0
+        assert isinstance(row.get("behavior_origin"), dict)
     summaries = list((tmp_path / "tsp_runs").glob("**/summary.json"))
     assert summaries
     by_seed = {}
@@ -253,6 +260,7 @@ async def test_memetic_tsp_keeps_evolving_when_the_provider_is_slow(tmp_path: Pa
             return await super().propose(instruction, schema, call_id=call_id)
 
     adapter = TspAdapter(SHOWCASE_SEED)
+    repository = RunRepository(tmp_path)
     started = time.perf_counter()
     result = await EvolutionController().evolve(
         objective=tsp_objective(adapter),
@@ -270,7 +278,7 @@ async def test_memetic_tsp_keeps_evolving_when_the_provider_is_slow(tmp_path: Pa
         ),
         providers={"model": Slow(), "workflow": MockAgentProvider()},
         mode="mock",
-        repository=RunRepository(tmp_path),
+        repository=repository,
     )
     elapsed = time.perf_counter() - started
     assert result.generations_completed >= 4
@@ -279,3 +287,93 @@ async def test_memetic_tsp_keeps_evolving_when_the_provider_is_slow(tmp_path: Pa
     assert counts["algorithmic"] > 0
     assert counts["llm:veri"] == 0
     assert counts["llm:creao"] == 0
+    completed = [event for event in repository.events if event.type == "generation.completed"]
+    assert completed
+    assert all(len(event.payload["population_ids"]) == 4 for event in completed)
+
+
+def test_realize_applies_a_short_edit_and_prepare_does_not_invent_a_tour() -> None:
+    adapter = TspAdapter(SHOWCASE_SEED)
+    parent = list(range(N_CITIES))
+    payload = {"edit": {"op": "reverse", "i": 2, "j": 6}}
+    left_alone, notes = adapter.prepare_payload(payload)
+    assert left_alone == payload
+    assert notes == []
+    realized = adapter.realize_proposal(payload, [{"tour": parent, "description": "parent"}], random.Random(0))
+    assert realized["tour"] == parent[:2] + list(reversed(parent[2:7])) + parent[7:]
+    swapped = adapter.realize_proposal(
+        {"edit": {"op": "swap", "i": 1, "j": 4}},
+        [{"tour": parent}],
+        random.Random(0),
+    )
+    assert swapped["tour"][1] == 4 and swapped["tour"][4] == 1
+    moved = adapter.realize_proposal(
+        {"edit": {"op": "move", "city": 0, "after": 3}},
+        [{"tour": parent}],
+        random.Random(0),
+    )
+    assert moved["tour"][3] == 0
+    prepared, polish_notes = adapter.prepare_payload(realized)
+    assert is_permutation(prepared["tour"], N_CITIES)
+    assert any("2-opt" in note for note in polish_notes) or prepared["tour"] == realized["tour"]
+
+
+@pytest.mark.asyncio
+async def test_llm_children_are_accepted_and_population_stays_full(tmp_path: Path) -> None:
+    class VeriTours(MockModelProvider):
+        name = "veri"
+
+        async def propose(self, instruction, schema, *, call_id):
+            del instruction, schema
+            self.calls += 1
+            drawer = random.Random(10_000 + self.calls)
+            tour = list(range(N_CITIES))
+            drawer.shuffle(tour)
+            return Proposal(
+                payload={"tour": tour, "description": f"veri tour {self.calls}"},
+                hypothesis=f"veri permutation {self.calls}",
+                provider="veri",
+                provider_run_id=f"veri-{call_id}",
+                mode="live",
+            )
+
+    population_size = 8
+    adapter = TspAdapter(SHOWCASE_SEED)
+    repository = RunRepository(tmp_path)
+    result = await EvolutionController().evolve(
+        objective=tsp_objective(adapter),
+        adapter=adapter,
+        config=EvolutionConfig(
+            seed=SHOWCASE_SEED,
+            population_size=population_size,
+            generations=4,
+            elite_count=1,
+            strategist_calls_per_generation=0,
+            max_concurrent_model_calls=4,
+            max_model_calls=80,
+            max_evaluations=400,
+            max_wall_seconds=30,
+            finalist_count=population_size,
+            finalist_family_cap=population_size,
+        ),
+        providers={"model": VeriTours(), "workflow": MockAgentProvider()},
+        mode="mock",
+        repository=repository,
+    )
+    assert result.generations_completed >= 4
+    counts = result.summary["provenance_counts"]
+    llm = int(counts["llm:veri"]) + int(counts["llm:creao"])
+    total = llm + int(counts["algorithmic"])
+    assert llm > 0
+    assert total > 0
+    assert llm / total >= 0.2
+    credited = [
+        genome
+        for genome in repository.genomes.values()
+        if genome.metadata.get("provenance") == "llm:veri"
+    ]
+    assert credited
+    assert all(is_permutation(genome.payload.get("tour"), N_CITIES) for genome in credited)
+    completed = [event for event in repository.events if event.type == "generation.completed"]
+    assert len(completed) >= 5
+    assert all(len(event.payload["population_ids"]) == population_size for event in completed)

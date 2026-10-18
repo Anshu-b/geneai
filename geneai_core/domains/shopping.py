@@ -456,6 +456,20 @@ class ShoppingAdapter(DomainAdapter):
                 continue
             row = dict(item)
             product = self._by_id.get(str(row.get("product_id")))
+            if product is not None and str(row.get("color_id") or "") == "catalog_default":
+                colors = [
+                    str(color)
+                    for color in (product.get("colors") or [])
+                    if str(color) and str(color) != "catalog_default"
+                ]
+                if colors:
+                    notes.append(f"{row.get('product_id')} color catalog_default resolved to {colors[0]}")
+                    _LOG.info(
+                        "%s color catalog_default resolved to %s",
+                        row.get("product_id"),
+                        colors[0],
+                    )
+                    row["color_id"] = colors[0]
             if product is not None and row.get("role") != product["role"]:
                 notes.append(
                     f"{row.get('product_id')} role {row.get('role')!r} corrected to {product['role']}"

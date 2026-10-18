@@ -31,6 +31,9 @@ CLASSIC_GA_GENERATIONS = 40
 CLASSIC_GA_ELITE = 2
 CLASSIC_GA_SWAP_RATE = 0.8
 CLASSIC_GA_TOURNAMENT = 3
+# A few improving reversals, not a local optimum. Full 2-opt on 15 cities
+# leaves two canonical tours, and canonical dedup then shrinks the population.
+TSP_POLISH_MOVES = 3
 _LOG = logging.getLogger("geneai_core.tsp")
 
 
@@ -163,9 +166,17 @@ def random_two_opt(tour: list[int], rng: random.Random) -> list[int]:
     return two_opt_move(tour, i, j)
 
 
-def two_opt_improve(tour: list[int], dist: list[list[float]]) -> tuple[list[int], bool]:
-    """First-improvement 2-opt until a local optimum, or ``n * n`` improving moves.
+def two_opt_improve(
+    tour: list[int],
+    dist: list[list[float]],
+    *,
+    max_moves: int | None = None,
+) -> tuple[list[int], bool]:
+    """First-improvement 2-opt.
 
+    ``max_moves`` stops after that many improving reversals. None runs until a
+    local optimum or ``n * n`` moves. A full polish of a 15-city map collapses
+    hundreds of starts onto two canonical cycles, so search uses a small limit.
     Reversing the whole cycle (the same tour walked backwards) is skipped.
     """
 
@@ -174,9 +185,9 @@ def two_opt_improve(tour: list[int], dist: list[list[float]]) -> tuple[list[int]
     if n < 4:
         return best, False
     changed = False
-    passes = 0
-    while passes < n * n:
-        passes += 1
+    moves = 0
+    limit = n * n if max_moves is None else max(0, int(max_moves))
+    while moves < limit:
         improved = False
         for i in range(n - 1):
             # i == 0 stops before the closing reversal, which does not change the cycle.
@@ -191,12 +202,59 @@ def two_opt_improve(tour: list[int], dist: list[list[float]]) -> tuple[list[int]
                     best[i + 1 : j + 1] = reversed(best[i + 1 : j + 1])
                     changed = True
                     improved = True
+                    moves += 1
                     break
             if improved:
                 break
         if not improved:
             break
     return best, changed
+
+
+def move_city_after(tour: list[int], city: int, after: int) -> list[int]:
+    """Place ``city`` immediately after ``after``. A no-op when either id is absent."""
+
+    child = list(tour)
+    if city == after or city not in child or after not in child:
+        return child
+    child.remove(city)
+    child.insert(child.index(after) + 1, city)
+    return child
+
+
+def _as_int(value: Any) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+        return None
+    if isinstance(value, str):
+        text = value.strip()
+        if not text.lstrip("-").isdigit():
+            return None
+        return int(text)
+    if isinstance(value, float) and not value.is_integer():
+        return None
+    return int(value)
+
+
+def _edit_dict(payload: dict[str, Any]) -> dict[str, Any] | None:
+    """A segment edit or operator choice, when the payload is not already a tour."""
+
+    edit = payload.get("edit")
+    if isinstance(edit, dict) and (edit.get("op") or edit.get("operator")):
+        return edit
+    if payload.get("op") or payload.get("operator"):
+        return payload
+    return None
+
+
+def _parent_tours(payloads: list[dict[str, Any]], n: int) -> list[list[int]]:
+    tours: list[list[int]] = []
+    for payload in payloads:
+        if not isinstance(payload, dict):
+            continue
+        tour = payload.get("tour")
+        if is_permutation(tour, n):
+            tours.append([int(city) for city in tour])
+    return tours
 
 
 def order_crossover(left: list[int], right: list[int], rng: random.Random) -> list[int]:
@@ -432,11 +490,73 @@ class TspAdapter(DomainAdapter):
         del payload
         return "permutation"
 
+    def realize_proposal(
+        self,
+        payload: dict[str, Any],
+        parent_payloads: list[dict[str, Any]],
+        rng: random.Random,
+    ) -> dict[str, Any]:
+        """Apply a short edit to a parent tour. A full permutation is unchanged."""
+
+        if not isinstance(payload, dict):
+            return payload
+        if is_permutation(payload.get("tour"), self.n):
+            return payload
+        edit = _edit_dict(payload)
+        if edit is None:
+            return payload
+        parents = _parent_tours(parent_payloads, self.n)
+        if not parents:
+            return payload
+        op = str(edit.get("op") or edit.get("operator") or "").strip().lower().replace("-", "_")
+        base = list(parents[0])
+        other = parents[1] if len(parents) > 1 else list(base)
+        child: list[int] | None = None
+        if op in {"reverse", "2_opt", "two_opt"}:
+            i = _as_int(edit.get("i"))
+            j = _as_int(edit.get("j"))
+            if i is None or j is None or not (0 <= i < self.n and 0 <= j < self.n):
+                return payload
+            child = two_opt_move(base, i, j)
+        elif op == "swap":
+            i = _as_int(edit.get("i"))
+            j = _as_int(edit.get("j"))
+            if i is None or j is None or not (0 <= i < self.n and 0 <= j < self.n) or i == j:
+                return payload
+            child = swap_move(base, i, j)
+        elif op == "move":
+            city = _as_int(edit.get("city"))
+            after = _as_int(edit.get("after"))
+            if city is None or after is None:
+                return payload
+            child = move_city_after(base, city, after)
+        elif op in {"ox", "order_crossover"}:
+            child = order_crossover(base, other, rng)
+        elif op in {"erx", "edge_recombination"}:
+            child = edge_recombination(base, other, rng)
+        else:
+            return payload
+        if not is_permutation(child, self.n):
+            return payload
+        description = payload.get("description")
+        if not isinstance(description, str) or not description.strip():
+            description = edit.get("description")
+        if not isinstance(description, str) or not description.strip():
+            description = f"{op} edit"
+        return {"tour": child, "description": str(description)}
+
     def prepare_payload(self, payload: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
-        """Repair an invalid city list. ``validate`` does not call this."""
+        """Repair an invalid city list, then a few 2-opt moves. ``validate`` does not call this.
+
+        An operator edit without a tour is left alone. The controller applies it
+        with ``realize_proposal`` before this runs again. Inventing a tour here
+        would throw the edit away, because a strategist client prepares first.
+        """
 
         notes: list[str] = []
         if not isinstance(payload, dict):
+            return payload, notes
+        if _edit_dict(payload) is not None and not is_permutation(payload.get("tour"), self.n):
             return payload, notes
         body = dict(payload)
         tour, changed = repair_tour(body.get("tour"), self.n)
@@ -444,7 +564,7 @@ class TspAdapter(DomainAdapter):
             notes.append(f"tour repaired to a permutation of 0..{self.n - 1}")
             _LOG.info("tour repaired to a permutation of 0..%s", self.n - 1)
         before = tour_length(tour, self.dist)
-        improved, shortened = two_opt_improve(tour, self.dist)
+        improved, shortened = two_opt_improve(tour, self.dist, max_moves=TSP_POLISH_MOVES)
         body["tour"] = improved
         if shortened:
             after = tour_length(improved, self.dist)
@@ -486,21 +606,23 @@ class TspAdapter(DomainAdapter):
 
     def seed_instructions(self, objective: ObjectiveSpec) -> str:
         return (
-            "Propose one TSP tour as JSON with keys payload and hypothesis. "
-            "payload.tour is a permutation of every city id exactly once. "
-            "payload.description is one short line. "
-            "Spread the tours out; do not copy a single construction. "
+            "Return one permutation as JSON. No prose. "
+            'payload is {"tour":[city ids 0..'
+            f"{self.n - 1}"
+            ' each once],"description":"one short line"}. '
+            "hypothesis is one short line. "
             f"Cities: {self.coordinate_text()}.\n"
             f"Objective: {objective.prompt}"
         )
 
     def mutate_instructions(self, parent: Genome, feedback: Evaluation) -> str:
         return (
-            "Edit the parent tour with one swap of two cities or one 2-opt reversal "
-            "of a segment. Return the full child tour, not the index pair. "
-            "The child must still be a permutation of every city id exactly once. "
-            "Return JSON with keys payload and hypothesis.\n"
-            f"Cities: {self.coordinate_text()}.\n"
+            "Return one short JSON edit of the parent tour. No prose and not the full tour. "
+            'payload is one of {"edit":{"op":"reverse","i":2,"j":8}}, '
+            '{"edit":{"op":"swap","i":1,"j":4}}, '
+            '{"edit":{"op":"move","city":4,"after":9}}. '
+            "i and j are indexes into the parent tour. city and after are city ids. "
+            "hypothesis is one short line.\n"
             f"Parent tour: {parent.payload.get('tour')}\n"
             f"Train feedback: {feedback.feedback}\n"
             f"Train fitness: {feedback.fitness}"
@@ -508,10 +630,10 @@ class TspAdapter(DomainAdapter):
 
     def crossover_instructions(self, a: Genome, b: Genome) -> str:
         return (
-            "Combine the two parent tours with order crossover (OX) or edge recombination (ERX). "
-            "Return one child tour that visits every city id exactly once. "
-            "Return JSON with keys payload and hypothesis.\n"
-            f"Cities: {self.coordinate_text()}.\n"
+            "Return one short JSON operator choice. No prose. "
+            'payload is {"edit":{"op":"ox"}} or {"edit":{"op":"erx"}} '
+            "or {\"edit\":{\"op\":\"reverse\",\"i\":2,\"j\":8}}. "
+            "hypothesis is one short line.\n"
             f"Parent A tour: {a.payload.get('tour')}\n"
             f"Parent B tour: {b.payload.get('tour')}"
         )

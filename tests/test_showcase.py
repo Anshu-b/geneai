@@ -44,6 +44,10 @@ def test_content_hash_ignores_labels_and_keeps_behavior() -> None:
     reordered = copy.deepcopy(outfit)
     reordered["items"] = list(reversed(outfit["items"]))
     assert content_hash(outfit) == content_hash(reordered)
+    recolored = copy.deepcopy(outfit)
+    for item in recolored["items"]:
+        item["color_id"] = "catalog_default"
+    assert content_hash(outfit) == content_hash(recolored)
 
     toy_a = {"family": "weighted_policy", "params": {"x": 0.1, "y": 0.2}, "description": "a"}
     toy_b = {"family": "weighted_policy", "params": {"x": 0.1, "y": 0.2}, "description": "b"}

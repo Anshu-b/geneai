@@ -216,6 +216,79 @@ async def test_creao_wait_is_capped_at_min_180_and_remaining() -> None:
     assert provider._bounded_timeout(999) == 180
 
 
+def _outfit_key(payload: dict) -> tuple:
+    items = payload.get("items") or []
+    return tuple(sorted((str(item.get("product_id")), str(item.get("size"))) for item in items))
+
+
+def test_catalog_default_resolves_and_does_not_change_the_outfit_hash() -> None:
+    adapter = ShoppingAdapter()
+    body = json.loads(json.dumps(neutral_outfit()))
+    for item in body["items"]:
+        item["color_id"] = "catalog_default"
+    assert content_hash(body) == content_hash(neutral_outfit())
+    prepared, notes = adapter.prepare_payload(body)
+    assert all(item["color_id"] != "catalog_default" for item in prepared["items"])
+    assert any("catalog_default" in note for note in notes)
+    assert content_hash(prepared) == content_hash(neutral_outfit())
+
+
+class _RecolorNeutral(MockModelProvider):
+    async def propose(self, instruction: str, schema: dict, *, call_id: str):
+        proposal = await super().propose(instruction, schema, call_id=call_id)
+        body = json.loads(json.dumps(neutral_outfit()))
+        body["family"] = "renamed_baseline"
+        body["styling_notes"] = "same products, catalog default colors"
+        for item in body["items"]:
+            item["color_id"] = "catalog_default"
+        proposal.payload = body
+        proposal.provider = "creao"
+        proposal.hypothesis = "color-only copy of neutral_outfit"
+        return proposal
+
+
+@pytest.mark.asyncio
+async def test_recolored_baseline_is_a_duplicate_and_the_champion_swaps_a_product(tmp_path: Path) -> None:
+    adapter = ShoppingAdapter()
+    objective = ObjectiveSpec(
+        domain=adapter.name,
+        prompt="Neutral outfit, size M, budget 300.",
+        constraints={"budget": 300, "size": "M", "palette": "neutral", "occasions": ["campus", "dinner"], "shoe_size": 9},
+        evaluation_version=adapter.evaluator_version,
+    )
+    adapter.bind_objective(objective)
+    repository = RunRepository(tmp_path)
+    result = await EvolutionController().evolve(
+        objective=objective,
+        adapter=adapter,
+        config=EvolutionConfig(seed=5, population_size=4, generations=1, elite_count=1, max_model_calls=16),
+        providers={"model": _RecolorNeutral(), "workflow": MockAgentProvider()},
+        mode="mock",
+        repository=repository,
+    )
+    assert result.champion_id
+    neutral_key = _outfit_key(neutral_outfit())
+    gym_key = _outfit_key(gym_outfit())
+    champion = repository.genomes[result.champion_id]
+    assert _outfit_key(champion.payload) not in {neutral_key, gym_key}
+    assert champion.metadata.get("seeded_baseline") is not True
+    baselines = {
+        genome.id
+        for genome in repository.genomes.values()
+        if genome.metadata.get("seeded_baseline")
+    }
+    swapped = [
+        genome
+        for genome in repository.genomes.values()
+        if genome.parent_ids
+        and set(genome.parent_ids) & baselines
+        and _outfit_key(genome.payload) != neutral_key
+    ]
+    assert swapped
+    reasons = [event.payload.get("reason_code") for event in repository.events if event.type == "genome.rejected"]
+    assert "duplicate" in reasons
+
+
 class _CopyNeutral(MockModelProvider):
     async def propose(self, instruction: str, schema: dict, *, call_id: str):
         proposal = await super().propose(instruction, schema, call_id=call_id)

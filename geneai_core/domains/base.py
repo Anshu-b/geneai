@@ -54,6 +54,17 @@ class DomainAdapter(ABC):
 
         return payload, []
 
+    def realize_proposal(
+        self,
+        payload: dict[str, Any],
+        parent_payloads: list[dict[str, Any]],
+        rng: random.Random,
+    ) -> dict[str, Any]:
+        """Turn a short operator edit into a domain payload. Identity by default."""
+
+        del parent_payloads, rng
+        return payload
+
     def random_seed_payloads(self, rng: random.Random, count: int) -> list[dict[str, Any]]:
         """Extra generation-0 payloads labeled provider=random. Empty by default."""
 

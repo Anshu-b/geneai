@@ -85,35 +85,38 @@ def _gap_pct(length: float | None, optimum: float) -> float | None:
 def _geneai_config(mode: str, *, showcase: bool) -> EvolutionConfig:
     """Memetic TSP: 20 showcase generations inside about 150s, 8 held-out inside about 60s.
 
-    The controller slices each generation, fills it with OX/ERX/swap/2-opt, and
-    does not wait out a slow Veri or CREAO call. Mock uses the same generation
-    counts. The slice is a timeout, not a sleep, so mock stays fast.
+    Hybrid showcase keeps a population of 24. Proposals are short edits, polished
+    with a few 2-opt moves so canonical dedup does not collapse the pool.
+    Model calls get about 20s and unfinished ones are harvested later. Mock uses
+    a smaller population so this benchmark stays fast; the generation counts match.
     """
 
     if showcase:
+        population = 24 if mode == "hybrid" else 6
         return EvolutionConfig(
             seed=SHOWCASE_SEED,
-            population_size=8 if mode == "hybrid" else 6,
+            population_size=population,
             generations=20,
             elite_count=2,
             max_wall_seconds=150,
             max_model_calls=400,
             max_evaluations=2000,
             strategist_calls_per_generation=2 if mode == "hybrid" else 1,
-            finalist_count=8 if mode == "hybrid" else 6,
-            finalist_family_cap=8 if mode == "hybrid" else 6,
+            finalist_count=population,
+            finalist_family_cap=population,
         )
+    population = 12 if mode == "hybrid" else 4
     return EvolutionConfig(
         seed=0,
-        population_size=6 if mode == "hybrid" else 4,
+        population_size=population,
         generations=8,
         elite_count=1,
         max_wall_seconds=60,
         max_model_calls=200,
         max_evaluations=800,
         strategist_calls_per_generation=1,
-        finalist_count=6 if mode == "hybrid" else 4,
-        finalist_family_cap=6 if mode == "hybrid" else 4,
+        finalist_count=population,
+        finalist_family_cap=population,
     )
 
 
@@ -309,16 +312,24 @@ async def _geneai_method(
     counts = result.summary.get("provenance_counts")
     if isinstance(counts, dict):
         method["provenance_counts"] = counts
+    origin = result.summary.get("behavior_origin")
+    if isinstance(origin, dict):
+        method["behavior_origin"] = origin
     return method
 
 
 def _heldout_row(method: dict[str, Any]) -> dict[str, Any]:
-    return {
+    row: dict[str, Any] = {
         "length": method["length"],
         "gap_pct": method["gap_pct"],
         "time_ms": method["time_ms"],
         "valid": method["valid"],
     }
+    if isinstance(method.get("provenance_counts"), dict):
+        row["provenance_counts"] = method["provenance_counts"]
+    if isinstance(method.get("behavior_origin"), dict):
+        row["behavior_origin"] = method["behavior_origin"]
+    return row
 
 
 def _summary(instances: list[dict[str, Any]]) -> dict[str, Any]:
@@ -396,9 +407,12 @@ async def build_benchmark(mode: str, work_root: Path) -> dict[str, Any]:
         "GeneAI uses LLM-guided operators plus 2-opt local search. "
         "The showcase run is 20 generations inside about 150s. "
         "Each held-out map is 8 generations inside about 60s. "
-        "A slow provider is cancelled at the generation slice and the population is filled with algorithmic children. "
+        "Hybrid showcase population is 24 and held-out population is 12. "
+        "LLM proposals are a permutation or a short edit (reverse a segment, move a city, OX, or ERX). "
+        "Each model call gets about 20s. A call that is still running is harvested on a later generation, "
+        "and the population stays at the configured size. "
         "A TSP genome is a permutation. Swap and 2-opt are the mutations. OX and ERX are the crossovers. "
-        "GeneAI repairs an invalid city list and runs 2-opt before scoring. The one-shot arm does not. "
+        "GeneAI repairs an invalid city list and runs a few 2-opt moves before scoring. The one-shot arm does not. "
         "Dedup hashes the canonical cycle (city 0 first, then the lexicographically smaller direction). "
         "Train, validation, and test all score the same instance. Fitness is negative tour length. "
         "time_ms is wall clock."

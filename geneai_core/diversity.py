@@ -62,11 +62,30 @@ def behavior_payload(payload: dict[str, Any]) -> Any:
         if "items" in normalized:
             items = normalized["items"]
             if isinstance(items, list):
-                # Item order is not behavior. A reversed copy of a baseline is the same outfit.
+                # Color strings and item order are not a different outfit.
+                # catalog_default and "Rocket Red" on the same product and size match.
+                items = [_outfit_identity(item) for item in items]
                 items = sorted(items, key=lambda item: canonical_json(item))
             view["items"] = items
         return view
     return {key: value for key, value in normalized.items() if key not in _PROSE_FIELDS}
+
+
+def _outfit_identity(item: Any) -> Any:
+    """Product id or url, plus size. Color and prose do not count."""
+
+    if not isinstance(item, dict):
+        return item
+    ident = item.get("product_id")
+    if ident is None:
+        ident = item.get("url")
+    if ident is None:
+        ident = item.get("product_url")
+    size = item.get("size")
+    return {
+        "id": None if ident is None else str(ident),
+        "size": "" if size is None else str(size),
+    }
 
 
 def content_hash(payload: dict[str, Any]) -> str:
