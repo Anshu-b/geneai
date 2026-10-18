@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import httpx
@@ -12,7 +13,9 @@ from geneai_core.providers.creao import (
     EXAMPLE_APP_ID,
     CreaoProvider,
     build_create_body,
+    debug_result_text,
     interpret_mutator_output,
+    parse_completed_run,
     summarize_run_list,
 )
 from geneai_core.providers.creao_cli_unverified import UnverifiedCreaoCliProvider
@@ -177,20 +180,33 @@ async def test_creao_http_contract_uses_app_scoped_routes() -> None:
                 "result": {
                     "text": json.dumps(
                         {
-                            "children": [
-                                {
-                                    "genome": {
-                                        "family": "weighted_policy",
-                                        "params": {"x": 0.1, "y": -0.2},
-                                        "description": "from creao",
-                                    },
-                                    "rationale": "moved x",
-                                }
-                            ]
+                            "input": "{\"task\":\"nudge\"}",
+                            "task": "nudge",
+                            "operator": "mutate",
                         }
+                    ),
+                    "chatText": (
+                        "```json\n"
+                        + json.dumps(
+                            {
+                                "children": [
+                                    {
+                                        "genome": {
+                                            "family": "weighted_policy",
+                                            "params": {"x": 0.1, "y": -0.2},
+                                            "description": "from creao",
+                                        },
+                                        "rationale": "moved x",
+                                    }
+                                ]
+                            }
+                        )
+                        + "\n```\n\nMoved x."
                     ),
                     "artifacts": [],
                 },
+                "startedAt": "2026-10-18T03:38:24.878Z",
+                "completedAt": "2026-10-18T03:39:08.616Z",
             },
         )
 
@@ -211,8 +227,102 @@ async def test_creao_http_contract_uses_app_scoped_routes() -> None:
     assert proposal.payload["description"] == "from creao"
     assert proposal.hypothesis == "moved x"
     assert proposal.mode == "live"
+    assert proposal.extra["answer_source"] == "chatText"
+    assert proposal.extra["thread_id"] == "33333333-3333-4333-8333-333333333333"
+    assert proposal.extra["server_latency_ms"] == 43738
+    assert "input" in proposal.extra["debug_text"]
     assert seen[0].method == "POST"
     assert seen[1].method == "GET"
+    assert len(seen) == 2
+
+
+def test_live_creao_sample_reads_chat_text_not_the_input_echo() -> None:
+    document = json.loads(
+        (Path(__file__).parent / "fixtures" / "creao_run_0897c113.json").read_text(encoding="utf-8")
+    )
+    schema = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["ok", "source"],
+        "properties": {"ok": {"type": "boolean"}, "source": {"type": "string"}},
+    }
+    parsed = parse_completed_run(document, schema)
+    assert parsed["genome"] == {"ok": True, "source": "creao"}
+    assert parsed["rationale"] == "smoke"
+    assert parsed["answer_source"] == "chatText"
+    assert parsed["run_id"] == "0897c113-58b0-43bf-8a7c-e56f705efa24"
+    assert parsed["thread_id"] == "42424caf-56fd-4069-8fec-e71e7f281ca0"
+    assert parsed["started_at"] == "2026-10-18T03:38:24.878Z"
+    assert parsed["completed_at"] == "2026-10-18T03:39:08.616Z"
+    assert parsed["server_latency_ms"] == 43738
+    assert "input" in parsed["debug_text"]
+    with pytest.raises(ProviderError):
+        interpret_mutator_output(debug_result_text(document), schema)
+
+
+@pytest.mark.asyncio
+async def test_creao_falls_back_to_children_json_artifact() -> None:
+    artifact_url = "https://agent.creao.ai/api/v1/runs/run-art/artifacts/download?artifactId=children.json"
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(str(request.url))
+        assert request.headers["Authorization"] == "Bearer capi_test_key"
+        if request.method == "POST":
+            return httpx.Response(200, json={"id": "run-art", "status": "pending"})
+        if request.url.path.endswith("/runs/run-art"):
+            return httpx.Response(
+                200,
+                json={
+                    "id": "run-art",
+                    "status": "completed",
+                    "threadId": "thread-art",
+                    "startedAt": "2026-10-18T03:38:24.878Z",
+                    "completedAt": "2026-10-18T03:39:08.616Z",
+                    "result": {
+                        "text": "{\"input\":\"echo\"}",
+                        "chatText": "The file is attached.",
+                        "artifacts": [
+                            {
+                                "id": "files/geneai_children.json",
+                                "url": artifact_url,
+                                "title": "GeneAI Mutator — children.json",
+                            }
+                        ],
+                    },
+                },
+            )
+        assert str(request.url) == artifact_url
+        return httpx.Response(
+            200,
+            json={"children": [{"genome": {"ok": True, "source": "artifact"}, "rationale": "file"}]},
+        )
+
+    schema = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["ok", "source"],
+        "properties": {"ok": {"type": "boolean"}, "source": {"type": "string"}},
+    }
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport) as client:
+        provider = CreaoProvider(api_key="capi_test_key", app_id=EXAMPLE_APP_ID, client=client, poll_s=0)
+        proposal = await provider.run_workflow(
+            "propose_mutation",
+            {
+                "task": "nudge",
+                "parents": [{"genome": {"ok": False, "source": "seed"}, "fitness": 0.0}],
+                "operator": "mutate",
+                "response_schema": schema,
+            },
+            call_id="art",
+        )
+    assert proposal.payload == {"ok": True, "source": "artifact"}
+    assert proposal.hypothesis == "file"
+    assert proposal.extra["answer_source"] == "artifact"
+    assert proposal.extra["thread_id"] == "thread-art"
+    assert proposal.latency_ms == 43738
+    assert artifact_url in seen
 
 
 def test_creao_from_env_defaults_the_public_app_id(monkeypatch: pytest.MonkeyPatch) -> None:

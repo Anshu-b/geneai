@@ -32,6 +32,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--elite-count", type=int, default=2)
     parser.add_argument("--max-model-calls", type=int, default=100)
     parser.add_argument("--max-evaluations", type=int, default=150)
+    parser.add_argument(
+        "--strategist-calls",
+        type=int,
+        default=3,
+        help="CREAO/workflow calls per generation (crossover first, then mutations). The model provider does the rest.",
+    )
     parser.add_argument("--out", default="runs")
     return parser.parse_args()
 
@@ -48,6 +54,7 @@ def main() -> None:
             elite_count=args.elite_count,
             max_model_calls=args.max_model_calls,
             max_evaluations=args.max_evaluations,
+            strategist_calls_per_generation=args.strategist_calls,
             root=args.out,
         )
     )

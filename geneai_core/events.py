@@ -37,6 +37,7 @@ def lineage_payload(
         "species": genome.metadata.get("species"),
         "content_hash": genome.content_hash,
         "provider": genome.provider,
+        "provider_role": genome.metadata.get("provider_role"),
         "hypothesis": genome.hypothesis,
         "fitness": evaluation_fitness,
         "feasible": feasible,

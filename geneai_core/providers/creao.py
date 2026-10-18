@@ -11,8 +11,9 @@ Public route shapes were checked on 2026-10-18 against
 https://docs.creao.ai/developer-api/api-paths and
 https://docs.creao.ai/pro/api-trigger.
 Terminal poll statuses: completed, failed, cancelled.
-Create responses use ``id``. Output text is ``result.text``
-(``result.chatText`` when that reply differs). Failures expose ``errorCode``.
+Create responses use ``id``. The answer is ``result.chatText`` (fenced JSON
+plus prose). ``result.text`` echoes the inputs and is not parsed. A
+``children.json`` artifact is the fallback. Failures expose ``errorCode``.
 
 A live list call, verified outside this environment, returned
 ``200 {"runs": [], "limit": 20, "offset": 0}`` for app id
@@ -37,6 +38,7 @@ from __future__ import annotations
 import json
 import os
 import time
+from datetime import datetime
 from typing import Any
 
 import httpx
@@ -139,20 +141,75 @@ def run_id_from_create(document: dict[str, Any]) -> str:
     return run_id
 
 
-def result_text(document: dict[str, Any]) -> str:
+def chat_answer_text(document: dict[str, Any]) -> str:
+    """Mutator answer. Never ``result.text``, which echoes the request."""
+
     result = document.get("result")
-    if isinstance(result, str):
-        return result
     if isinstance(result, dict):
-        if "children" in result:
-            return json.dumps(result)
-        text = result.get("text")
         chat = result.get("chatText") or result.get("chat_text")
-        if isinstance(text, str) and text.strip():
-            return text
         if isinstance(chat, str):
             return chat
     return ""
+
+
+def debug_result_text(document: dict[str, Any]) -> str:
+    """Echoed inputs. Kept for logs. Not a genome proposal."""
+
+    result = document.get("result")
+    if isinstance(result, dict) and isinstance(result.get("text"), str):
+        return result["text"]
+    return ""
+
+
+def children_artifact(document: dict[str, Any]) -> dict[str, Any] | None:
+    result = document.get("result")
+    if not isinstance(result, dict) or not isinstance(result.get("artifacts"), list):
+        return None
+    for item in result["artifacts"]:
+        if not isinstance(item, dict):
+            continue
+        title = str(item.get("title") or "")
+        artifact_id = str(item.get("id") or "")
+        if "children.json" in title or artifact_id.endswith("children.json"):
+            return item
+    return None
+
+
+def server_interval_ms(document: dict[str, Any]) -> int | None:
+    started = document.get("startedAt")
+    completed = document.get("completedAt")
+    if not isinstance(started, str) or not isinstance(completed, str):
+        return None
+    try:
+        delta = _parse_zulu(completed) - _parse_zulu(started)
+    except ValueError:
+        return None
+    return int(delta.total_seconds() * 1000)
+
+
+def _parse_zulu(value: str) -> datetime:
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def parse_completed_run(
+    document: dict[str, Any],
+    schema: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Read a finished GET body. Parses ``chatText`` only."""
+
+    genome, rationale, notes = interpret_mutator_output(chat_answer_text(document), schema)
+    return {
+        "genome": genome,
+        "rationale": rationale,
+        "notes": notes,
+        "answer_source": "chatText",
+        "thread_id": document.get("threadId"),
+        "run_id": document.get("id") or document.get("runId"),
+        "started_at": document.get("startedAt"),
+        "completed_at": document.get("completedAt"),
+        "server_latency_ms": server_interval_ms(document),
+        "debug_text": debug_result_text(document),
+    }
 
 
 def error_code_from(document: dict[str, Any]) -> str | None:
@@ -489,22 +546,13 @@ class CreaoProvider:
                 code=error_code_from(document),
                 provider_run_id=run_id,
             )
-        text = result_text(document)
-        if not text.strip():
-            raise ProviderError(
-                f"CREAO run {run_id} completed without result.text",
-                code="EMPTY_RESULT",
-                provider_run_id=run_id,
-            )
         schema = inputs.get("response_schema") if isinstance(inputs.get("response_schema"), dict) else None
-        try:
-            genome, rationale, notes = interpret_mutator_output(text, schema)
-        except ProviderError as exc:
-            exc.provider_run_id = run_id
-            raise
+        genome, rationale, notes, answer_source, text = await self._read_answer(document, schema, run_id)
         result = document.get("result") if isinstance(document.get("result"), dict) else {}
         artifacts = result.get("artifacts") if isinstance(result, dict) else None
-        latency_ms = int((time.perf_counter() - started) * 1000)
+        local_ms = int((time.perf_counter() - started) * 1000)
+        server_ms = server_interval_ms(document)
+        latency_ms = server_ms if server_ms is not None else local_ms
         return Proposal(
             payload=genome,
             hypothesis=rationale or f"{workflow_name} via creao",
@@ -523,6 +571,12 @@ class CreaoProvider:
                 "app_id": self.app_id,
                 "app_name": document.get("appName") or created.get("appName"),
                 "thread_id": document.get("threadId"),
+                "started_at": document.get("startedAt"),
+                "completed_at": document.get("completedAt"),
+                "server_latency_ms": server_ms,
+                "local_latency_ms": local_ms,
+                "answer_source": answer_source,
+                "debug_text": debug_result_text(document)[:2000],
                 "status": status,
                 "error_code": error_code_from(document),
                 "artifact_count": len(artifacts) if isinstance(artifacts, list) else 0,
@@ -534,6 +588,50 @@ class CreaoProvider:
                 "schema_repairs": notes.get("repairs") or [],
             },
         )
+
+    async def _read_answer(
+        self,
+        document: dict[str, Any],
+        schema: dict[str, Any] | None,
+        run_id: str,
+    ) -> tuple[dict[str, Any], str, dict[str, Any], str, str]:
+        chat = chat_answer_text(document)
+        chat_error: ProviderError | None = None
+        if chat.strip():
+            try:
+                genome, rationale, notes = interpret_mutator_output(chat, schema)
+                return genome, rationale, notes, "chatText", chat
+            except ProviderError as exc:
+                chat_error = exc
+        artifact_text = await self._download_children_artifact(document)
+        if artifact_text and artifact_text.strip():
+            try:
+                genome, rationale, notes = interpret_mutator_output(artifact_text, schema)
+                return genome, rationale, notes, "artifact", artifact_text
+            except ProviderError as exc:
+                chat_error = chat_error or exc
+        if chat_error is not None:
+            chat_error.provider_run_id = run_id
+            raise chat_error
+        raise ProviderError(
+            f"CREAO run {run_id} completed without result.chatText or a children.json artifact. "
+            "result.text was not parsed.",
+            code="EMPTY_RESULT",
+            provider_run_id=run_id,
+        )
+
+    async def _download_children_artifact(self, document: dict[str, Any]) -> str | None:
+        artifact = children_artifact(document)
+        if artifact is None:
+            return None
+        url = artifact.get("url")
+        if not isinstance(url, str) or not url.startswith("https://agent.creao.ai/"):
+            return None
+        async with self._open_client() as client:
+            response = await client.get(url, headers=self._headers())
+        if response.status_code >= 400:
+            return None
+        return response.text
 
     async def list_runs(self) -> dict[str, Any]:
         """GET the collection. Live shape: ``{"runs": [], "limit": 20, "offset": 0}``."""
@@ -710,7 +808,9 @@ def creao_blocker_message() -> str:
             "4. Re-run: uv run python scripts/smoke_creao.py",
             "Mutator contract sent as inputs (not CLI input/agent_id):",
             '  {"task": "...", "parents": [{"genome": {...}, "fitness": 0.0}], "operator": "mutate"|"crossover"}',
-            "Expected result.text JSON:",
+            "Answer is result.chatText (fenced JSON). result.text echoes inputs and is not parsed.",
+            "Optional fallback: result.artifacts children.json.",
+            "Expected chatText JSON:",
             '  {"children": [{"genome": {...}, "rationale": "..."}]}',
             "Verified HTTP surface:",
             f"  POST https://agent.creao.ai/api/v1/apps/{EXAMPLE_APP_ID}/runs",

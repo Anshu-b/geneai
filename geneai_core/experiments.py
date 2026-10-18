@@ -57,6 +57,7 @@ async def execute_toy_run(
     max_evaluations: int = 150,
     max_wall_seconds: int = 300,
     max_usd_estimate: float = 5.0,
+    strategist_calls_per_generation: int = 3,
 ) -> RunResult:
     config = EvolutionConfig(
         seed=seed,
@@ -67,6 +68,7 @@ async def execute_toy_run(
         max_evaluations=max_evaluations,
         max_wall_seconds=max_wall_seconds,
         max_usd_estimate=max_usd_estimate,
+        strategist_calls_per_generation=strategist_calls_per_generation,
     )
     adapter = ToyOptimizationAdapter(seed=seed)
     DomainRegistry.register(adapter)

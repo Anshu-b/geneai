@@ -175,3 +175,88 @@ async def test_cli_mock_run(tmp_path: Path) -> None:
     assert summary["generations_completed"] == 2
     assert summary["mode"] == "mock"
     assert Path(summary["export_path"]).exists()
+
+
+@pytest.mark.asyncio
+async def test_strategist_slots_prefer_crossover_and_run_together(tmp_path: Path) -> None:
+    import asyncio
+
+    state = {"current": 0, "max_seen": 0}
+    release = asyncio.Event()
+    entered = asyncio.Event()
+    inner = MockAgentProvider()
+
+    class SlowWorkflow:
+        name = "creao"
+        mode = "mock"
+
+        async def run_workflow(self, workflow_name, inputs, *, call_id):
+            state["current"] += 1
+            state["max_seen"] = max(state["max_seen"], state["current"])
+            if state["current"] >= 2:
+                entered.set()
+            await release.wait()
+            state["current"] -= 1
+            proposal = await inner.run_workflow(workflow_name, inputs, call_id=call_id)
+            proposal.provider = "creao"
+            proposal.provider_run_id = "0897c113-58b0-43bf-8a7c-e56f705efa24"
+            proposal.extra.update(
+                {
+                    "thread_id": "42424caf-56fd-4069-8fec-e71e7f281ca0",
+                    "started_at": "2026-10-18T03:38:24.878Z",
+                    "completed_at": "2026-10-18T03:39:08.616Z",
+                    "server_latency_ms": 43738,
+                }
+            )
+            return proposal
+
+    config = EvolutionConfig(
+        seed=42,
+        population_size=6,
+        generations=1,
+        elite_count=1,
+        mutation_probability=0.0,
+        crossover_probability=1.0,
+        random_immigrant_probability=0.0,
+        strategist_calls_per_generation=2,
+        max_model_calls=40,
+        max_evaluations=40,
+    )
+    repository = RunRepository(tmp_path)
+    evolve_task = asyncio.create_task(
+        EvolutionController().evolve(
+            objective=toy_objective(),
+            adapter=ToyOptimizationAdapter(seed=42),
+            config=config,
+            providers={"model": MockModelProvider(), "workflow": SlowWorkflow()},
+            mode="mock",
+            repository=repository,
+        )
+    )
+    await asyncio.wait_for(entered.wait(), timeout=3)
+    assert state["current"] == 2
+    release.set()
+    result = await evolve_task
+    assert result.status == "completed"
+    export = json.loads(Path(result.export_path).read_text(encoding="utf-8"))
+    requested = [event for event in export["events"] if event["type"] == "agent.requested"]
+    assert len(requested) == 2
+    assert all(event["payload"]["provider"] == "creao" for event in requested)
+    assert all(event["payload"]["provider_role"] == "strategist" for event in requested)
+    assert all(event["payload"]["operation"] == "crossover" for event in requested)
+    offspring = [item for item in export["genomes"] if item["generation"] == 1]
+    strategists = [item for item in offspring if item["metadata"]["provider_role"] == "strategist"]
+    bulk = [item for item in offspring if item["metadata"]["provider_role"] == "bulk"]
+    assert strategists
+    assert all(item["provider"] == "creao" and item["operator"] == "crossover" for item in strategists)
+    assert bulk
+    assert all(item["provider"] == "mock" for item in bulk)
+    crossed = [event for event in export["events"] if event["type"] == "genome.crossed"]
+    assert any(event["payload"]["provider"] == "creao" for event in crossed)
+    assert any(event["payload"]["provider"] == "mock" for event in crossed)
+    creao_events = [event for event in crossed if event["payload"]["provider"] == "creao"]
+    assert creao_events[0]["provenance"]["thread_id"] == "42424caf-56fd-4069-8fec-e71e7f281ca0"
+    assert creao_events[0]["provenance"]["provider_run_id"] == "0897c113-58b0-43bf-8a7c-e56f705efa24"
+    assert creao_events[0]["provenance"]["latency_ms"] == 43738
+    assert creao_events[0]["provenance"]["workflow_provider"] == "creao"
+    assert state["max_seen"] == 2

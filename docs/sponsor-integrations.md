@@ -56,8 +56,14 @@ Authorization: Bearer capi_...
 
 Create body: `{"inputs": {...}}` plus optional `webhookUrl`.
 Terminal poll statuses: `completed`, `failed`, `cancelled`.
-Create payloads use `id`. Text is read from `result.text` (`result.chatText`
-when that differs). Failures read `errorCode`.
+Create payloads use `id`. The answer is `result.chatText` (a fenced JSON
+block, then prose). `result.text` echoes the inputs, including a stringified
+`input` field, and is not parsed. If chat text has no valid child, the client
+GETs a `children.json` artifact URL on `agent.creao.ai` with the same Bearer
+token. Failures read `errorCode`. A live completed run
+(`0897c113-58b0-43bf-8a7c-e56f705efa24`) took about 44s
+(`startedAt`/`completedAt`). Provenance stores `threadId`, the run id, and
+that server latency.
 
 `CREAO_API_KEY` is the only secret required for a live call. When
 `CREAO_APP_ID` is unset, `CreaoProvider.from_env` uses
@@ -82,7 +88,7 @@ That app is the GeneAI Mutator. The wire `inputs` object is exactly:
 ```
 
 `operator` is `mutate` or `crossover` only. Engine repairs are sent as
-`mutate` with the invalid genome as the parent. The expected `result.text` is:
+`mutate` with the invalid genome as the parent. The expected `result.chatText` is:
 
 ```json
 {"children": [{"genome": {}, "rationale": "why"}]}

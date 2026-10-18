@@ -103,6 +103,10 @@ class EvolutionConfig(BaseModel):
     # In-flight cap for provider calls. 8 matches the Veri deployment
     # concurrency_target so a fan-out cannot exceed that GPU setpoint.
     max_concurrent_model_calls: int = 8
+    # Workflow-provider calls per reproductive generation. CREAO is about 44s
+    # per call, so the default keeps it to crossover plus one or two mutations.
+    # The model provider handles the rest. Zero sends every variation to the model.
+    strategist_calls_per_generation: int = 3
     finalist_count: int = 4
     finalist_family_cap: int = 2
 
@@ -122,6 +126,8 @@ class EvolutionConfig(BaseModel):
             raise ValueError("max_usd_estimate must be >= 0")
         if self.max_concurrent_model_calls < 1:
             raise ValueError("max_concurrent_model_calls must be >= 1")
+        if self.strategist_calls_per_generation < 0:
+            raise ValueError("strategist_calls_per_generation must be >= 0")
         for name in (
             "mutation_probability",
             "crossover_probability",
@@ -157,6 +163,10 @@ class Provenance(BaseModel):
     deployment_id: str | None = None
     model: str | None = None
     prompt_version: str | None = None
+    thread_id: str | None = None
+    started_at: str | None = None
+    completed_at: str | None = None
+    latency_ms: int | None = None
 
 
 class LineageEvent(BaseModel):

@@ -20,7 +20,10 @@ Not implemented: shopping, cloud, quant, Browser Use, one-shot runner, API, UI.
   with a `capi_` key and body field `inputs`. Never send `agent_id` / `input`
   to that host. Never send `inputs` to `developer.creao.ai/v1`.
 - The Mutator input is `{task, parents:[{genome, fitness}], operator: mutate|crossover}`.
-  The output is `{children:[{genome, rationale}]}`.
+  The answer is `result.chatText` (`{children:[{genome, rationale}]}`), never
+  `result.text` (that field echoes the inputs).
+- CREAO is a strategist: default 3 workflow calls per generation (crossover,
+  then a mutation or two), run concurrently. Veri does bulk mutation.
 - `CREAO_APP_ID` for this project is `0ed64fee-5003-4d56-a83b-c5f369d7a39c`.
 - Veri base URL is `https://api.veri.studio/v1/deployments/bfe84d51e141`.
   The OpenAI model field is `geneai-qwen7b`. Cap in-flight calls at 8 and

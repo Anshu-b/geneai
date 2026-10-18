@@ -100,6 +100,7 @@ class EvolutionController:
         seen_hashes: set[str] = set()
         counters = {"mutation": 0, "crossover": 0, "immigrant": 0, "seed": 0, "repair": 0}
         call_serial = 0
+        strategist_used = 0
         # Default 8 matches the Veri deployment concurrency_target. Proposals
         # are awaited one at a time; the cap applies if calls overlap.
         semaphore = asyncio.Semaphore(config.max_concurrent_model_calls)
@@ -118,6 +119,7 @@ class EvolutionController:
             *,
             task: str,
             invalid_payload: dict[str, Any] | None = None,
+            provider_role: str | None = None,
         ) -> Proposal | None:
             nonlocal call_serial
             if not budget.allows_model_call():
@@ -144,6 +146,7 @@ class EvolutionController:
                     "provider_mode": getattr(provider, "mode", None),
                     "instruction_sha256": _sha(instruction),
                     "task": task,
+                    "provider_role": provider_role,
                 },
                 call_provenance,
             )
@@ -197,16 +200,14 @@ class EvolutionController:
                     "cost_is_estimate": proposal.cost_is_estimate,
                     "credits": proposal.credits,
                     "latency_ms": proposal.latency_ms,
+                    "provider_role": provider_role,
+                    "thread_id": proposal.extra.get("thread_id"),
+                    "started_at": proposal.extra.get("started_at"),
+                    "completed_at": proposal.extra.get("completed_at"),
+                    "answer_source": proposal.extra.get("answer_source"),
                     "schema_repairs": proposal.extra.get("schema_repairs", []),
                 },
-                call_provenance.model_copy(
-                    update={
-                        "provider_run_id": proposal.provider_run_id,
-                        "provider_mode": proposal.mode,
-                        "model": proposal.model,
-                        "deployment_id": proposal.deployment_id,
-                    }
-                ),
+                call_provenance.model_copy(update=_proposal_provenance(proposal)),
             )
             return proposal
 
@@ -218,6 +219,7 @@ class EvolutionController:
             parent_ids: list[str],
             generation: int,
             role: str | None,
+            provider_role: str | None = None,
         ) -> Genome | None:
             payload = normalize_payload(proposal.payload)
             if not isinstance(payload, dict):
@@ -274,8 +276,10 @@ class EvolutionController:
                     "species": species_of(adapter, payload),
                     "provider_mode": proposal.mode,
                     "provider_run_id": proposal.provider_run_id,
+                    "provider_role": provider_role,
                     "model": proposal.model,
                     "deployment_id": proposal.deployment_id,
+                    "thread_id": proposal.extra.get("thread_id"),
                 },
             )
             try:
@@ -293,10 +297,9 @@ class EvolutionController:
                 lineage_payload(genome),
                 provenance.model_copy(
                     update={
-                        "provider_run_id": proposal.provider_run_id,
-                        "provider_mode": proposal.mode,
-                        "model_provider": proposal.provider if proposal.provider != "creao" else None,
-                        "workflow_provider": proposal.provider if proposal.provider in {"creao", "mock-agent"} else None,
+                        **_proposal_provenance(proposal),
+                        "model_provider": None if provider_role == "strategist" else proposal.provider,
+                        "workflow_provider": proposal.provider if provider_role == "strategist" else None,
                     }
                 ),
             )
@@ -350,7 +353,9 @@ class EvolutionController:
             context_parents: list[Genome],
             invalid_payload: dict[str, Any] | None = None,
             role: str | None = None,
+            provider_role: str | None = None,
         ) -> Individual | None:
+            nonlocal strategist_used
             token = rng.randrange(2**30)
             context = {
                 "operation": "repair" if invalid_payload is not None else operation,
@@ -367,6 +372,7 @@ class EvolutionController:
                 parents,
                 task=task,
                 invalid_payload=invalid_payload,
+                provider_role=provider_role,
             )
             if proposal is None:
                 return None
@@ -380,9 +386,10 @@ class EvolutionController:
                 parent_ids=parent_ids,
                 generation=generation,
                 role=role,
+                provider_role=provider_role,
             )
             if genome is None and invalid_payload is None:
-                # One repair pass. The follow-up is mutate on the mutator contract.
+                # One repair pass. A strategist repair spends another workflow slot.
                 repository.emit(
                     "genome.rejected",
                     {"reason_code": "repair_scheduled", "reason": "scheduling one repair", "operator": operation},
@@ -394,16 +401,23 @@ class EvolutionController:
                     invalid_payload=proposal.payload if isinstance(proposal.payload, dict) else {},
                     error="schema or duplicate rejection",
                 )
+                repair_channel = "model"
+                repair_role = "bulk"
+                if channel == "workflow" and strategist_used < config.strategist_calls_per_generation:
+                    strategist_used += 1
+                    repair_channel = "workflow"
+                    repair_role = "strategist"
                 return await propose_one(
                     operation="repair",
                     generation=generation,
                     parents=parents,
-                    channel=channel,
+                    channel=repair_channel,
                     task=repair_task,
                     human=repair_task,
                     context_parents=context_parents,
                     invalid_payload=proposal.payload if isinstance(proposal.payload, dict) else {},
                     role=role,
+                    provider_role=repair_role,
                 )
             if genome is None:
                 return None
@@ -442,6 +456,7 @@ class EvolutionController:
                     human=human,
                     context_parents=[],
                     role="seed",
+                    provider_role="seed",
                 )
                 if child is not None:
                     population.append(child)
@@ -479,6 +494,7 @@ class EvolutionController:
                     stop_reason = budget.exhausted_reason or "budget"
                     break
                 repository.emit("generation.started", {"generation": generation}, provenance)
+                strategist_used = 0
                 elites = select_elites(population, config.elite_count)
                 repository.emit(
                     "selection.elite",
@@ -511,60 +527,51 @@ class EvolutionController:
                 desired = config.population_size - len(elites)
                 children: list[Individual] = []
                 child_attempts = 0
+                attempt_limit = max(desired * 8, 8)
                 while (
                     len(children) < desired
-                    and child_attempts < max(desired * 8, 8)
+                    and child_attempts < attempt_limit
                     and budget.allows_model_call()
                     and budget.allows_evaluation()
                 ):
-                    child_attempts += 1
-                    operation = sample_operation(config, rng)
-                    if operation == "crossover":
-                        first, second = pick_two_parents(mating_pool, rng)
-                        if first.genome.id == second.genome.id:
-                            operation = "mutation"
-                        else:
-                            human = adapter.crossover_instructions(first.genome, second.genome)
-                            child = await propose_one(
-                                operation="crossover",
-                                generation=generation,
-                                parents=[first, second],
-                                channel="workflow",
-                                task=human,
-                                human=human,
-                                context_parents=[first.genome, second.genome],
-                            )
-                            if child is not None:
-                                children.append(child)
-                            continue
-                    if operation == "immigrant":
-                        human = adapter.seed_instructions(objective)
-                        child = await propose_one(
-                            operation="immigrant",
-                            generation=generation,
-                            parents=[],
-                            channel="model",
-                            task=human,
-                            human=human,
-                            context_parents=[],
-                            role="immigrant",
-                        )
-                        if child is not None:
-                            children.append(child)
-                        continue
-                    parent = rng.choice(mating_pool)
-                    human = adapter.mutate_instructions(parent.genome, parent.evaluation)
-                    child = await propose_one(
-                        operation="mutation",
-                        generation=generation,
-                        parents=[parent],
-                        channel="workflow",
-                        task=human,
-                        human=human,
-                        context_parents=[parent.genome],
+                    room = min(
+                        desired - len(children),
+                        attempt_limit - child_attempts,
+                        config.max_concurrent_model_calls,
                     )
-                    if child is not None:
-                        children.append(child)
+                    plans: list[dict[str, Any]] = []
+                    while len(plans) < room and budget.allows_model_call() and budget.allows_evaluation():
+                        child_attempts += 1
+                        plans.append(
+                            _plan_variation(
+                                operation_rng=rng,
+                                config=config,
+                                mating_pool=mating_pool,
+                                adapter=adapter,
+                                objective=objective,
+                            )
+                        )
+                    if not plans:
+                        break
+                    _mark_strategist(plans, config.strategist_calls_per_generation - strategist_used)
+                    strategist_used += sum(1 for plan in plans if plan["channel"] == "workflow")
+                    produced = await asyncio.gather(
+                        *[
+                            propose_one(
+                                operation=plan["operation"],
+                                generation=generation,
+                                parents=plan["parents"],
+                                channel=plan["channel"],
+                                task=plan["human"],
+                                human=plan["human"],
+                                context_parents=plan["context_parents"],
+                                role=plan["role"],
+                                provider_role=plan["provider_role"],
+                            )
+                            for plan in plans
+                        ]
+                    )
+                    children.extend(item for item in produced if item is not None)
                 nxt = next_population(elites, children, config.population_size, adapter)
                 removed = pruned_individuals(population, nxt)
                 for item in removed:
@@ -671,6 +678,81 @@ class EvolutionController:
             summary=summary,
         )
         return _result(repository, status, stop_reason, champion_id, generations_completed, summary)
+
+
+def _plan_variation(
+    *,
+    operation_rng: random.Random,
+    config: EvolutionConfig,
+    mating_pool: list[Individual],
+    adapter: DomainAdapter,
+    objective: ObjectiveSpec,
+) -> dict[str, Any]:
+    operation = sample_operation(config, operation_rng)
+    if operation == "crossover":
+        first, second = pick_two_parents(mating_pool, operation_rng)
+        if first.genome.id != second.genome.id:
+            return {
+                "operation": "crossover",
+                "parents": [first, second],
+                "context_parents": [first.genome, second.genome],
+                "human": adapter.crossover_instructions(first.genome, second.genome),
+                "role": None,
+                "channel": "model",
+                "provider_role": "bulk",
+            }
+        operation = "mutation"
+    if operation == "immigrant":
+        return {
+            "operation": "immigrant",
+            "parents": [],
+            "context_parents": [],
+            "human": adapter.seed_instructions(objective),
+            "role": "immigrant",
+            "channel": "model",
+            "provider_role": "immigrant",
+        }
+    parent = operation_rng.choice(mating_pool)
+    return {
+        "operation": "mutation",
+        "parents": [parent],
+        "context_parents": [parent.genome],
+        "human": adapter.mutate_instructions(parent.genome, parent.evaluation),
+        "role": None,
+        "channel": "model",
+        "provider_role": "bulk",
+    }
+
+
+def _mark_strategist(plans: list[dict[str, Any]], slots: int) -> None:
+    """Send crossover first, then mutations, until the workflow budget is gone."""
+
+    remaining = max(0, slots)
+    for operation in ("crossover", "mutation"):
+        for plan in plans:
+            if remaining <= 0:
+                return
+            if plan["operation"] != operation:
+                continue
+            plan["channel"] = "workflow"
+            plan["provider_role"] = "strategist"
+            remaining -= 1
+
+
+def _proposal_provenance(proposal: Proposal) -> dict[str, Any]:
+    extra = proposal.extra or {}
+    update: dict[str, Any] = {
+        "provider_run_id": proposal.provider_run_id,
+        "provider_mode": proposal.mode,
+        "model": proposal.model,
+        "deployment_id": proposal.deployment_id,
+        "thread_id": extra.get("thread_id"),
+        "started_at": extra.get("started_at"),
+        "completed_at": extra.get("completed_at"),
+    }
+    if extra.get("server_latency_ms") is not None:
+        update["latency_ms"] = extra["server_latency_ms"]
+    return update
 
 
 def _wire_parents(

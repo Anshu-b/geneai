@@ -29,6 +29,11 @@ Generation 0 seeds a population on the train split. Generations 1..N:
 1. Diversity-aware tournaments of 3, with a small novelty bonus and a family cap.
 2. Keep `elite_count` genomes unchanged (same id, same payload hash).
 3. Fill the remaining slots with mutation, crossover, and random immigrants.
+   Each generation sends at most `strategist_calls_per_generation` (default 3)
+   variation calls to the workflow provider, crossover first and then mutations,
+   and runs that batch concurrently. The model provider handles bulk mutation
+   and immigrants. Genome events record `provider` and `provider_role`
+   (`strategist`, `bulk`, `seed`, or `immigrant`).
 4. Reject invalid payloads. One repair attempt, then drop the child.
 5. Reject duplicate canonical payload hashes.
 6. Prune losers out of the living population. They stay in the event log.
