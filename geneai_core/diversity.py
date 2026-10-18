@@ -45,11 +45,16 @@ _PROSE_FIELDS = frozenset({"description", "styling_notes", "hypothesis", "policy
 
 
 def behavior_payload(payload: dict[str, Any]) -> Any:
-    """Cloud hashes rules, shopping hashes items. Other domains keep their fields."""
+    """Cloud hashes rules, shopping hashes items, TSP hashes the canonical tour."""
 
     normalized = normalize_payload(payload)
     if not isinstance(normalized, dict):
         return normalized
+    tour = normalized.get("tour")
+    if isinstance(tour, list):
+        from geneai_core.domains.tsp import canonical_tour
+
+        return {"tour": canonical_tour(tour)}
     if "rules" in normalized or "items" in normalized:
         view: dict[str, Any] = {}
         if "rules" in normalized:

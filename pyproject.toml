@@ -1,7 +1,7 @@
 [project]
 name = "geneai"
 version = "0.1.0"
-description = "Domain-agnostic evolutionary search. One controller runs toy, cloud, and shopping."
+description = "Domain-agnostic evolutionary search. One controller runs toy, cloud, shopping, and TSP."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

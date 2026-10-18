@@ -12,6 +12,7 @@ from geneai_core.domains.base import DomainAdapter
 from geneai_core.domains.cloud import CLOUD_SEARCH_CEILING, CloudSchedulingAdapter, cloud_objective
 from geneai_core.domains.shopping import RECORDED_CATALOG_PATH, ShoppingAdapter, load_catalog, shopping_objective, write_recorded_catalog
 from geneai_core.domains.toy import ToyOptimizationAdapter
+from geneai_core.domains.tsp import TspAdapter, tsp_objective
 from geneai_core.experiments import build_providers, toy_objective
 from geneai_core.providers.base import CredentialsError
 from geneai_core.providers.browser_use import BrowserUseClient, browser_use_blocker_message
@@ -34,7 +35,10 @@ def make_adapter(domain: str, *, seed: int, shopping_constraints: dict[str, Any]
             occasions=list(constraints.get("occasions") or ["campus", "dinner"]),
         )
         return adapter, objective
-    raise SystemExit(f"unknown domain {domain!r}. Use toy, cloud, or shopping.")
+    if domain == "tsp":
+        adapter = TspAdapter(seed=seed)
+        return adapter, tsp_objective(adapter)
+    raise SystemExit(f"unknown domain {domain!r}. Use toy, cloud, shopping, or tsp.")
 
 
 def _providers(mode: str) -> dict[str, object]:
@@ -172,6 +176,12 @@ def _split_note(domain: str, *, catalog_source: str | None = None) -> str:
             "The test shoppers are unread before champion.frozen. "
             "Scores are not comparable to cloud fitness. "
             f"{purchasable}"
+        )
+    if domain == "tsp":
+        return (
+            "One 15-city Euclidean instance. Train, validation, and test all score that "
+            "same closed tour, so the champion length is the length of the tour shown. "
+            "Fitness is the negative of the tour length."
         )
     if domain == "cloud":
         return (

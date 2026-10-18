@@ -4,6 +4,7 @@ __pycache__/
 .mypy_cache/
 .env
 runs/
+tsp_runs/
 data/recordings/*
 !data/recordings/.gitkeep
 data/catalogs/*.json

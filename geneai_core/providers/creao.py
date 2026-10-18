@@ -318,7 +318,7 @@ def _rationale_of(item: dict[str, Any], fallback: str = "") -> str:
 
 
 def _is_genome_dict(item: dict[str, Any]) -> bool:
-    return _looks_like_genome(item) or "items" in item or "rules" in item or "params" in item
+    return _looks_like_genome(item) or "items" in item or "rules" in item or "params" in item or "tour" in item
 
 
 def _children_from_list(items: list[Any], fallback: str) -> list[dict[str, Any]]:
