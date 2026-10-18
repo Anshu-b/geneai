@@ -18,7 +18,7 @@ from geneai_core.domains.cloud import (
     workload,
     workload_fitness,
 )
-from geneai_core.domains.shopping import gym_outfit, neutral_outfit
+from geneai_core.domains.shopping import ShoppingAdapter, gym_outfit, neutral_outfit
 from geneai_core.schemas import Genome
 from geneai_core.showcase import CASE_RULE, build_showcase, select_median_case
 
@@ -41,6 +41,9 @@ def test_content_hash_ignores_labels_and_keeps_behavior() -> None:
     swapped = copy.deepcopy(outfit)
     swapped["items"] = gym_outfit()["items"]
     assert content_hash(swapped) != content_hash(outfit)
+    reordered = copy.deepcopy(outfit)
+    reordered["items"] = list(reversed(outfit["items"]))
+    assert content_hash(outfit) == content_hash(reordered)
 
     toy_a = {"family": "weighted_policy", "params": {"x": 0.1, "y": 0.2}, "description": "a"}
     toy_b = {"family": "weighted_policy", "params": {"x": 0.1, "y": 0.2}, "description": "b"}
@@ -91,14 +94,24 @@ def _cloud_export() -> dict:
     return {
         "integrity_sha256": "abc123",
         "run": {"id": "run_show", "domain": "cloud_scheduling", "seed": 1},
-        "champion_id": "g0001",
+        "champion_id": "g0060",
         "genomes": [
             {
-                "id": "g0001",
+                "id": "g0051",
                 "provider": "creao",
+                "operator": "mutate",
+                "generation": 1,
                 "payload": payload,
                 "metadata": {},
-            }
+            },
+            {
+                "id": "g0060",
+                "provider": "random",
+                "operator": "seed",
+                "generation": 2,
+                "payload": copy.deepcopy(payload) | {"description": "random perturbation", "policy_family": "composed"},
+                "metadata": {},
+            },
         ],
         "one_shot_baseline": {
             "provider": "frontier",
@@ -125,12 +138,22 @@ def test_cloud_showcase_uses_the_median_test_workload(tmp_path: Path) -> None:
     assert "gpt55_one_shot" in keys
     assert "round_robin" in keys
     champion = cloud["policies"][0]
-    assert champion["provider"] == "creao"
+    assert champion["provider"] == "random"
     assert champion["feasible"] is True
     assert champion["rules_plain"]
     assert len(champion["schedule"]) == 36
     assert champion["summary"]["fitness"] is not None
     assert "avg_completion_min" in champion["summary"]
+    assert champion["aggregate"]["n_cases"] == len(TEST_INDEXES)
+    assert champion["aggregate"]["sla_misses"] >= champion["summary"]["sla_misses"]
+    assert champion["aggregate"]["fitness"] is not None
+    assert champion["behavior_origin"]["id"] == "g0051"
+    assert champion["behavior_origin"]["provider"] == "creao"
+    assert champion["behavior_origin"]["operator"] == "mutate"
+    assert champion["behavior_origin"]["generation"] == 1
+    oneshot_later = next(row for row in cloud["policies"] if row["key"] == "gpt55_one_shot")
+    assert "behavior_origin" not in oneshot_later
+    assert oneshot_later["aggregate"]["n_cases"] == len(TEST_INDEXES)
     oneshot = next(row for row in cloud["policies"] if row["key"] == "gpt55_one_shot")
     assert oneshot["feasible"] is False
     assert oneshot["attempted_output"]["policy_family"] == "python"
@@ -191,9 +214,27 @@ def test_shopping_showcase_scores_one_test_shopper() -> None:
     assert outfits["champion"]["why"]
     assert any(item["role"] == "shoes" for item in outfits["champion"]["items"])
     assert outfits["champion"]["items"][0]["source"] == "fixture"
+    assert outfits["champion"]["aggregate"]["n_shoppers"] == 3
+    assert outfits["champion"]["aggregate"]["n_feasible"] == 3
+    assert outfits["champion"]["aggregate"]["mean_total_usd"] == outfits["champion"]["total_usd"]
+    assert outfits["champion"]["aggregate"]["mean_budget_usd"] is not None
+    assert outfits["champion"]["behavior_origin"]["id"] == "g0007"
+    assert outfits["gpt55_one_shot"]["aggregate"]["n_feasible"] == 0
     assert outfits["best_baseline"]["provider"] == "baseline"
     oneshot = outfits["gpt55_one_shot"]
     assert oneshot["feasible"] is False
     assert oneshot["attempted_output"]["items"][0]["product_id"] == "fx_top_01"
     assert oneshot["infeasible_reason"]
     assert oneshot["score"] is None
+    renamed = copy.deepcopy(export)
+    snapshot_items = []
+    for item in ShoppingAdapter().catalog_snapshot()["items"]:
+        row = dict(item)
+        if row["id"] == outfit["items"][0]["product_id"]:
+            row["name"] = "Renamed Live Top"
+        snapshot_items.append(row)
+    renamed["catalog"] = {"catalog_id": "live", "source": "browser_use", "items": snapshot_items}
+    named = build_showcase(renamed)
+    champion_items = named["shopping"]["outfits"][0]["items"]
+    assert champion_items[0]["name"] == "Renamed Live Top"
+    assert champion_items[0]["source"] == "browser_use"

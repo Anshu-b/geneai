@@ -55,7 +55,11 @@ def behavior_payload(payload: dict[str, Any]) -> Any:
         if "rules" in normalized:
             view["rules"] = normalized["rules"]
         if "items" in normalized:
-            view["items"] = normalized["items"]
+            items = normalized["items"]
+            if isinstance(items, list):
+                # Item order is not behavior. A reversed copy of a baseline is the same outfit.
+                items = sorted(items, key=lambda item: canonical_json(item))
+            view["items"] = items
         return view
     return {key: value for key, value in normalized.items() if key not in _PROSE_FIELDS}
 

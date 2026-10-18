@@ -446,6 +446,7 @@ class ShoppingAdapter(DomainAdapter):
             body["family"] = mapped
         items = body.get("items")
         if not isinstance(items, list):
+            self._fill_styling_notes(body, notes)
             return body, notes
         corrected: list[Any] = []
         for item in items:
@@ -470,7 +471,59 @@ class ShoppingAdapter(DomainAdapter):
                     row["size"] = text
             corrected.append(row)
         body["items"] = corrected
+        self._fill_styling_notes(body, notes)
         return body, notes
+
+    def _fill_styling_notes(self, body: dict[str, Any], notes: list[str]) -> None:
+        text = body.get("styling_notes")
+        if isinstance(text, str) and text.strip():
+            return
+        names: list[str] = []
+        for item in body.get("items") or []:
+            if not isinstance(item, dict):
+                continue
+            product = self._by_id.get(str(item.get("product_id")))
+            if product is not None and product.get("title"):
+                names.append(str(product["title"]))
+            elif item.get("product_id"):
+                names.append(str(item["product_id"]))
+            elif item.get("role"):
+                names.append(str(item["role"]))
+        family = str(body.get("family") or "outfit")
+        filled = f"{family} outfit with {', '.join(names)}" if names else f"{family} outfit"
+        body["styling_notes"] = filled
+        notes.append(f"styling_notes defaulted to {filled!r}")
+        _LOG.info("styling_notes defaulted to %r", filled)
+
+    def catalog_snapshot(self) -> dict[str, Any]:
+        """Item metadata the export and showcase can show without the catalog file."""
+
+        source = self.catalog.get("source")
+        items: list[dict[str, Any]] = []
+        for product in self.catalog.get("products") or []:
+            if not isinstance(product, dict):
+                continue
+            items.append(
+                {
+                    "id": product.get("product_id"),
+                    "name": product.get("title"),
+                    "role": product.get("role"),
+                    "price": product.get("price"),
+                    "url": product.get("product_url"),
+                    "image_url": product.get("image_url"),
+                    "source": source,
+                    "colors": product.get("colors"),
+                    "sizes": product.get("sizes"),
+                    "style": product.get("style"),
+                    "occasions": product.get("occasions"),
+                    "availability": product.get("availability"),
+                }
+            )
+        return {
+            "catalog_id": self.catalog.get("catalog_id"),
+            "source": source,
+            "items": items,
+        }
 
     def validate(self, payload: dict[str, Any], objective: ObjectiveSpec) -> None:
         if not isinstance(payload, dict):
@@ -539,8 +592,21 @@ class ShoppingAdapter(DomainAdapter):
             "A repeated role is invalid and will be reported as invalid."
         )
 
+    def _abstract_example(self) -> dict[str, Any]:
+        apparel = str(self._objective_constraints.get("size") or "M")
+        shoe = str(self._objective_constraints.get("shoe_size", DEFAULT_SHOE_SIZE))
+        return {
+            "family": "neutral_layers",
+            "items": [
+                {"product_id": "<top_id>", "color_id": "catalog_default", "size": apparel, "role": "top"},
+                {"product_id": "<bottom_id>", "color_id": "catalog_default", "size": apparel, "role": "bottom"},
+                {"product_id": "<shoe_id>", "color_id": "catalog_default", "size": shoe, "role": "shoes"},
+            ],
+            "styling_notes": "one sentence for this shopper's occasion",
+        }
+
     def _prompt_contract(self) -> str:
-        example = _example_child(self.catalog)
+        example = self._abstract_example()
         return (
             f"Allowed family values: {', '.join(FAMILIES)}. "
             "Use one of those strings exactly. "
@@ -550,13 +616,19 @@ class ShoppingAdapter(DomainAdapter):
             "Tops, bottoms, and layers use the shopper apparel size. "
             f"Shoes use numeric shoe size {self._objective_constraints.get('shoe_size', DEFAULT_SHOE_SIZE)}. "
             "Accessories accept One Size. "
+            "The example uses placeholder ids, not catalog ids. "
+            "Replace <top_id>, <bottom_id>, and <shoe_id> with real catalog product ids. "
+            "Vary the products for each shopper's style and occasion. "
+            "Do not copy a baseline outfit. "
             "Example child: "
-            + json.dumps({"genome": example, "rationale": "complete outfit"}, separators=(",", ":"))
+            + json.dumps({"genome": example, "rationale": "complete outfit for this shopper"}, separators=(",", ":"))
         )
 
     def seed_instructions(self, objective: ObjectiveSpec) -> str:
         return (
             "Propose an outfit JSON object with keys payload and hypothesis. "
+            "Propose a diverse outfit for this shopper's style and occasions. "
+            "Do not copy a baseline or the example. "
             "One item per role. Never repeat a role. "
             "Use product_id values from the catalog only. "
             "color_id may be catalog_default. Do not invent product URLs. "
@@ -770,17 +842,6 @@ def _hand_baselines(
             )
         )
     return outfits
-
-
-def _example_child(catalog: dict[str, Any]) -> dict[str, Any]:
-    outfits = _hand_baselines(catalog)
-    if outfits:
-        return outfits[0][1]
-    return {
-        "family": "neutral_layers",
-        "items": [],
-        "styling_notes": "complete outfit",
-    }
 
 
 def _closest_family(value: Any) -> str:

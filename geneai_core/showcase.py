@@ -16,6 +16,7 @@ from geneai_core.domains.cloud import (
     workload,
     workload_fitness,
 )
+from geneai_core.diversity import content_hash
 from geneai_core.domains.shopping import (
     SHOPPERS,
     ShoppingAdapter,
@@ -144,6 +145,7 @@ def _cloud_showcase(export: dict[str, Any]) -> dict[str, Any]:
     jobs = workload(seed, index)
     policies = [
         _cloud_policy(
+            export,
             key="champion",
             label="GeneAI champion",
             provider=_provider(champion.get("provider")),
@@ -155,6 +157,7 @@ def _cloud_showcase(export: dict[str, Any]) -> dict[str, Any]:
         ),
         _cloud_oneshot(export, seed, index, jobs),
         _cloud_policy(
+            export,
             key=best_name,
             label=f"Hand-written {best_name.replace('_', ' ')}",
             provider="baseline",
@@ -168,6 +171,7 @@ def _cloud_showcase(export: dict[str, Any]) -> dict[str, Any]:
     if best_name != "round_robin":
         policies.append(
             _cloud_policy(
+                export,
                 key="round_robin",
                 label="Round robin",
                 provider="baseline",
@@ -206,14 +210,17 @@ def _cloud_oneshot(export: dict[str, Any], seed: int, index: int, jobs: list[Any
     model = record.get("model")
     if payload is None:
         reason = str(record.get("reason") or "one-shot payload missing")
-        return _infeasible_policy(
+        row = _infeasible_policy(
             key="gpt55_one_shot",
             label="GPT-5.5 one-shot",
             provider=_provider(record.get("provider"), model),
             reason=reason,
             attempted=None,
         )
+        row["aggregate"] = _empty_cloud_aggregate()
+        return row
     return _cloud_policy(
+        export,
         key="gpt55_one_shot",
         label="GPT-5.5 one-shot",
         provider=_provider(record.get("provider"), model),
@@ -227,6 +234,7 @@ def _cloud_oneshot(export: dict[str, Any], seed: int, index: int, jobs: list[Any
 
 
 def _cloud_policy(
+    export: dict[str, Any],
     *,
     key: str,
     label: str,
@@ -252,6 +260,8 @@ def _cloud_policy(
         row["genome_id"] = genome_id
         row["description"] = payload.get("description") if isinstance(payload.get("description"), str) else ""
         row["rules_plain"] = rules_plain(payload) if isinstance(payload.get("rules"), dict) else []
+        row["aggregate"] = _empty_cloud_aggregate()
+        _attach_behavior_origin(row, export, payload)
         return row
     trace: list[dict[str, Any]] = []
     metrics = simulate(payload, jobs, trace=trace)
@@ -282,10 +292,118 @@ def _cloud_policy(
             "capacity_violations": int(metrics["violations"]),
             "fitness": _round(fitness, 6),
         },
+        "aggregate": _aggregate_cloud(payload, seed),
     }
     if not feasible:
         row["attempted_output"] = attempted if attempted is not None else payload
+    _attach_behavior_origin(row, export, payload)
     return row
+
+
+def _mean(values: list[float]) -> float | None:
+    if not values:
+        return None
+    return sum(values) / len(values)
+
+
+def _empty_cloud_aggregate() -> dict[str, Any]:
+    return {
+        "avg_completion_min": None,
+        "p95_wait_min": None,
+        "sla_misses": 0,
+        "hard_deadline_misses": 0,
+        "energy_kwh": None,
+        "makespan_min": None,
+        "capacity_violations": 0,
+        "fitness": None,
+        "n_cases": len(TEST_INDEXES),
+    }
+
+
+def _aggregate_cloud(payload: dict[str, Any], seed: int) -> dict[str, Any]:
+    """Means and totals over every held-out test workload, in the same units as summary."""
+
+    completions: list[float] = []
+    p95s: list[float] = []
+    makespans: list[float] = []
+    fitnesses: list[float] = []
+    sla = 0
+    hard = 0
+    energy = 0.0
+    energy_seen = False
+    violations = 0
+    for case_index in TEST_INDEXES:
+        case_jobs = workload(seed, case_index)
+        trace: list[dict[str, Any]] = []
+        metrics = simulate(payload, case_jobs, trace=trace)
+        violations += int(metrics["violations"])
+        sla += sum(1 for item in trace if item["missed_deadline"])
+        hard += sum(1 for item in trace if item["missed_deadline"] and item["hard"])
+        if metrics["violations"] <= 0:
+            energy += float(metrics["energy"]) * _KWH_PER_KW_MINUTE
+            energy_seen = True
+        feasible = metrics["violations"] <= 0 and metrics["completed"] >= len(case_jobs)
+        if not feasible:
+            continue
+        waits = [float(item["wait_min"]) for item in trace]
+        ends = [float(item["end_min"]) for item in trace]
+        if metrics["completed"]:
+            completions.append(float(metrics["mean_completion"]))
+        if waits:
+            p95s.append(_percentile(waits, 0.95))
+        if ends:
+            makespans.append(max(ends))
+        fitnesses.append(workload_fitness(metrics, round_robin_metrics(seed, case_index)))
+    return {
+        "avg_completion_min": _round(_mean(completions)),
+        "p95_wait_min": _round(_mean(p95s)),
+        "sla_misses": sla,
+        "hard_deadline_misses": hard,
+        "energy_kwh": _round(energy) if energy_seen else None,
+        "makespan_min": _round(_mean(makespans)),
+        "capacity_violations": violations,
+        "fitness": _round(_mean(fitnesses), 6),
+        "n_cases": len(TEST_INDEXES),
+    }
+
+
+def _behavior_origin(export: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any] | None:
+    """Earliest genome whose behavior payload matches. Generation, then id."""
+
+    target = content_hash(payload)
+    matches: list[dict[str, Any]] = []
+    for genome in export.get("genomes") or []:
+        if not isinstance(genome, dict):
+            continue
+        body = genome.get("payload")
+        if not isinstance(body, dict):
+            continue
+        if content_hash(body) != target:
+            continue
+        matches.append(genome)
+    if not matches:
+        return None
+
+    def origin_key(genome: dict[str, Any]) -> tuple[int, str]:
+        generation = genome.get("generation")
+        generation_n = generation if isinstance(generation, int) else 0
+        return (generation_n, str(genome.get("id") or ""))
+
+    earliest = min(matches, key=origin_key)
+    return {
+        "id": earliest.get("id"),
+        "provider": earliest.get("provider"),
+        "operator": earliest.get("operator"),
+        "generation": earliest.get("generation"),
+    }
+
+
+def _attach_behavior_origin(row: dict[str, Any], export: dict[str, Any], payload: dict[str, Any]) -> None:
+    if not row.get("genome_id"):
+        return
+    origin = _behavior_origin(export, payload)
+    if origin is not None:
+        row["behavior_origin"] = origin
 
 
 def _schedule_row(item: dict[str, Any]) -> dict[str, Any]:
@@ -388,6 +506,45 @@ def _whole(value: Any) -> int | float:
     return number
 
 
+def _catalog_from_export(export: dict[str, Any]) -> dict[str, Any] | None:
+    catalog = export.get("catalog")
+    if not isinstance(catalog, dict):
+        return None
+    raw_items = catalog.get("items") or catalog.get("products") or []
+    if not isinstance(raw_items, list) or not raw_items:
+        return None
+    source = catalog.get("source") or "export"
+    products: list[dict[str, Any]] = []
+    for item in raw_items:
+        if not isinstance(item, dict):
+            continue
+        product_id = item.get("id") or item.get("product_id")
+        if not product_id:
+            continue
+        products.append(
+            {
+                "product_id": product_id,
+                "title": item.get("name") or item.get("title"),
+                "role": item.get("role"),
+                "price": item.get("price") if item.get("price") is not None else item.get("price_usd"),
+                "product_url": item.get("url") or item.get("product_url"),
+                "image_url": item.get("image_url"),
+                "colors": item.get("colors") or ["catalog_default"],
+                "sizes": item.get("sizes") or ["M", "9", "One Size"],
+                "style": item.get("style") or [],
+                "occasions": item.get("occasions") or [],
+                "availability": item.get("availability") or "unknown",
+            }
+        )
+    if not products:
+        return None
+    return {
+        "catalog_id": catalog.get("catalog_id") or "export",
+        "source": source,
+        "products": products,
+    }
+
+
 def _shopping_adapter(export: dict[str, Any]) -> ShoppingAdapter:
     wanted: set[str] = set()
     for genome in export.get("genomes") or []:
@@ -402,6 +559,9 @@ def _shopping_adapter(export: dict[str, Any]) -> ShoppingAdapter:
     for item in oneshot.get("items") or []:
         if isinstance(item, dict) and item.get("product_id"):
             wanted.add(str(item["product_id"]))
+    embedded = _catalog_from_export(export)
+    if embedded is not None and _covers(embedded, wanted):
+        return ShoppingAdapter(embedded)
     fixture = load_catalog()
     if _covers(fixture, wanted):
         return ShoppingAdapter(fixture)
@@ -439,6 +599,7 @@ def _shopping_showcase(export: dict[str, Any]) -> dict[str, Any]:
     best_name = best_on_case[case_id]
     outfits = [
         _shop_outfit(
+            export,
             adapter,
             key="champion",
             label="GeneAI champion",
@@ -449,6 +610,7 @@ def _shopping_showcase(export: dict[str, Any]) -> dict[str, Any]:
         ),
         _shop_oneshot(export, adapter, shopper),
         _shop_outfit(
+            export,
             adapter,
             key="best_baseline",
             label=f"Hand-written {best_name.replace('_', ' ')}",
@@ -488,7 +650,7 @@ def _shop_oneshot(export: dict[str, Any], adapter: ShoppingAdapter, shopper: dic
     payload = record.get("payload") if isinstance(record.get("payload"), dict) else None
     model = record.get("model")
     if payload is None:
-        return _infeasible_outfit(
+        row = _infeasible_outfit(
             key="gpt55_one_shot",
             label="GPT-5.5 one-shot",
             provider=_provider(record.get("provider"), model),
@@ -496,7 +658,10 @@ def _shop_oneshot(export: dict[str, Any], adapter: ShoppingAdapter, shopper: dic
             attempted=None,
             items=[],
         )
+        row["aggregate"] = _aggregate_shopping(adapter, {})
+        return row
     return _shop_outfit(
+        export,
         adapter,
         key="gpt55_one_shot",
         label="GPT-5.5 one-shot",
@@ -509,6 +674,7 @@ def _shop_oneshot(export: dict[str, Any], adapter: ShoppingAdapter, shopper: dic
 
 
 def _shop_outfit(
+    export: dict[str, Any],
     adapter: ShoppingAdapter,
     *,
     key: str,
@@ -521,10 +687,11 @@ def _shop_outfit(
 ) -> dict[str, Any]:
     items = _outfit_items(adapter, payload)
     total = sum(float(item["price_usd"]) for item in items if isinstance(item.get("price_usd"), int | float))
+    aggregate = _aggregate_shopping(adapter, payload)
     try:
         adapter.validate(copy.deepcopy(payload), _shopping_objective())
     except ValueError as exc:
-        return _infeasible_outfit(
+        row = _infeasible_outfit(
             key=key,
             label=label,
             provider=provider,
@@ -534,6 +701,9 @@ def _shop_outfit(
             genome_id=genome_id,
             total=total,
         )
+        row["aggregate"] = aggregate
+        _attach_behavior_origin(row, export, payload)
+        return row
     genome = _genome(genome_id or key, copy.deepcopy(payload), provider)
     fitness, metrics, violations = adapter.score_shopper(genome, shopper)
     resolved = adapter._resolved(genome.payload, str(shopper["palette"]))
@@ -546,7 +716,7 @@ def _shop_outfit(
         violations=violations,
     )
     if violations:
-        return _infeasible_outfit(
+        row = _infeasible_outfit(
             key=key,
             label=label,
             provider=provider,
@@ -557,7 +727,10 @@ def _shop_outfit(
             total=total,
             why=why,
         )
-    return {
+        row["aggregate"] = aggregate
+        _attach_behavior_origin(row, export, payload)
+        return row
+    row = {
         "key": key,
         "label": label,
         "provider": provider,
@@ -568,6 +741,32 @@ def _shop_outfit(
         "total_usd": _round(total, 2),
         "score": _round(fitness, 6),
         "why": why,
+        "aggregate": aggregate,
+    }
+    _attach_behavior_origin(row, export, payload)
+    return row
+
+
+def _aggregate_shopping(adapter: ShoppingAdapter, payload: dict[str, Any]) -> dict[str, Any]:
+    shoppers = list(SHOPPERS["test"])
+    scores: list[float] = []
+    feasible = 0
+    for shopper in shoppers:
+        score = _shop_score(adapter, payload, shopper)
+        if score is None:
+            continue
+        feasible += 1
+        scores.append(score)
+    items = _outfit_items(adapter, payload)
+    prices = [float(item["price_usd"]) for item in items if isinstance(item.get("price_usd"), int | float)]
+    total = sum(prices) if prices else None
+    budgets = [float(shopper["budget"]) for shopper in shoppers]
+    return {
+        "score": _round(_mean(scores), 6),
+        "n_feasible": feasible,
+        "n_shoppers": len(shoppers),
+        "mean_total_usd": _round(total, 2),
+        "mean_budget_usd": _round(_mean(budgets), 2),
     }
 
 

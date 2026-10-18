@@ -77,6 +77,7 @@ class RunRepository:
         self.champion_id: str | None = None
         self.created_at: str = utc_now()
         self.summary: dict[str, Any] = {}
+        self.catalog: dict[str, Any] | None = None
         self._handle = self.events_path.open("a", encoding="utf-8")
 
     def close(self) -> None:
@@ -197,6 +198,8 @@ class RunRepository:
             "one_shot_baseline": None,
             "recorded_at": recorded_at or utc_now(),
         }
+        if self.catalog is not None:
+            document["catalog"] = self.catalog
         document["integrity_sha256"] = export_integrity(document)
         return document
 

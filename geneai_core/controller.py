@@ -96,6 +96,11 @@ class EvolutionController:
             datasets=datasets,
             providers_meta=_provider_meta(model, workflow),
         )
+        catalog_snapshot = getattr(adapter, "catalog_snapshot", None)
+        if callable(catalog_snapshot):
+            snapshot = catalog_snapshot()
+            if isinstance(snapshot, dict):
+                repository.catalog = snapshot
         provenance = Provenance(
             mode=mode,
             evaluator_version=adapter.evaluator_version,
@@ -573,6 +578,16 @@ class EvolutionController:
                     continue
                 counters["seed"] += 1
                 population.append(Individual(genome=genome, evaluation=evaluation))
+            # Register every hand baseline before model seeding, including one
+            # that did not enter the population. A child with the same item set
+            # is a duplicate of that baseline.
+            for spec in adapter.seeded_baselines():
+                raw = spec.get("payload")
+                if not isinstance(raw, dict):
+                    continue
+                prepared, _baseline_notes = adapter.prepare_payload(raw)
+                body = prepared if isinstance(prepared, dict) else raw
+                seen_hashes.add(content_hash(body))
             attempts = 0
             attempt_cap = config.population_size * 4
             temperature_index = 0

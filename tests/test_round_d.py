@@ -8,6 +8,8 @@ from pathlib import Path
 import httpx
 import pytest
 
+from geneai_core.controller import EvolutionController
+from geneai_core.diversity import content_hash
 from geneai_core.domains.shopping import (
     ShoppingAdapter,
     _hand_baselines,
@@ -16,8 +18,10 @@ from geneai_core.domains.shopping import (
 )
 from geneai_core.providers.browser_use import BrowserUseClient
 from geneai_core.providers.creao import CreaoProvider
+from geneai_core.providers.mock import MockAgentProvider, MockModelProvider
 from geneai_core.runs import _load_shopping_catalog, _split_note
-from geneai_core.schemas import ObjectiveSpec
+from geneai_core.schemas import EvolutionConfig, ObjectiveSpec
+from geneai_core.store import RunRepository, verify_export
 
 
 def test_fixture_catalog_badge_and_complete_budget_baselines() -> None:
@@ -97,6 +101,23 @@ def test_unknown_family_maps_to_the_enum() -> None:
     )
     assert "neutral_layers" in prompt and "campus_uniform" in prompt and "bright_training" in prompt
     assert "Example child:" in prompt
+    assert "diverse outfit" in prompt
+    contract = adapter._prompt_contract()
+    assert "<top_id>" in contract and "<bottom_id>" in contract and "<shoe_id>" in contract
+    assert "fx_" not in contract
+    blank = neutral_outfit()
+    blank["styling_notes"] = ""
+    prepared, notes = adapter.prepare_payload(blank)
+    assert prepared["styling_notes"].strip()
+    assert prepared["family"] in prepared["styling_notes"]
+    assert any("styling_notes defaulted" in note for note in notes)
+    objective = ObjectiveSpec(
+        domain="shopping",
+        prompt="outfit",
+        constraints={"size": "M", "shoe_size": 9},
+        evaluation_version=adapter.evaluator_version,
+    )
+    adapter.validate(prepared, objective)
 
 
 def test_partial_catalog_does_not_invent_a_missing_role() -> None:
@@ -193,3 +214,48 @@ async def test_creao_wait_is_capped_at_min_180_and_remaining() -> None:
     assert provider._bounded_timeout(50) == 50
     assert provider._bounded_timeout(400) == 180
     assert provider._bounded_timeout(999) == 180
+
+
+class _CopyNeutral(MockModelProvider):
+    async def propose(self, instruction: str, schema: dict, *, call_id: str):
+        proposal = await super().propose(instruction, schema, call_id=call_id)
+        proposal.payload = neutral_outfit()
+        proposal.extra = {}
+        return proposal
+
+
+@pytest.mark.asyncio
+async def test_baseline_copies_are_duplicates_and_catalog_is_exported(tmp_path: Path) -> None:
+    adapter = ShoppingAdapter()
+    objective = ObjectiveSpec(
+        domain=adapter.name,
+        prompt="Neutral outfit, size M, budget 300.",
+        constraints={"budget": 300, "size": "M", "palette": "neutral", "occasions": ["campus", "dinner"], "shoe_size": 9},
+        evaluation_version=adapter.evaluator_version,
+    )
+    adapter.bind_objective(objective)
+    repository = RunRepository(tmp_path)
+    result = await EvolutionController().evolve(
+        objective=objective,
+        adapter=adapter,
+        config=EvolutionConfig(seed=5, population_size=4, generations=1, elite_count=1, max_model_calls=16),
+        providers={"model": _CopyNeutral(), "workflow": MockAgentProvider()},
+        mode="mock",
+        repository=repository,
+    )
+    assert result.status in {"completed", "degraded"}, result.summary
+    baseline_hash = content_hash(neutral_outfit())
+    copies = [
+        genome
+        for genome in repository.genomes.values()
+        if genome.provider != "baseline" and genome.content_hash == baseline_hash
+    ]
+    assert copies == []
+    reasons = [event.payload.get("reason_code") for event in repository.events if event.type == "genome.rejected"]
+    assert "duplicate" in reasons
+    document = json.loads(Path(result.export_path).read_text(encoding="utf-8"))
+    assert verify_export(document)
+    catalog = document["catalog"]
+    assert catalog["items"]
+    required = {"id", "name", "role", "price", "url", "image_url", "source"}
+    assert required <= set(catalog["items"][0])
