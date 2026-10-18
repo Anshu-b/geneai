@@ -134,7 +134,8 @@ def _split_note(domain: str) -> str:
             "Train, validation, and test are 18 disjoint workloads each, with the same "
             "burst and job-mix design. Generation 0 is seeded with the four hand-written "
             "DSL baselines. Champion selection uses validation only. "
-            "The pool is 6 machines and 36 jobs."
+            "The pool is 6 machines (CPU, high-memory, and one GPU) and 36 jobs. "
+            "Fitness penalizes completion, SLA misses, hard-deadline tardiness, and energy."
         )
     return "Train, validation, and test are disjoint same-distribution shifts."
 

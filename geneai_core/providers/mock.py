@@ -191,12 +191,7 @@ def _payload_schema(schema: dict[str, Any]) -> dict[str, Any]:
     return schema
 
 
-def mutate_one(parent: dict[str, Any], schema: dict[str, Any], rng: random.Random) -> dict[str, Any]:
-    """Change one numeric feature. If none can move, mark the description."""
-
-    child = normalize_payload(parent)
-    if not isinstance(child, dict):
-        return fill_schema(schema, rng)
+def _mutate_numeric_jitter(child: dict[str, Any], schema: dict[str, Any], rng: random.Random) -> bool:
     paths = _numeric_paths(schema)
     rng.shuffle(paths)
     for path in paths:
@@ -217,11 +212,122 @@ def mutate_one(parent: dict[str, Any], schema: dict[str, Any], rng: random.Rando
         if updated == current:
             continue
         _set_path(child, path, updated)
-        return child
-    if _mutate_array(child, schema, rng):
-        return child
-    if _flip_enum(child, schema, rng):
-        return child
+        return True
+    return False
+
+
+def _mutate_term_presence(child: dict[str, Any], schema: dict[str, Any], rng: random.Random) -> bool:
+    """Turn a zero weight on, or a nonzero weight off. Bounds that exclude 0 are skipped."""
+
+    zeros: list[tuple[list[str], dict[str, Any]]] = []
+    nonzero: list[tuple[list[str], dict[str, Any]]] = []
+    for path in _numeric_paths(schema):
+        current = _get_path(child, path)
+        if isinstance(current, bool) or not isinstance(current, (int, float)):
+            continue
+        spec = _schema_at(schema, path)
+        lo = float(spec.get("minimum", -1))
+        hi = float(spec.get("maximum", 1))
+        if lo > 0 or hi < 0:
+            continue
+        if abs(float(current)) <= 1e-9:
+            zeros.append((path, spec))
+        else:
+            nonzero.append((path, spec))
+    rng.shuffle(zeros)
+    rng.shuffle(nonzero)
+    if zeros and (not nonzero or rng.random() < 0.5):
+        path, spec = zeros[0]
+        lo = float(spec.get("minimum", -1))
+        hi = float(spec.get("maximum", 1))
+        span = max(hi - lo, 1e-6)
+        for _ in range(8):
+            updated = _clamp(rng.uniform(lo, hi), spec)
+            if abs(float(updated)) >= 0.15 * span:
+                _set_path(child, path, updated)
+                return True
+        return False
+    if nonzero:
+        path, spec = nonzero[0]
+        _set_path(child, path, _clamp(0.0, spec))
+        return True
+    return False
+
+
+def _mutate_structure(child: dict[str, Any], schema: dict[str, Any], rng: random.Random) -> bool:
+    """Swap a tie-break key, or add/remove one class-override style array item."""
+
+    paths = _array_paths(schema)
+    rng.shuffle(paths)
+    for path in paths:
+        current = _get_path(child, path)
+        if not isinstance(current, list):
+            continue
+        array_schema = _schema_at(schema, path)
+        item_schema = array_schema.get("items") or {}
+        if array_schema.get("uniqueItems") and isinstance(item_schema, dict) and "enum" in item_schema:
+            if not current:
+                continue
+            used = set(current)
+            choices = [option for option in item_schema["enum"] if option not in used]
+            if not choices:
+                continue
+            updated = list(current)
+            updated[rng.randrange(len(updated))] = choices[rng.randrange(len(choices))]
+            _set_path(child, path, updated)
+            return True
+        options = _schema_options(item_schema)
+        keys = _diversity_keys(item_schema)
+        if not options or not keys:
+            continue
+        minimum = int(array_schema.get("minItems") or 0)
+        maximum = int(array_schema.get("maxItems") or max(minimum, len(current)))
+        can_add = len(current) < maximum
+        can_remove = len(current) > minimum
+        if can_add and (not can_remove or rng.random() < 0.5):
+            used: dict[str, set[Any]] = {key: set() for key in keys}
+            for item in current:
+                if not isinstance(item, dict):
+                    continue
+                for key in keys:
+                    if key in item:
+                        used[key].add(item[key])
+            choices = []
+            for option in options:
+                consts = _const_values(option)
+                if any(consts.get(key) in used[key] for key in keys if key in consts):
+                    continue
+                choices.append(option)
+            if not choices:
+                continue
+            updated = list(current)
+            updated.append(fill_schema(choices[rng.randrange(len(choices))], rng))
+            _set_path(child, path, updated)
+            return True
+        if can_remove:
+            updated = list(current)
+            updated.pop(rng.randrange(len(updated)))
+            _set_path(child, path, updated)
+            return True
+    return False
+
+
+def mutate_one(parent: dict[str, Any], schema: dict[str, Any], rng: random.Random) -> dict[str, Any]:
+    """Jitter a weight, add or remove a term, or edit a tie-break / override list."""
+
+    child = normalize_payload(parent)
+    if not isinstance(child, dict):
+        return fill_schema(schema, rng)
+    roll = rng.random()
+    if roll < 0.40:
+        order = (_mutate_numeric_jitter, _mutate_term_presence, _mutate_structure, _mutate_array, _flip_enum)
+    elif roll < 0.70:
+        order = (_mutate_term_presence, _mutate_structure, _mutate_numeric_jitter, _mutate_array, _flip_enum)
+    else:
+        order = (_mutate_structure, _mutate_term_presence, _mutate_numeric_jitter, _mutate_array, _flip_enum)
+    for edit in order:
+        if edit(child, schema, rng):
+            return child
     description = str(child.get("description") or child.get("label") or "candidate")
     if "description" in child:
         child["description"] = f"{description} variant {rng.randrange(10000)}"

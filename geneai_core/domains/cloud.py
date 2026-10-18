@@ -2,7 +2,18 @@
 
 The genome is a restricted JSON policy, not executable code. Train, validation,
 and test are disjoint workloads drawn from one job distribution. A feasible
-policy never places a job that would exceed a machine's CPU or memory.
+policy never places a job that would exceed a machine's CPU, memory, or GPU.
+
+cloud-scheduler-v3 is multi-objective on purpose. The pool has cheap CPU
+nodes, one high-memory node, and one GPU. Some jobs have a hard deadline.
+Fitness keeps the blueprint terms and adds hard-deadline tardiness plus
+energy, with fixed coefficients that were not fit to the test split:
+
+    -(completion_ratio + 0.25*sla_miss_rate + 0.50*hard_tardiness_ratio + 0.15*energy_ratio)
+
+Shortest-job packs short work onto whatever is free, including the GPU and
+the high-memory node. A stronger policy keeps those machines for the jobs
+that cannot run elsewhere and still prefers short work on cheap CPUs.
 """
 
 from __future__ import annotations
@@ -22,13 +33,15 @@ SCORE_TERMS = (
     "deadline_urgency",
     "wait_time",
     "free_cpu",
-    "cheap_machine",
+    "energy_frugal",
     "rotation",
     "cpu_pressure",
     "memory_pressure",
+    "class_affinity",
+    "hard_deadline",
 )
 TIE_BREAKS = ("duration", "arrival", "job_id", "free_cpu", "machine_cost", "machine_id", "deadline")
-JOB_CLASSES = ("short", "long", "cpu_heavy", "memory_heavy")
+JOB_CLASSES = ("gpu", "high_mem", "sla", "batch")
 # 18 workloads so each split contains two copies of every burst x mix cell.
 WORKLOADS_PER_SPLIT = 18
 TRAIN_INDEXES = tuple(range(0, WORKLOADS_PER_SPLIT))
@@ -39,16 +52,18 @@ SPLIT_INDEXES = {
     "validation": VALIDATION_INDEXES,
     "test": TEST_INDEXES,
 }
+EVALUATOR_VERSION = "cloud-scheduler-v3"
 
-# Heterogeneous pool. The scenario in the blueprint is a virtual server fleet;
-# this scaled pool keeps the same constraints and finishes in milliseconds.
+# Scaled fleet: four CPU nodes, one high-memory node, one GPU. Energy is the
+# full draw while the machine is busy, so a short batch job on the GPU is
+# expensive even when it finishes quickly.
 MACHINES: tuple[dict[str, float | str], ...] = (
-    {"id": "a0", "cpu": 4.0, "mem": 8.0, "cost": 0.8},
-    {"id": "a1", "cpu": 4.0, "mem": 8.0, "cost": 0.8},
-    {"id": "b0", "cpu": 8.0, "mem": 16.0, "cost": 1.4},
-    {"id": "b1", "cpu": 8.0, "mem": 16.0, "cost": 1.4},
-    {"id": "c0", "cpu": 8.0, "mem": 32.0, "cost": 1.8},
-    {"id": "c1", "cpu": 16.0, "mem": 32.0, "cost": 2.6},
+    {"id": "a0", "kind": "cpu", "cpu": 4.0, "mem": 8.0, "gpu": 0.0, "energy": 0.45},
+    {"id": "a1", "kind": "cpu", "cpu": 4.0, "mem": 8.0, "gpu": 0.0, "energy": 0.45},
+    {"id": "b0", "kind": "cpu", "cpu": 4.0, "mem": 8.0, "gpu": 0.0, "energy": 0.70},
+    {"id": "b1", "kind": "cpu", "cpu": 4.0, "mem": 8.0, "gpu": 0.0, "energy": 0.70},
+    {"id": "m0", "kind": "high_mem", "cpu": 8.0, "mem": 64.0, "gpu": 0.0, "energy": 1.70},
+    {"id": "g0", "kind": "gpu", "cpu": 4.0, "mem": 16.0, "gpu": 1.0, "energy": 4.20},
 )
 
 
@@ -58,8 +73,11 @@ class Job:
     arrival: float
     cpu: float
     mem: float
+    gpu: float
     duration: float
     deadline: float
+    hard: bool
+    kind: str
 
 
 @dataclass
@@ -73,38 +91,66 @@ class Placement:
 def workload(seed: int, index: int) -> list[Job]:
     """One workload. Index selects a disjoint draw and a burstiness pattern."""
 
-    rng = random.Random(f"cloud-workload-v2|{seed}|{index}")
-    # index % 9 is one of 3 burst shapes x 3 short-job mixes. A split of 18
+    rng = random.Random(f"cloud-workload-v3|{seed}|{index}")
+    # index % 9 is one of 3 burst shapes x 3 class mixes. A split of 18
     # indexes contains each cell twice, so validation mirrors the test design.
     cell = index % 9
     burst = cell % 3
     mix = cell // 3
-    short_probability = (0.40, 0.62, 0.80)[mix]
+    gpu_p, mem_p, sla_p = (
+        (0.10, 0.10, 0.20),
+        (0.14, 0.14, 0.24),
+        (0.18, 0.16, 0.22),
+    )[mix]
     count = 36
     jobs: list[Job] = []
     clock = 0.0
     for jid in range(count):
-        # Arrivals are faster than the pool can clear, so a policy has a queue.
         if burst == 0:
-            gap = rng.uniform(0.05, 0.2)
+            gap = rng.uniform(0.04, 0.18)
         elif burst == 1:
-            gap = 0.02 if jid % 4 != 3 else rng.uniform(2.0, 4.0)
+            gap = 0.03 if jid % 5 != 4 else rng.uniform(3.0, 6.0)
         else:
-            gap = rng.uniform(0.02, 0.12) if jid < count // 2 else rng.uniform(0.6, 1.4)
+            gap = rng.uniform(0.05, 0.15) if jid < count // 2 else rng.uniform(0.8, 1.6)
         clock += gap
-        short = rng.random() < short_probability
-        duration = rng.uniform(2.0, 4.5) if short else rng.uniform(8.0, 14.0)
-        cpu = rng.choice((2.0, 4.0, 4.0, 8.0))
-        mem = rng.choice((4.0, 8.0, 8.0, 16.0))
-        slack = rng.uniform(0.4, 2.5) if rng.random() < 0.72 else rng.uniform(6.0, 12.0)
+        draw = rng.random()
+        if draw < gpu_p:
+            kind = "gpu"
+            cpu, mem, gpu_need = 4.0, 8.0, 1.0
+            duration = rng.uniform(4.0, 7.0)
+            slack = rng.uniform(0.5, 1.8)
+            hard = True
+        elif draw < gpu_p + mem_p:
+            kind = "high_mem"
+            cpu, mem, gpu_need = 8.0, 40.0, 0.0
+            duration = rng.uniform(4.0, 8.0)
+            slack = rng.uniform(0.5, 2.0)
+            hard = True
+        elif draw < gpu_p + mem_p + sla_p:
+            kind = "sla"
+            cpu, mem, gpu_need = 2.0, 2.0, 0.0
+            duration = rng.uniform(1.0, 2.5)
+            slack = rng.uniform(0.8, 2.2)
+            hard = True
+        else:
+            kind = "batch"
+            cpu = rng.choice((2.0, 4.0))
+            mem = rng.choice((4.0, 8.0))
+            gpu_need = 0.0
+            duration = rng.uniform(4.0, 10.0)
+            slack = rng.uniform(12.0, 22.0)
+            hard = False
         jobs.append(
             Job(
                 jid=jid,
                 arrival=round(clock, 4),
                 cpu=cpu,
                 mem=mem,
+                gpu=gpu_need,
                 duration=round(duration, 4),
                 deadline=round(clock + duration + slack, 4),
+                hard=hard,
+                kind=kind,
             )
         )
     return jobs
@@ -121,6 +167,8 @@ def _used(running: list[Placement], machine_id: str) -> tuple[float, float]:
 
 
 def _fits(machine: dict[str, Any], running: list[Placement], job: Job) -> bool:
+    if job.gpu > float(machine["gpu"]) + 1e-9:
+        return False
     cpu, mem = _used(running, str(machine["id"]))
     return cpu + job.cpu <= float(machine["cpu"]) + 1e-9 and mem + job.mem <= float(machine["mem"]) + 1e-9
 
@@ -130,8 +178,8 @@ def _free_cpu(machine: dict[str, Any], running: list[Placement]) -> float:
     return float(machine["cpu"]) - cpu
 
 
-_MIN_COST = min(float(machine["cost"]) for machine in MACHINES)
-_MAX_COST = max(float(machine["cost"]) for machine in MACHINES)
+_MIN_ENERGY = min(float(machine["energy"]) for machine in MACHINES)
+_MAX_ENERGY = max(float(machine["energy"]) for machine in MACHINES)
 
 
 def _zero_weights() -> dict[str, float]:
@@ -139,15 +187,20 @@ def _zero_weights() -> dict[str, float]:
 
 
 def _job_class_matches(job: Job, job_class: str) -> bool:
-    if job_class == "short":
-        return job.duration <= 5.0
-    if job_class == "long":
-        return job.duration >= 8.0
-    if job_class == "cpu_heavy":
-        return job.cpu >= 8.0
-    if job_class == "memory_heavy":
-        return job.mem >= 16.0
-    return False
+    return job.kind == job_class
+
+
+def _class_affinity(job: Job, machine: dict[str, Any]) -> float:
+    kind = str(machine["kind"])
+    if job.kind == "gpu":
+        return 1.0 if kind == "gpu" else 0.0
+    if job.kind == "high_mem":
+        return 1.0 if kind == "high_mem" else 0.0
+    if kind == "cpu":
+        return 1.0
+    if kind == "high_mem":
+        return 0.35
+    return 0.0
 
 
 class _Policy:
@@ -177,17 +230,19 @@ class _Policy:
         cpu_used, mem_used = _used(running, str(machine["id"]))
         index = next(i for i, item in enumerate(MACHINES) if item["id"] == machine["id"])
         offset = (index - self.cursor) % len(MACHINES)
-        span = _MAX_COST - _MIN_COST
-        cheap = 1.0 if span <= 1e-9 else (_MAX_COST - float(machine["cost"])) / span
+        span = _MAX_ENERGY - _MIN_ENERGY
+        frugal = 1.0 if span <= 1e-9 else (_MAX_ENERGY - float(machine["energy"])) / span
         return {
             "short_job": 1.0 / job.duration,
             "deadline_urgency": min(4.0, 1.0 / max(0.5, job.deadline - now)),
             "wait_time": min(1.0, max(0.0, now - job.arrival) / 10.0),
             "free_cpu": _free_cpu(machine, running) / float(machine["cpu"]),
-            "cheap_machine": cheap,
+            "energy_frugal": frugal,
             "rotation": (len(MACHINES) - offset) / len(MACHINES),
             "cpu_pressure": (cpu_used + job.cpu) / float(machine["cpu"]),
             "memory_pressure": (mem_used + job.mem) / float(machine["mem"]),
+            "class_affinity": _class_affinity(job, machine),
+            "hard_deadline": 1.0 if job.hard else 0.0,
         }
 
     def _tie_key(self, job: Job, machine: dict[str, Any], running: list[Placement]) -> tuple[Any, ...]:
@@ -202,7 +257,7 @@ class _Policy:
             elif key == "free_cpu":
                 values.append(-_free_cpu(machine, running))
             elif key == "machine_cost":
-                values.append(float(machine["cost"]))
+                values.append(float(machine["energy"]))
             elif key == "machine_id":
                 values.append(str(machine["id"]))
             elif key == "deadline":
@@ -235,6 +290,18 @@ class _Policy:
         return job, machine
 
 
+def _empty_metrics(violations: float) -> dict[str, float]:
+    return {
+        "mean_completion": 1e6,
+        "sla_miss_rate": 1.0,
+        "hard_tardiness": 1e6,
+        "mean_hard_duration": 1.0,
+        "energy": 1e6,
+        "violations": float(violations),
+        "completed": 0.0,
+    }
+
+
 def simulate(payload: dict[str, Any], jobs: list[Job]) -> dict[str, float]:
     policy = _Policy(payload)
     pending = sorted(jobs, key=lambda job: (job.arrival, job.jid))
@@ -244,8 +311,10 @@ def simulate(payload: dict[str, Any], jobs: list[Job]) -> dict[str, float]:
     violations = 0
     cursor = 0
     now = 0.0
-    cost = 0.0
-    rates = {str(machine["id"]): float(machine["cost"]) for machine in MACHINES}
+    energy = 0.0
+    gpu_foreign = 0.0
+    highmem_foreign = 0.0
+    rates = {str(machine["id"]): float(machine["energy"]) for machine in MACHINES}
     steps = 0
     while cursor < len(pending) or queue or running:
         steps += 1
@@ -256,8 +325,9 @@ def simulate(payload: dict[str, Any], jobs: list[Job]) -> dict[str, float]:
         next_end = min((place.end for place in running), default=1e18)
         nxt = min(next_arrival, next_end)
         span = max(0.0, nxt - now)
-        for place in running:
-            cost += rates[place.machine_id] * span * (place.job.cpu / 4.0)
+        busy = {place.machine_id for place in running}
+        for machine_id in busy:
+            energy += rates[machine_id] * span
         now = nxt
         running = [place for place in running if place.end > now + 1e-9]
         while cursor < len(pending) and pending[cursor].arrival <= now + 1e-9:
@@ -286,24 +356,28 @@ def simulate(payload: dict[str, Any], jobs: list[Job]) -> dict[str, float]:
                 violations += 1
             queue.remove(job)
             finished.append((job, now + job.duration))
+            if str(machine["kind"]) == "gpu" and job.kind != "gpu":
+                gpu_foreign += job.duration
+            if str(machine["kind"]) == "high_mem" and job.kind != "high_mem":
+                highmem_foreign += job.duration
             assigned += 1
         if not running and cursor >= len(pending) and queue:
             violations += len(queue)
             break
     if not finished:
-        return {
-            "mean_completion": 1e6,
-            "sla_miss_rate": 1.0,
-            "cost": 1e6,
-            "violations": float(violations + 1),
-            "completed": 0.0,
-        }
+        return _empty_metrics(violations + 1)
     completion = [end - job.arrival for job, end in finished]
     misses = sum(1 for job, end in finished if end > job.deadline + 1e-9)
+    hard = [job for job in jobs if job.hard]
+    tardiness = [max(0.0, end - job.deadline) for job, end in finished if job.hard]
     return {
         "mean_completion": sum(completion) / len(completion),
         "sla_miss_rate": misses / len(jobs),
-        "cost": cost if violations == 0 else 1e6,
+        "hard_tardiness": (sum(tardiness) / len(hard)) if hard else 0.0,
+        "mean_hard_duration": (sum(job.duration for job in hard) / len(hard)) if hard else 1.0,
+        "energy": energy if violations == 0 else 1e6,
+        "gpu_foreign_work": gpu_foreign,
+        "highmem_foreign_work": highmem_foreign,
         "violations": float(violations),
         "completed": float(len(finished)),
     }
@@ -319,10 +393,6 @@ def round_robin_metrics(seed: int, index: int) -> dict[str, float]:
         cached = simulate(baseline_payload("round_robin"), workload(seed, index))
         _ROUND_ROBIN[key] = cached
     return cached
-
-
-def reference_completion(seed: int, index: int) -> float:
-    return float(round_robin_metrics(seed, index)["mean_completion"])
 
 
 def _weight_vector(**values: float) -> dict[str, float]:
@@ -361,7 +431,7 @@ def baseline_payload(name: str) -> dict[str, Any]:
     elif name == "shortest_job":
         family = "shortest_job"
         rules = _rules(
-            _weight_vector(short_job=1.0, cheap_machine=0.05),
+            _weight_vector(short_job=1.0, energy_frugal=0.05),
             ["duration", "machine_cost", "arrival", "job_id"],
         )
     elif name == "least_loaded":
@@ -373,7 +443,7 @@ def baseline_payload(name: str) -> dict[str, Any]:
     elif name == "deadline_weighted":
         family = "weighted_queue"
         rules = _rules(
-            _weight_vector(short_job=0.5, deadline_urgency=0.85, cpu_pressure=-0.35, memory_pressure=-0.15),
+            _weight_vector(short_job=0.5, deadline_urgency=0.85),
             ["deadline", "job_id", "machine_id"],
         )
     else:
@@ -452,7 +522,7 @@ def _rules_ok(rules: Any) -> str | None:
 
 class CloudSchedulingAdapter(DomainAdapter):
     name = "cloud_scheduling"
-    evaluator_version = "cloud-scheduler-v2"
+    evaluator_version = EVALUATOR_VERSION
 
     def __init__(self, seed: int = 42) -> None:
         self._seed = seed
@@ -570,9 +640,11 @@ class CloudSchedulingAdapter(DomainAdapter):
             "Propose one scheduling policy as JSON with keys payload and hypothesis. "
             "Behavior comes from rules.score_weights, rules.tie_break, and up to two "
             "rules.class_overrides. Weights are numbers in [-1, 1]. "
-            "A class override replaces the weight vector for short, long, cpu_heavy, or memory_heavy jobs. "
+            "A class override replaces the weight vector for gpu, high_mem, sla, or batch jobs. "
+            "Use class_affinity and hard_deadline together with short_job so accelerator "
+            "jobs are not stuck behind short batch work, and keep batch work off the GPU. "
             "policy_family is a label: round_robin, shortest_job, least_loaded, weighted_queue, or composed. "
-            "Do not emit Python. The simulator rejects any assignment that would exceed CPU or memory.\n"
+            "Do not emit Python. The simulator rejects any assignment that would exceed CPU, memory, or GPU.\n"
             f"Objective: {objective.prompt}"
         )
 
@@ -598,7 +670,17 @@ class CloudSchedulingAdapter(DomainAdapter):
             self.validate(genome.payload, ObjectiveSpec(domain=self.name, prompt="", evaluation_version=self.evaluator_version))
         except ValueError as exc:
             return self._infeasible(genome, split, str(exc), started)
-        totals = {"mean_completion": 0.0, "sla_miss_rate": 0.0, "cost": 0.0, "violations": 0.0, "ratio": 0.0}
+        totals = {
+            "mean_completion": 0.0,
+            "sla_miss_rate": 0.0,
+            "hard_tardiness": 0.0,
+            "energy": 0.0,
+            "completion_ratio": 0.0,
+            "hard_ratio": 0.0,
+            "energy_ratio": 0.0,
+            "gpu_foreign_work": 0.0,
+            "highmem_foreign_work": 0.0,
+        }
         indexes = SPLIT_INDEXES[split]
         for index in indexes:
             jobs = workload(self._seed, index)
@@ -608,34 +690,49 @@ class CloudSchedulingAdapter(DomainAdapter):
             reference = round_robin_metrics(self._seed, index)
             totals["mean_completion"] += metrics["mean_completion"]
             totals["sla_miss_rate"] += metrics["sla_miss_rate"]
-            totals["cost"] += metrics["cost"]
-            totals["ratio"] += metrics["mean_completion"] / max(reference["mean_completion"], 1e-9)
-            totals["reference_cost"] = totals.get("reference_cost", 0.0) + reference["cost"]
+            totals["hard_tardiness"] += metrics["hard_tardiness"]
+            totals["energy"] += metrics["energy"]
+            totals["gpu_foreign_work"] += metrics["gpu_foreign_work"]
+            totals["highmem_foreign_work"] += metrics["highmem_foreign_work"]
+            totals["completion_ratio"] += metrics["mean_completion"] / max(reference["mean_completion"], 1e-9)
+            ref_tardiness = reference["hard_tardiness"]
+            if ref_tardiness < 1e-3:
+                totals["hard_ratio"] += metrics["hard_tardiness"] / max(metrics["mean_hard_duration"], 1e-6)
+            else:
+                totals["hard_ratio"] += metrics["hard_tardiness"] / ref_tardiness
+            totals["energy_ratio"] += metrics["energy"] / max(reference["energy"], 1e-9)
         count = float(len(indexes))
         mean_completion = totals["mean_completion"] / count
         sla = totals["sla_miss_rate"] / count
-        cost = totals["cost"] / count
-        ratio = totals["ratio"] / count
-        reference_cost = totals.get("reference_cost", 0.0) / count
-        cost_ratio = cost / max(reference_cost, 1e-9)
-        fitness = -(ratio + 0.25 * sla + 0.10 * cost_ratio)
+        hard_tardiness = totals["hard_tardiness"] / count
+        energy = totals["energy"] / count
+        completion_ratio = totals["completion_ratio"] / count
+        hard_ratio = totals["hard_ratio"] / count
+        energy_ratio = totals["energy_ratio"] / count
+        fitness = -(completion_ratio + 0.25 * sla + 0.50 * hard_ratio + 0.15 * energy_ratio)
         return Evaluation(
             genome_id=genome.id,
             feasible=True,
             fitness=fitness,
             metrics={
                 "mean_completion": mean_completion,
-                "completion_ratio_vs_round_robin": ratio,
+                "completion_ratio_vs_round_robin": completion_ratio,
                 "sla_miss_rate": sla,
-                "cost": cost,
-                "cost_ratio_vs_round_robin": cost_ratio,
+                "hard_tardiness": hard_tardiness,
+                "hard_tardiness_ratio_vs_round_robin": hard_ratio,
+                "energy": energy,
+                "energy_ratio_vs_round_robin": energy_ratio,
+                "gpu_foreign_work": totals["gpu_foreign_work"] / count,
+                "highmem_foreign_work": totals["highmem_foreign_work"] / count,
                 "violations": 0.0,
                 "workloads": count,
             },
             feedback=(
                 f"{split} mean_completion={mean_completion:.4f} "
-                f"vs_round_robin={ratio:.4f} sla_miss={sla:.4f} cost_ratio={cost_ratio:.4f}. "
-                "Lower completion and SLA miss is better. Capacity violations are infeasible."
+                f"vs_round_robin={completion_ratio:.4f} sla_miss={sla:.4f} "
+                f"hard_tardiness_ratio={hard_ratio:.4f} energy_ratio={energy_ratio:.4f}. "
+                "Lower completion, hard-deadline tardiness, and energy is better. "
+                "Capacity violations are infeasible."
             ),
             evaluator_version=self.evaluator_version,
             data_split=split,  # type: ignore[arg-type]
@@ -675,10 +772,12 @@ def cloud_objective() -> ObjectiveSpec:
     return ObjectiveSpec(
         domain="cloud_scheduling",
         prompt=(
-            "Schedule jobs onto a heterogeneous server pool. "
-            "Hard constraint: never exceed a machine's CPU or memory. "
-            "Reduce mean completion time and SLA misses relative to round robin."
+            "Schedule jobs onto a heterogeneous pool: CPU nodes, one high-memory node, and one GPU. "
+            "Hard constraint: never exceed a machine's CPU, memory, or GPU count. "
+            "GPU jobs run only on the GPU. High-memory jobs run only where they fit. "
+            "Reduce mean completion time, SLA misses, hard-deadline tardiness, and energy "
+            "relative to round robin. Energy is charged at the machine's full draw while it is busy."
         ),
         constraints={"machines": len(MACHINES), "capacity_violations": 0},
-        evaluation_version="cloud-scheduler-v2",
+        evaluation_version=EVALUATOR_VERSION,
     )

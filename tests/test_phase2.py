@@ -72,6 +72,76 @@ def test_cloud_is_deterministic_and_capacity_safe() -> None:
     assert validation.isdisjoint(test)
 
 
+def test_cloud_affinity_beats_shortest_job_on_train() -> None:
+    """A policy that combines class, deadline, and energy signals beats pure SJF.
+
+    Checked on train only. Validation and test stay unread here.
+    """
+
+    from geneai_core.domains.cloud import MACHINES, _rules, _weight_vector
+
+    adapter = CloudSchedulingAdapter(seed=42)
+    combined = {
+        "policy_family": "composed",
+        "rules": _rules(
+            _weight_vector(
+                short_job=0.55,
+                deadline_urgency=0.4,
+                energy_frugal=0.25,
+                class_affinity=0.85,
+                hard_deadline=0.45,
+            ),
+            ["deadline", "duration", "machine_cost", "job_id"],
+        ),
+        "description": "keep the GPU and high-memory node for jobs that need them",
+    }
+    sjf = adapter.evaluate(_genome(baseline_payload("shortest_job")), "train")
+    better = adapter.evaluate(_genome(combined), "train")
+    assert sjf.feasible and better.feasible
+    assert sjf.fitness is not None and better.fitness is not None
+    assert better.fitness > sjf.fitness + 0.02
+    assert better.metrics["gpu_foreign_work"] < sjf.metrics["gpu_foreign_work"]
+    kinds = {str(machine["kind"]) for machine in MACHINES}
+    assert {"cpu", "high_mem", "gpu"} <= kinds
+    from geneai_core.domains.cloud import Job, _fits
+
+    gpu_job = Job(0, 0.0, 4.0, 8.0, 1.0, 4.0, 6.0, True, "gpu")
+    cpu = next(machine for machine in MACHINES if machine["kind"] == "cpu")
+    gpu = next(machine for machine in MACHINES if machine["kind"] == "gpu")
+    assert not _fits(cpu, [], gpu_job)
+    assert _fits(gpu, [], gpu_job)
+
+
+def test_mock_mutation_edits_terms_ties_and_overrides() -> None:
+    import random
+
+    from geneai_core.providers.mock import mutate_one
+    from geneai_core.schemas import ObjectiveSpec
+
+    adapter = CloudSchedulingAdapter(seed=42)
+    schema = adapter.genome_schema()
+    objective = ObjectiveSpec(domain=adapter.name, prompt="schedule", evaluation_version=adapter.evaluator_version)
+    parent = baseline_payload("shortest_job")
+    added = removed = ties = overrides = 0
+    for token in range(120):
+        child = mutate_one(parent, schema, random.Random(token))
+        adapter.validate(child, objective)
+        parent_weights = parent["rules"]["score_weights"]
+        for term, value in child["rules"]["score_weights"].items():
+            if parent_weights[term] == 0 and value != 0:
+                added += 1
+            if parent_weights[term] != 0 and value == 0:
+                removed += 1
+        if child["rules"]["tie_break"] != parent["rules"]["tie_break"]:
+            ties += 1
+        if len(child["rules"]["class_overrides"]) != len(parent["rules"]["class_overrides"]):
+            overrides += 1
+    assert added > 0
+    assert removed > 0
+    assert ties > 0
+    assert overrides > 0
+
+
 def test_cloud_baselines_and_bad_rules() -> None:
     adapter = CloudSchedulingAdapter(seed=42)
     scores = {}

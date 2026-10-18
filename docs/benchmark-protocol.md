@@ -8,6 +8,7 @@ Invalid output stays invalid. The record is `one_shot_baseline` on the export.
 Arm B, GeneAI: the unchanged controller. Finalists are ranked on train, scored
 on validation, and the validation winner is frozen. Test is evaluated once
 after that. Cloud generation 0 includes the four hand-written DSL baselines.
+Cloud fitness is `-(completion_ratio + 0.25*sla_miss_rate + 0.50*hard_tardiness_ratio + 0.15*energy_ratio)`.
 
 The comparison label is `single attempt vs evolutionary search`.
 `compute_matched` is always false. GeneAI scores more candidates, so a higher

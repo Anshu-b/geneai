@@ -65,7 +65,9 @@ relabeled `recorded`. Provider calls carry `provider_mode` so a mock call
 cannot be shown as sponsor execution.
 
 Cloud policies are a JSON score: weights, tie-breaks, and up to two per-job-class
-overrides. Shopping train, validation, and test are disjoint shoppers. Every
+overrides. The v3 pool is heterogeneous (CPU, high-memory, GPU) and the
+objective adds hard-deadline tardiness and energy to the blueprint terms.
+Shopping train, validation, and test are disjoint shoppers. Every
 genome event and the export record `provider` (`mock`, `veri`, `creao`, or
 `baseline`). The export schema is still 1.0. `one_shot_baseline` is either a
 skipped record or one frontier attempt. Quant is not implemented. The website

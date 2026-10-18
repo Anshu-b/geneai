@@ -23,7 +23,9 @@ credentials that arm is `skipped`. The comparison is one attempt versus
 evolutionary search, and it is not compute-matched.
 
 The default mock run is population 24 and 12 generations. Cloud generation 0
-includes the four hand-written scheduling baselines. Shopping train, validation,
+includes the four hand-written scheduling baselines. The scheduler is
+`cloud-scheduler-v3`: CPU, high-memory, and GPU machines, hard deadlines, and
+energy charged while a machine is busy. Shopping train, validation,
 and test are disjoint shoppers, so the three scores are not the same number.
 The test split is unread until the champion is frozen. Shopping fitness is a
 subjective rubric. It is not comparable to cloud completion time.
