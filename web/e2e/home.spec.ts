@@ -54,7 +54,7 @@ test("tsp showdown races Held-Karp against the other three methods", async ({ pa
   const heading = page.getByRole("heading", { name: "Traveling salesman, 15 cities" });
   await heading.scrollIntoViewIfNeeded();
   await expect(heading).toBeVisible();
-  await expect(page.getByTestId("tsp-sample")).toBeVisible();
+  await expect(page.getByTestId("tsp-sample")).toHaveCount(0);
   await expect(page.getByTestId("tsp-map-held_karp")).toBeVisible();
   await expect(page.getByTestId("tsp-map-classic_ga")).toBeVisible();
   await expect(page.getByTestId("tsp-map-llm_one_shot")).toBeVisible();
@@ -63,8 +63,8 @@ test("tsp showdown races Held-Karp against the other three methods", async ({ pa
   await expect(page.getByTestId("tsp-ghost-classic_ga")).toBeVisible();
   await expect(page.getByTestId("tsp-ghost-geneai")).toBeVisible();
   await expect(page.getByTestId("tsp-crown-held_karp")).toBeVisible();
-  await expect(page.getByTestId("tsp-invalid-reason")).toContainText("never visits c7");
-  await expect(page.getByTestId("tsp-heldout")).toContainText("20 of 20");
+  await expect(page.getByTestId("tsp-invalid-reason")).toContainText("empty output");
+  await expect(page.getByTestId("tsp-heldout")).toContainText("5 of 5");
   await page.getByTestId("tsp-race").click();
   await expect(page.getByTestId("tsp-race")).toHaveAttribute("aria-pressed", "true");
   await page.getByTestId("tsp-log").click();

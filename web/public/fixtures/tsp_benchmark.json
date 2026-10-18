@@ -2,838 +2,571 @@
   "schema": "geneai-tsp-v1",
   "cities": [
     {
-      "id": "c1",
-      "x": 14,
-      "y": 22
+      "id": 0,
+      "x": 31.0331,
+      "y": 81.1497
     },
     {
-      "id": "c2",
-      "x": 28,
-      "y": 12
+      "id": 1,
+      "x": 33.88,
+      "y": 32.5271
     },
     {
-      "id": "c3",
-      "x": 46,
-      "y": 16
+      "id": 2,
+      "x": 76.783,
+      "y": 94.8068
     },
     {
-      "id": "c4",
-      "x": 64,
-      "y": 14
+      "id": 3,
+      "x": 82.5831,
+      "y": 78.1648
     },
     {
-      "id": "c5",
-      "x": 82,
-      "y": 26
+      "id": 4,
+      "x": 76.3705,
+      "y": 88.6452
     },
     {
-      "id": "c6",
-      "x": 90,
-      "y": 46
+      "id": 5,
+      "x": 36.8522,
+      "y": 14.1066
     },
     {
-      "id": "c7",
-      "x": 78,
-      "y": 68
+      "id": 6,
+      "x": 27.7061,
+      "y": 7.6509
     },
     {
-      "id": "c8",
-      "x": 60,
-      "y": 84
+      "id": 7,
+      "x": 49.1934,
+      "y": 25.9991
     },
     {
-      "id": "c9",
-      "x": 40,
-      "y": 86
+      "id": 8,
+      "x": 45.2063,
+      "y": 91.6192
     },
     {
-      "id": "c10",
-      "x": 22,
-      "y": 72
+      "id": 9,
+      "x": 66.3705,
+      "y": 18.0705
     },
     {
-      "id": "c11",
-      "x": 12,
-      "y": 48
+      "id": 10,
+      "x": 76.3335,
+      "y": 36.7314
     },
     {
-      "id": "c12",
-      "x": 34,
-      "y": 40
+      "id": 11,
+      "x": 57.1111,
+      "y": 30.1385
     },
     {
-      "id": "c13",
-      "x": 52,
-      "y": 48
+      "id": 12,
+      "x": 82.0356,
+      "y": 7.9711
     },
     {
-      "id": "c14",
-      "x": 68,
-      "y": 38
+      "id": 13,
+      "x": 37.2424,
+      "y": 1.6745
     },
     {
-      "id": "c15",
-      "x": 48,
-      "y": 66
+      "id": 14,
+      "x": 22.1105,
+      "y": 2.3075
     }
   ],
   "optimum": {
     "tour": [
-      "c1",
-      "c2",
-      "c3",
-      "c4",
-      "c5",
-      "c14",
-      "c6",
-      "c7",
-      "c8",
-      "c9",
-      "c10",
-      "c15",
-      "c13",
-      "c12",
-      "c11"
+      0,
+      8,
+      2,
+      4,
+      3,
+      10,
+      12,
+      9,
+      11,
+      7,
+      5,
+      13,
+      14,
+      6,
+      1
     ],
-    "length": 323.59,
-    "time_ms": 2480
+    "length": 308.518754,
+    "time_ms": 150
   },
   "methods": [
     {
       "key": "held_karp",
       "label": "Traditional: dynamic programming (Held-Karp)",
-      "provider": "dynamic programming",
+      "provider": "local",
       "tour": [
-        "c1",
-        "c2",
-        "c3",
-        "c4",
-        "c5",
-        "c14",
-        "c6",
-        "c7",
-        "c8",
-        "c9",
-        "c10",
-        "c15",
-        "c13",
-        "c12",
-        "c11"
+        0,
+        8,
+        2,
+        4,
+        3,
+        10,
+        12,
+        9,
+        11,
+        7,
+        5,
+        13,
+        14,
+        6,
+        1
       ],
-      "length": 323.59,
+      "length": 308.518754,
       "gap_pct": 0,
-      "time_ms": 2480,
+      "time_ms": 150,
       "llm_calls": 0,
       "valid": true,
       "invalid_reason": null,
       "convergence": [
         {
           "iter": 1,
-          "best_length": 323.59,
-          "elapsed_ms": 2480
+          "best_length": 308.518754,
+          "elapsed_ms": 150
         }
       ]
     },
     {
       "key": "classic_ga",
-      "label": "Classic genetic algorithm",
-      "provider": "in-process GA",
+      "label": "Classic genetic algorithm (OX crossover, swap mutation)",
+      "provider": "local",
       "tour": [
-        "c1",
-        "c2",
-        "c3",
-        "c4",
-        "c5",
-        "c14",
-        "c6",
-        "c7",
-        "c8",
-        "c15",
-        "c10",
-        "c9",
-        "c13",
-        "c12",
-        "c11"
+        2,
+        4,
+        3,
+        10,
+        12,
+        9,
+        11,
+        7,
+        5,
+        13,
+        6,
+        14,
+        1,
+        0,
+        8
       ],
-      "length": 346.53,
-      "gap_pct": 7.09,
-      "time_ms": 640,
+      "length": 311.427617,
+      "gap_pct": 0.9428,
+      "time_ms": 10,
       "llm_calls": 0,
       "valid": true,
       "invalid_reason": null,
       "convergence": [
         {
+          "gen": 0,
+          "best_length": 578.569354,
+          "elapsed_ms": 0
+        },
+        {
           "gen": 1,
-          "best_length": 394.78,
-          "elapsed_ms": 40
+          "best_length": 558.831776,
+          "elapsed_ms": 0
+        },
+        {
+          "gen": 2,
+          "best_length": 558.831776,
+          "elapsed_ms": 0
+        },
+        {
+          "gen": 3,
+          "best_length": 537.962527,
+          "elapsed_ms": 0
         },
         {
           "gen": 4,
-          "best_length": 381.98,
-          "elapsed_ms": 90
+          "best_length": 537.962527,
+          "elapsed_ms": 1
+        },
+        {
+          "gen": 5,
+          "best_length": 537.962527,
+          "elapsed_ms": 1
+        },
+        {
+          "gen": 6,
+          "best_length": 537.962527,
+          "elapsed_ms": 1
+        },
+        {
+          "gen": 7,
+          "best_length": 533.517739,
+          "elapsed_ms": 1
         },
         {
           "gen": 8,
-          "best_length": 371.15,
-          "elapsed_ms": 150
+          "best_length": 481.648827,
+          "elapsed_ms": 2
+        },
+        {
+          "gen": 9,
+          "best_length": 481.648827,
+          "elapsed_ms": 2
+        },
+        {
+          "gen": 10,
+          "best_length": 452.930108,
+          "elapsed_ms": 2
+        },
+        {
+          "gen": 11,
+          "best_length": 452.930108,
+          "elapsed_ms": 2
+        },
+        {
+          "gen": 12,
+          "best_length": 452.930108,
+          "elapsed_ms": 3
+        },
+        {
+          "gen": 13,
+          "best_length": 421.889632,
+          "elapsed_ms": 3
         },
         {
           "gen": 14,
-          "best_length": 362.29,
-          "elapsed_ms": 230
+          "best_length": 421.889632,
+          "elapsed_ms": 3
+        },
+        {
+          "gen": 15,
+          "best_length": 414.374922,
+          "elapsed_ms": 3
+        },
+        {
+          "gen": 16,
+          "best_length": 386.557272,
+          "elapsed_ms": 4
+        },
+        {
+          "gen": 17,
+          "best_length": 386.557272,
+          "elapsed_ms": 4
+        },
+        {
+          "gen": 18,
+          "best_length": 386.557272,
+          "elapsed_ms": 4
+        },
+        {
+          "gen": 19,
+          "best_length": 386.557272,
+          "elapsed_ms": 4
+        },
+        {
+          "gen": 20,
+          "best_length": 386.557272,
+          "elapsed_ms": 5
+        },
+        {
+          "gen": 21,
+          "best_length": 386.557272,
+          "elapsed_ms": 5
         },
         {
           "gen": 22,
-          "best_length": 355.39,
-          "elapsed_ms": 320
+          "best_length": 386.557272,
+          "elapsed_ms": 5
+        },
+        {
+          "gen": 23,
+          "best_length": 386.557272,
+          "elapsed_ms": 5
+        },
+        {
+          "gen": 24,
+          "best_length": 386.557272,
+          "elapsed_ms": 6
+        },
+        {
+          "gen": 25,
+          "best_length": 386.557272,
+          "elapsed_ms": 6
+        },
+        {
+          "gen": 26,
+          "best_length": 386.557272,
+          "elapsed_ms": 6
+        },
+        {
+          "gen": 27,
+          "best_length": 386.557272,
+          "elapsed_ms": 6
+        },
+        {
+          "gen": 28,
+          "best_length": 386.557272,
+          "elapsed_ms": 7
+        },
+        {
+          "gen": 29,
+          "best_length": 370.686142,
+          "elapsed_ms": 7
+        },
+        {
+          "gen": 30,
+          "best_length": 370.686142,
+          "elapsed_ms": 7
         },
         {
           "gen": 31,
-          "best_length": 350.47,
-          "elapsed_ms": 430
+          "best_length": 370.686142,
+          "elapsed_ms": 7
         },
         {
-          "gen": 44,
-          "best_length": 347.51,
-          "elapsed_ms": 540
+          "gen": 32,
+          "best_length": 331.302769,
+          "elapsed_ms": 8
         },
         {
-          "gen": 60,
-          "best_length": 346.53,
-          "elapsed_ms": 640
+          "gen": 33,
+          "best_length": 331.302769,
+          "elapsed_ms": 8
+        },
+        {
+          "gen": 34,
+          "best_length": 331.302769,
+          "elapsed_ms": 8
+        },
+        {
+          "gen": 35,
+          "best_length": 311.427617,
+          "elapsed_ms": 8
+        },
+        {
+          "gen": 36,
+          "best_length": 311.427617,
+          "elapsed_ms": 9
+        },
+        {
+          "gen": 37,
+          "best_length": 311.427617,
+          "elapsed_ms": 9
+        },
+        {
+          "gen": 38,
+          "best_length": 311.427617,
+          "elapsed_ms": 9
+        },
+        {
+          "gen": 39,
+          "best_length": 311.427617,
+          "elapsed_ms": 9
+        },
+        {
+          "gen": 40,
+          "best_length": 311.427617,
+          "elapsed_ms": 10
         }
       ]
     },
     {
       "key": "llm_one_shot",
-      "label": "GPT-5.5 single attempt",
-      "provider": "GPT-5.5",
-      "tour": [
-        "c1",
-        "c2",
-        "c3",
-        "c4",
-        "c2",
-        "c5",
-        "c14",
-        "c6",
-        "c8",
-        "c9",
-        "c10",
-        "c15",
-        "c13",
-        "c12",
-        "c11"
-      ],
-      "length": 366.99,
+      "label": "GPT-5.5 one-shot",
+      "provider": "frontier",
+      "tour": null,
+      "length": null,
       "gap_pct": null,
-      "time_ms": 1820,
+      "time_ms": 48109,
       "llm_calls": 1,
       "valid": false,
-      "invalid_reason": "It repeats c2 and never visits c7, so this is not a tour of the 15 cities.",
-      "convergence": [
-        {
-          "iter": 1,
-          "best_length": 366.99,
-          "elapsed_ms": 1820
-        }
-      ]
+      "invalid_reason": "frontier responses returned empty output",
+      "convergence": []
     },
     {
       "key": "geneai",
-      "label": "GeneAI",
-      "provider": "CREAO + Veri",
+      "label": "GeneAI (Veri + CREAO)",
+      "provider": "veri+creao",
       "tour": [
-        "c1",
-        "c2",
-        "c3",
-        "c4",
-        "c5",
-        "c14",
-        "c6",
-        "c7",
-        "c8",
-        "c9",
-        "c10",
-        "c15",
-        "c13",
-        "c12",
-        "c11"
+        0,
+        1,
+        5,
+        6,
+        7,
+        8,
+        3,
+        4,
+        2,
+        10,
+        9,
+        11,
+        12,
+        13,
+        14
       ],
-      "length": 323.59,
-      "gap_pct": 0,
-      "time_ms": 8640,
-      "llm_calls": 14,
+      "length": 498.161689,
+      "gap_pct": 61.4689,
+      "time_ms": 95530,
+      "llm_calls": 16,
       "valid": true,
       "invalid_reason": null,
       "convergence": [
         {
-          "gen": 1,
-          "best_length": 375.36,
-          "elapsed_ms": 280
-        },
-        {
-          "gen": 2,
-          "best_length": 363.23,
-          "elapsed_ms": 720
-        },
-        {
-          "gen": 3,
-          "best_length": 352.71,
-          "elapsed_ms": 1400
-        },
-        {
-          "gen": 4,
-          "best_length": 343.81,
-          "elapsed_ms": 2300
-        },
-        {
-          "gen": 5,
-          "best_length": 336.53,
-          "elapsed_ms": 3400
-        },
-        {
-          "gen": 6,
-          "best_length": 330.87,
-          "elapsed_ms": 4700
-        },
-        {
-          "gen": 8,
-          "best_length": 326.83,
-          "elapsed_ms": 6100
-        },
-        {
-          "gen": 10,
-          "best_length": 323.59,
-          "elapsed_ms": 7400
-        },
-        {
-          "gen": 12,
-          "best_length": 323.59,
-          "elapsed_ms": 8640
+          "gen": 0,
+          "best_length": 498.161689,
+          "elapsed_ms": 95527
         }
       ]
     }
   ],
   "heldout": {
-    "n": 20,
+    "n": 5,
     "instances": [
       {
-        "id": "tsp15-01",
-        "optimum_length": 213.3,
-        "methods": {
+        "seed": 1501,
+        "optimum_length": 383.835771,
+        "by_method": {
           "held_karp": {
+            "length": 383.835771,
             "gap_pct": 0,
-            "time_ms": 2789,
+            "time_ms": 139,
             "valid": true
           },
           "classic_ga": {
-            "gap_pct": 0,
-            "time_ms": 489,
+            "length": 418.474417,
+            "gap_pct": 9.0243,
+            "time_ms": 10,
             "valid": true
           },
           "llm_one_shot": {
+            "length": null,
             "gap_pct": null,
-            "time_ms": 2382,
+            "time_ms": 44934,
             "valid": false
           },
           "geneai": {
-            "gap_pct": 0,
-            "time_ms": 7269,
+            "length": 643.363138,
+            "gap_pct": 67.6142,
+            "time_ms": 11735,
             "valid": true
           }
         }
       },
       {
-        "id": "tsp15-02",
-        "optimum_length": 272.5,
-        "methods": {
+        "seed": 1502,
+        "optimum_length": 332.925297,
+        "by_method": {
           "held_karp": {
+            "length": 332.925297,
             "gap_pct": 0,
-            "time_ms": 3967,
+            "time_ms": 143,
             "valid": true
           },
           "classic_ga": {
-            "gap_pct": 0,
-            "time_ms": 439,
+            "length": 388.26483,
+            "gap_pct": 16.6222,
+            "time_ms": 10,
             "valid": true
           },
           "llm_one_shot": {
+            "length": null,
             "gap_pct": null,
-            "time_ms": 1544,
+            "time_ms": 40224,
             "valid": false
           },
           "geneai": {
-            "gap_pct": 0,
-            "time_ms": 8024,
+            "length": 646.176833,
+            "gap_pct": 94.0906,
+            "time_ms": 7992,
             "valid": true
           }
         }
       },
       {
-        "id": "tsp15-03",
-        "optimum_length": 230.8,
-        "methods": {
+        "seed": 1503,
+        "optimum_length": 357.75645,
+        "by_method": {
           "held_karp": {
+            "length": 357.75645,
             "gap_pct": 0,
-            "time_ms": 2585,
+            "time_ms": 153,
             "valid": true
           },
           "classic_ga": {
-            "gap_pct": 0,
-            "time_ms": 291,
+            "length": 409.091909,
+            "gap_pct": 14.3493,
+            "time_ms": 10,
             "valid": true
           },
           "llm_one_shot": {
-            "gap_pct": 16.12,
-            "time_ms": 1912,
-            "valid": true
-          },
-          "geneai": {
-            "gap_pct": 0,
-            "time_ms": 7512,
-            "valid": true
-          }
-        }
-      },
-      {
-        "id": "tsp15-04",
-        "optimum_length": 193.8,
-        "methods": {
-          "held_karp": {
-            "gap_pct": 0,
-            "time_ms": 3990,
-            "valid": true
-          },
-          "classic_ga": {
-            "gap_pct": 9.55,
-            "time_ms": 726,
-            "valid": true
-          },
-          "llm_one_shot": {
+            "length": null,
             "gap_pct": null,
-            "time_ms": 2182,
+            "time_ms": 44599,
             "valid": false
           },
           "geneai": {
-            "gap_pct": 0,
-            "time_ms": 6444,
+            "length": 650.846929,
+            "gap_pct": 81.9246,
+            "time_ms": 32972,
             "valid": true
           }
         }
       },
       {
-        "id": "tsp15-05",
-        "optimum_length": 247.2,
-        "methods": {
+        "seed": 1504,
+        "optimum_length": 336.699987,
+        "by_method": {
           "held_karp": {
+            "length": 336.699987,
             "gap_pct": 0,
-            "time_ms": 1944,
+            "time_ms": 144,
             "valid": true
           },
           "classic_ga": {
-            "gap_pct": 4.84,
-            "time_ms": 360,
+            "length": 384.395854,
+            "gap_pct": 14.1657,
+            "time_ms": 10,
             "valid": true
           },
           "llm_one_shot": {
+            "length": null,
             "gap_pct": null,
-            "time_ms": 3058,
+            "time_ms": 44666,
             "valid": false
           },
           "geneai": {
-            "gap_pct": 0,
-            "time_ms": 6722,
+            "length": 683.644132,
+            "gap_pct": 103.0425,
+            "time_ms": 17692,
             "valid": true
           }
         }
       },
       {
-        "id": "tsp15-06",
-        "optimum_length": 263.6,
-        "methods": {
+        "seed": 1505,
+        "optimum_length": 340.761473,
+        "by_method": {
           "held_karp": {
+            "length": 340.761473,
             "gap_pct": 0,
-            "time_ms": 2696,
+            "time_ms": 146,
             "valid": true
           },
           "classic_ga": {
-            "gap_pct": 6.78,
-            "time_ms": 582,
+            "length": 390.593116,
+            "gap_pct": 14.6236,
+            "time_ms": 11,
             "valid": true
           },
           "llm_one_shot": {
-            "gap_pct": 6.96,
-            "time_ms": 2892,
-            "valid": true
-          },
-          "geneai": {
-            "gap_pct": 0,
-            "time_ms": 9409,
-            "valid": true
-          }
-        }
-      },
-      {
-        "id": "tsp15-07",
-        "optimum_length": 201.2,
-        "methods": {
-          "held_karp": {
-            "gap_pct": 0,
-            "time_ms": 2220,
-            "valid": true
-          },
-          "classic_ga": {
-            "gap_pct": 2.22,
-            "time_ms": 744,
-            "valid": true
-          },
-          "llm_one_shot": {
+            "length": null,
             "gap_pct": null,
-            "time_ms": 2993,
+            "time_ms": 40945,
             "valid": false
           },
           "geneai": {
-            "gap_pct": 0,
-            "time_ms": 9129,
-            "valid": true
-          }
-        }
-      },
-      {
-        "id": "tsp15-08",
-        "optimum_length": 272.2,
-        "methods": {
-          "held_karp": {
-            "gap_pct": 0,
-            "time_ms": 3823,
-            "valid": true
-          },
-          "classic_ga": {
-            "gap_pct": 1.51,
-            "time_ms": 698,
-            "valid": true
-          },
-          "llm_one_shot": {
-            "gap_pct": null,
-            "time_ms": 1872,
-            "valid": false
-          },
-          "geneai": {
-            "gap_pct": 0,
-            "time_ms": 6570,
-            "valid": true
-          }
-        }
-      },
-      {
-        "id": "tsp15-09",
-        "optimum_length": 281,
-        "methods": {
-          "held_karp": {
-            "gap_pct": 0,
-            "time_ms": 3424,
-            "valid": true
-          },
-          "classic_ga": {
-            "gap_pct": 3.24,
-            "time_ms": 697,
-            "valid": true
-          },
-          "llm_one_shot": {
-            "gap_pct": 16.74,
-            "time_ms": 2174,
-            "valid": true
-          },
-          "geneai": {
-            "gap_pct": 0,
-            "time_ms": 7447,
-            "valid": true
-          }
-        }
-      },
-      {
-        "id": "tsp15-10",
-        "optimum_length": 262.8,
-        "methods": {
-          "held_karp": {
-            "gap_pct": 0,
-            "time_ms": 3863,
-            "valid": true
-          },
-          "classic_ga": {
-            "gap_pct": 4.01,
-            "time_ms": 291,
-            "valid": true
-          },
-          "llm_one_shot": {
-            "gap_pct": null,
-            "time_ms": 3414,
-            "valid": false
-          },
-          "geneai": {
-            "gap_pct": 0,
-            "time_ms": 8564,
-            "valid": true
-          }
-        }
-      },
-      {
-        "id": "tsp15-11",
-        "optimum_length": 200.7,
-        "methods": {
-          "held_karp": {
-            "gap_pct": 0,
-            "time_ms": 2445,
-            "valid": true
-          },
-          "classic_ga": {
-            "gap_pct": 9.68,
-            "time_ms": 791,
-            "valid": true
-          },
-          "llm_one_shot": {
-            "gap_pct": null,
-            "time_ms": 2620,
-            "valid": false
-          },
-          "geneai": {
-            "gap_pct": 0,
-            "time_ms": 7159,
-            "valid": true
-          }
-        }
-      },
-      {
-        "id": "tsp15-12",
-        "optimum_length": 276.9,
-        "methods": {
-          "held_karp": {
-            "gap_pct": 0,
-            "time_ms": 2463,
-            "valid": true
-          },
-          "classic_ga": {
-            "gap_pct": 8.95,
-            "time_ms": 703,
-            "valid": true
-          },
-          "llm_one_shot": {
-            "gap_pct": 15.67,
-            "time_ms": 2667,
-            "valid": true
-          },
-          "geneai": {
-            "gap_pct": 0,
-            "time_ms": 7948,
-            "valid": true
-          }
-        }
-      },
-      {
-        "id": "tsp15-13",
-        "optimum_length": 312.3,
-        "methods": {
-          "held_karp": {
-            "gap_pct": 0,
-            "time_ms": 2835,
-            "valid": true
-          },
-          "classic_ga": {
-            "gap_pct": 5.8,
-            "time_ms": 683,
-            "valid": true
-          },
-          "llm_one_shot": {
-            "gap_pct": null,
-            "time_ms": 2844,
-            "valid": false
-          },
-          "geneai": {
-            "gap_pct": 0,
-            "time_ms": 8324,
-            "valid": true
-          }
-        }
-      },
-      {
-        "id": "tsp15-14",
-        "optimum_length": 292.2,
-        "methods": {
-          "held_karp": {
-            "gap_pct": 0,
-            "time_ms": 3983,
-            "valid": true
-          },
-          "classic_ga": {
-            "gap_pct": 5.35,
-            "time_ms": 400,
-            "valid": true
-          },
-          "llm_one_shot": {
-            "gap_pct": null,
-            "time_ms": 2952,
-            "valid": false
-          },
-          "geneai": {
-            "gap_pct": 0,
-            "time_ms": 6645,
-            "valid": true
-          }
-        }
-      },
-      {
-        "id": "tsp15-15",
-        "optimum_length": 280.5,
-        "methods": {
-          "held_karp": {
-            "gap_pct": 0,
-            "time_ms": 4025,
-            "valid": true
-          },
-          "classic_ga": {
-            "gap_pct": 2.4,
-            "time_ms": 478,
-            "valid": true
-          },
-          "llm_one_shot": {
-            "gap_pct": 13.28,
-            "time_ms": 3142,
-            "valid": true
-          },
-          "geneai": {
-            "gap_pct": 0,
-            "time_ms": 7254,
-            "valid": true
-          }
-        }
-      },
-      {
-        "id": "tsp15-16",
-        "optimum_length": 187.2,
-        "methods": {
-          "held_karp": {
-            "gap_pct": 0,
-            "time_ms": 2419,
-            "valid": true
-          },
-          "classic_ga": {
-            "gap_pct": 2.24,
-            "time_ms": 292,
-            "valid": true
-          },
-          "llm_one_shot": {
-            "gap_pct": null,
-            "time_ms": 1527,
-            "valid": false
-          },
-          "geneai": {
-            "gap_pct": 0,
-            "time_ms": 8165,
-            "valid": true
-          }
-        }
-      },
-      {
-        "id": "tsp15-17",
-        "optimum_length": 312,
-        "methods": {
-          "held_karp": {
-            "gap_pct": 0,
-            "time_ms": 2735,
-            "valid": true
-          },
-          "classic_ga": {
-            "gap_pct": 4.33,
-            "time_ms": 320,
-            "valid": true
-          },
-          "llm_one_shot": {
-            "gap_pct": null,
-            "time_ms": 2839,
-            "valid": false
-          },
-          "geneai": {
-            "gap_pct": 0.47,
-            "time_ms": 10812,
-            "valid": true
-          }
-        }
-      },
-      {
-        "id": "tsp15-18",
-        "optimum_length": 250.2,
-        "methods": {
-          "held_karp": {
-            "gap_pct": 0,
-            "time_ms": 2409,
-            "valid": true
-          },
-          "classic_ga": {
-            "gap_pct": 3.71,
-            "time_ms": 562,
-            "valid": true
-          },
-          "llm_one_shot": {
-            "gap_pct": 19.69,
-            "time_ms": 1980,
-            "valid": true
-          },
-          "geneai": {
-            "gap_pct": 1.53,
-            "time_ms": 8208,
-            "valid": true
-          }
-        }
-      },
-      {
-        "id": "tsp15-19",
-        "optimum_length": 289,
-        "methods": {
-          "held_karp": {
-            "gap_pct": 0,
-            "time_ms": 2524,
-            "valid": true
-          },
-          "classic_ga": {
-            "gap_pct": 6.48,
-            "time_ms": 730,
-            "valid": true
-          },
-          "llm_one_shot": {
-            "gap_pct": null,
-            "time_ms": 3361,
-            "valid": false
-          },
-          "geneai": {
-            "gap_pct": 1.63,
-            "time_ms": 7334,
-            "valid": true
-          }
-        }
-      },
-      {
-        "id": "tsp15-20",
-        "optimum_length": 276.2,
-        "methods": {
-          "held_karp": {
-            "gap_pct": 0,
-            "time_ms": 3311,
-            "valid": true
-          },
-          "classic_ga": {
-            "gap_pct": 5.84,
-            "time_ms": 354,
-            "valid": true
-          },
-          "llm_one_shot": {
-            "gap_pct": null,
-            "time_ms": 2320,
-            "valid": false
-          },
-          "geneai": {
-            "gap_pct": 0.37,
-            "time_ms": 7788,
+            "length": 712.44034,
+            "gap_pct": 109.073,
+            "time_ms": 19450,
             "valid": true
           }
         }
@@ -841,30 +574,30 @@
     ],
     "summary": {
       "held_karp": {
-        "mean_gap_pct": 0,
-        "optimal_hits": 20,
-        "mean_time_ms": 3023,
-        "valid_count": 20
+        "mean_gap_pct": 0.0,
+        "optimal_hits": 5,
+        "mean_time_ms": 145,
+        "valid_count": 5
       },
       "classic_ga": {
-        "mean_gap_pct": 4.35,
-        "optimal_hits": 3,
-        "mean_time_ms": 532,
-        "valid_count": 20
+        "mean_gap_pct": 13.757,
+        "optimal_hits": 0,
+        "mean_time_ms": 10,
+        "valid_count": 5
       },
       "llm_one_shot": {
-        "mean_gap_pct": 14.74,
+        "mean_gap_pct": null,
         "optimal_hits": 0,
-        "mean_time_ms": 2534,
-        "valid_count": 6
+        "mean_time_ms": 43074,
+        "valid_count": 0
       },
       "geneai": {
-        "mean_gap_pct": 0.2,
-        "optimal_hits": 16,
-        "mean_time_ms": 7836,
-        "valid_count": 20
+        "mean_gap_pct": 91.149,
+        "optimal_hits": 0,
+        "mean_time_ms": 17968,
+        "valid_count": 5
       }
     }
   },
-  "notes": "Sample. One 15-city Euclidean map for layout, plus 20 held-out maps. Distances are straight-line. Held-Karp's tour is the optimum. This is not a recorded GeneAI run. Replace this file with the real tsp_benchmark.json."
+  "notes": "Fifteen Euclidean cities in [0, 100], drawn from random.Random(seed) and rounded to 4 decimals. The showcase instance is seed 1500. Held-out seeds are [1501, 1502, 1503, 1504, 1505]. The traditional method is Held-Karp dynamic programming. optimum is that same search, not a second run, and there is no nearest-neighbor arm. classic_ga is a seeded permutation GA with population 24, 40 generations, order crossover, and swap mutation. It does not call a model. llm_one_shot is one frontier call with the coordinates. An illegal tour stays illegal. geneai is the shared evolution controller. Mock uses the mock providers. Hybrid uses Veri for most proposals and CREAO for the strategist slots, with about 5 generations and a 240s wall on the showcase instance. Held-out hybrid runs use 2 generations and a 180s wall. The controller will not start a generation that cannot finish inside one provider timeout, so a slow call can finish fewer generations than the cap. A TSP genome is a permutation. Swap and 2-opt are the mutations. OX and ERX are the crossovers. GeneAI repairs an invalid city list before scoring and logs it. The one-shot arm does not. Dedup hashes the canonical cycle (city 0 first, then the lexicographically smaller direction). Train, validation, and test all score the same instance. Fitness is negative tour length. time_ms is wall clock."
 }

@@ -802,7 +802,6 @@
           "fitness": -1.320807
         },
         "aggregate": {
-          "n_cases": 18,
           "avg_completion_min": 10.1518,
           "p95_wait_min": 17.8341,
           "sla_misses": 177,
@@ -810,13 +809,14 @@
           "energy_kwh": 78.7322,
           "makespan_min": 44.5773,
           "capacity_violations": 0,
-          "fitness": -1.5499
+          "fitness": -1.549921,
+          "n_cases": 18
         },
         "behavior_origin": {
-          "genome_id": "g0051",
+          "id": "g0051",
           "provider": "creao",
           "operator": "crossover",
-          "generation": 5
+          "generation": 4
         }
       },
       {
@@ -1180,7 +1180,6 @@
           "fitness": -1.506634
         },
         "aggregate": {
-          "n_cases": 18,
           "avg_completion_min": 10.2448,
           "p95_wait_min": 18.9927,
           "sla_misses": 167,
@@ -1188,7 +1187,8 @@
           "energy_kwh": 79.8224,
           "makespan_min": 46.3941,
           "capacity_violations": 0,
-          "fitness": -1.6983
+          "fitness": -1.698261,
+          "n_cases": 18
         }
       },
       {
@@ -1542,15 +1542,21 @@
           "fitness": -1.319767
         },
         "aggregate": {
-          "n_cases": 18,
           "avg_completion_min": 10.3123,
-          "p95_wait_min": 18.9162,
+          "p95_wait_min": 18.9161,
           "sla_misses": 175,
           "hard_deadline_misses": 175,
-          "energy_kwh": 80.3998,
+          "energy_kwh": 80.3997,
           "makespan_min": 45.9963,
           "capacity_violations": 0,
-          "fitness": -1.601
+          "fitness": -1.600963,
+          "n_cases": 18
+        },
+        "behavior_origin": {
+          "id": "g0004",
+          "provider": "baseline",
+          "operator": "seed",
+          "generation": 0
         }
       },
       {
@@ -1904,15 +1910,21 @@
           "fitness": -1.705556
         },
         "aggregate": {
-          "n_cases": 18,
-          "avg_completion_min": 10.6431,
+          "avg_completion_min": 10.6432,
           "p95_wait_min": 19.3392,
           "sla_misses": 183,
           "hard_deadline_misses": 181,
           "energy_kwh": 84.0032,
           "makespan_min": 46.1355,
           "capacity_violations": 0,
-          "fitness": -1.7206
+          "fitness": -1.720602,
+          "n_cases": 18
+        },
+        "behavior_origin": {
+          "id": "g0001",
+          "provider": "baseline",
+          "operator": "seed",
+          "generation": 0
         }
       }
     ]

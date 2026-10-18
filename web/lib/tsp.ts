@@ -20,7 +20,8 @@ export interface TspMethod {
   label: string;
   provider: string;
   tour: string[];
-  length: number;
+  /** null when the method returned no tour (for example an empty model reply). */
+  length: number | null;
   gap_pct: number | null;
   time_ms: number;
   llm_calls: number;
@@ -103,8 +104,9 @@ function parseMethod(value: unknown): TspMethod {
     key: row.key as TspMethodKey,
     label: row.label,
     provider: row.provider,
-    tour: tourOf(row.tour, row.key),
-    length: num(row.length, `${row.key} length`),
+    // The engine writes tour: null and length: null for an arm that returned no tour.
+    tour: row.tour == null && row.valid === false ? [] : tourOf(row.tour, row.key),
+    length: row.length == null && row.valid === false ? null : num(row.length, `${row.key} length`),
     gap_pct: row.gap_pct == null ? null : num(row.gap_pct, `${row.key} gap`),
     time_ms: num(row.time_ms, `${row.key} time`),
     llm_calls: num(row.llm_calls, `${row.key} calls`),
@@ -149,6 +151,7 @@ export function parseTsp(raw: unknown): TspFile {
     }
   }
   const held = methods.find((method) => method.key === "held_karp")!;
+  if (held.length == null) throw new Error("Held-Karp must return a tour.");
   const optimum: TspOptimum = { tour: held.tour.slice(), length: held.length, time_ms: held.time_ms };
   const heldout = asRecord(data.heldout);
   if (!heldout || typeof heldout.n !== "number") throw new Error("TSP file is missing the held-out count.");

@@ -25,8 +25,8 @@
       {
         "key": "champion",
         "label": "GeneAI champion",
-        "provider": "veri",
-        "genome_id": "g0003",
+        "provider": "creao",
+        "genome_id": "g0016",
         "feasible": true,
         "infeasible_reason": null,
         "items": [
@@ -40,21 +40,21 @@
             "source": "recorded"
           },
           {
-            "id": "bu_019",
-            "name": "Men's lululemon Puff Puff Shoe",
-            "role": "shoes",
-            "price_usd": 128.0,
-            "url": "https://shop.lululemon.com/p/m-lululemon-puff-puff-shoe/b7060r39kx?fp=1&color=80902",
-            "image_url": "https://images.lululemon.com/is/image/lululemon/LM9BAVS_080902_2?wid=1280&op_usm=0.5,2,10,0&fmt=jpeg&qlt=75,1&fit=constrain,0&op_sharpen=0&resMode=sharp2&iccEmbed=0&printRes=72",
-            "source": "recorded"
-          },
-          {
             "id": "bu_030",
             "name": "Men's Steady State SuperLoft Short 8\"",
             "role": "bottom",
             "price_usd": 68.0,
             "url": "https://shop.lululemon.com/p/mens-steady-state-superloft-short-8/pdi2s1jkd8?fp=1&color=76950",
             "image_url": "https://images.lululemon.com/is/image/lululemon/LM7C97S_076950_2?wid=1280&op_usm=0.5,2,10,0&fmt=jpeg&qlt=75,1&fit=constrain,0&op_sharpen=0&resMode=sharp2&iccEmbed=0&printRes=72",
+            "source": "recorded"
+          },
+          {
+            "id": "bu_019",
+            "name": "Men's lululemon Puff Puff Shoe",
+            "role": "shoes",
+            "price_usd": 128.0,
+            "url": "https://shop.lululemon.com/p/m-lululemon-puff-puff-shoe/b7060r39kx?fp=1&color=80902",
+            "image_url": "https://images.lululemon.com/is/image/lululemon/LM9BAVS_080902_2?wid=1280&op_usm=0.5,2,10,0&fmt=jpeg&qlt=75,1&fit=constrain,0&op_sharpen=0&resMode=sharp2&iccEmbed=0&printRes=72",
             "source": "recorded"
           }
         ],
@@ -68,11 +68,17 @@
           "Under budget by $86.00 (spend $254.00 of $340.00, efficiency 0.25)"
         ],
         "aggregate": {
+          "score": 0.314312,
+          "n_feasible": 3,
           "n_shoppers": 3,
-          "feasible_count": 3,
-          "score_mean": 0.3143,
-          "total_usd_mean": 254.0,
-          "budget_usd_mean": 300.0
+          "mean_total_usd": 254.0,
+          "mean_budget_usd": 300.0
+        },
+        "behavior_origin": {
+          "id": "g0016",
+          "provider": "creao",
+          "operator": "mutation",
+          "generation": 1
         }
       },
       {
@@ -80,52 +86,87 @@
         "label": "GPT-5.5 one-shot",
         "provider": "openai",
         "genome_id": null,
-        "feasible": true,
-        "infeasible_reason": null,
+        "feasible": false,
+        "infeasible_reason": "over budget 392.00 > 340.00",
         "items": [
           {
-            "id": "bu_001",
-            "name": "Repper Short-Sleeve Shirt",
+            "id": "bu_003",
+            "name": "Soft Jersey Short-Sleeve Shirt",
             "role": "top",
             "price_usd": 58.0,
-            "url": "https://shop.lululemon.com/p/repper-short-sleeve-shirt/hhbz0zj40k?fp=1&color=74110",
-            "image_url": "https://images.lululemon.com/is/image/lululemon/LM3FYYS_074110_2?wid=1280&op_usm=0.5,2,10,0&fmt=jpeg&qlt=75,1&fit=constrain,0&op_sharpen=0&resMode=sharp2&iccEmbed=0&printRes=72",
+            "url": "https://shop.lululemon.com/p/soft-jersey-short-sleeve-shirt/zhn4p5ranv?fp=1&color=80640",
+            "image_url": "https://images.lululemon.com/is/image/lululemon/LM3ES3S_080640_2?wid=1280&op_usm=0.5,2,10,0&fmt=jpeg&qlt=75,1&fit=constrain,0&op_sharpen=0&resMode=sharp2&iccEmbed=0&printRes=72",
             "source": "recorded"
           },
           {
-            "id": "bu_034",
-            "name": "Soft Jersey Short 5\"",
+            "id": "bu_037",
+            "name": "Pace Breaker Linerless Short 7\"",
             "role": "bottom",
             "price_usd": 68.0,
-            "url": "https://shop.lululemon.com/p/soft-jersey-short-5/wke6bm8shp?fp=1&color=76994",
-            "image_url": "https://images.lululemon.com/is/image/lululemon/LM7BI2S_076994_2?wid=1280&op_usm=0.5,2,10,0&fmt=jpeg&qlt=75,1&fit=constrain,0&op_sharpen=0&resMode=sharp2&iccEmbed=0&printRes=72",
+            "url": "https://shop.lululemon.com/p/pace-breaker-short-linerless-7-update/jd2tq0pqw6?fp=1&color=76996",
+            "image_url": "https://images.lululemon.com/is/image/lululemon/LM7BC6S_076996_2?wid=1280&op_usm=0.5,2,10,0&fmt=jpeg&qlt=75,1&fit=constrain,0&op_sharpen=0&resMode=sharp2&iccEmbed=0&printRes=72",
             "source": "recorded"
           },
           {
-            "id": "bu_011",
-            "name": "Men's Split Shift Running Shoe",
+            "id": "bu_013",
+            "name": "Men's Wildfeel Trail Running Shoe",
             "role": "shoes",
-            "price_usd": 158.0,
-            "url": "https://shop.lululemon.com/p/mens-split-shift-running-shoe/f1xsu22ay5?fp=1&color=80945",
-            "image_url": "https://images.lululemon.com/is/image/lululemon/LM9B76S_080945_2?wid=1280&op_usm=0.5,2,10,0&fmt=jpeg&qlt=75,1&fit=constrain,0&op_sharpen=0&resMode=sharp2&iccEmbed=0&printRes=72",
+            "price_usd": 168.0,
+            "url": "https://shop.lululemon.com/p/mens-wildfeel-trail-running-shoe/u86hgdfsxm?fp=1&color=75571",
+            "image_url": "https://images.lululemon.com/is/image/lululemon/LM9B75S_075571_2?wid=1280&op_usm=0.5,2,10,0&fmt=jpeg&qlt=75,1&fit=constrain,0&op_sharpen=0&resMode=sharp2&iccEmbed=0&printRes=72",
+            "source": "recorded"
+          },
+          {
+            "id": "bu_023",
+            "name": "New Crew Backpack 22L Updated",
+            "role": "accessory",
+            "price_usd": 98.0,
+            "url": "https://shop.lululemon.com/p/new-crew-backpack-22l-updated/dypq8c44ry?fp=1&color=74789",
+            "image_url": "https://images.lululemon.com/is/image/lululemon/LU9CLES_074789_2?wid=1280&op_usm=0.5,2,10,0&fmt=jpeg&qlt=75,1&fit=constrain,0&op_sharpen=0&resMode=sharp2&iccEmbed=0&printRes=72",
             "source": "recorded"
           }
         ],
-        "total_usd": 284.0,
-        "score": 0.458137,
+        "total_usd": 392.0,
+        "score": null,
         "why": [
-          "Style match 0.17: 1/3 items share bright tags ['athletic', 'bright']",
-          "Occasion fit 0.17: 1/3 items match ['dinner', 'gym']",
-          "Bright colors: 3/3 items (component 1.00)",
-          "Availability confidence 1.00",
-          "Under budget by $56.00 (spend $284.00 of $340.00, efficiency 0.16)"
+          "over budget 392.00 > 340.00"
         ],
+        "attempted_output": {
+          "family": "campus_uniform",
+          "items": [
+            {
+              "color_id": "catalog_default",
+              "product_id": "bu_003",
+              "role": "top",
+              "size": "M"
+            },
+            {
+              "color_id": "catalog_default",
+              "product_id": "bu_037",
+              "role": "bottom",
+              "size": "M"
+            },
+            {
+              "color_id": "catalog_default",
+              "product_id": "bu_013",
+              "role": "shoes",
+              "size": "9"
+            },
+            {
+              "color_id": "catalog_default",
+              "product_id": "bu_023",
+              "role": "accessory",
+              "size": "One Size"
+            }
+          ],
+          "styling_notes": "A clean campus-ready outfit with a balanced top, versatile bottom, comfortable shoes, and one simple accessory to make the look feel intentional without overcomplicating it."
+        },
         "aggregate": {
+          "score": null,
+          "n_feasible": 0,
           "n_shoppers": 3,
-          "feasible_count": 2,
-          "score_mean": 0.4317,
-          "total_usd_mean": 284.0,
-          "budget_usd_mean": 300.0
+          "mean_total_usd": 392.0,
+          "mean_budget_usd": 300.0
         }
       },
       {
@@ -183,18 +224,24 @@
           "Under budget by $118.00 (spend $222.00 of $340.00, efficiency 0.35)"
         ],
         "aggregate": {
+          "score": 0.30844,
+          "n_feasible": 3,
           "n_shoppers": 3,
-          "feasible_count": 3,
-          "score_mean": 0.3084,
-          "total_usd_mean": 222.0,
-          "budget_usd_mean": 300.0
+          "mean_total_usd": 222.0,
+          "mean_budget_usd": 300.0
+        },
+        "behavior_origin": {
+          "id": "g0002",
+          "provider": "baseline",
+          "operator": "seed",
+          "generation": 0
         }
       }
     ]
   },
   "schema": "geneai-showcase-v1",
   "domain": "shopping",
-  "run_id": "run_98ab1e30e830",
-  "export_integrity_sha256": "a89a1813290b160f0970fb86369b6e515162dd67fafef5e67a683105b10373ef",
+  "run_id": "run_3e3e1a33c38d",
+  "export_integrity_sha256": "f03a3522b99d8d1f4c0a87c188b5c832213403b201e1a12cf9bd51584ecc5aec",
   "split": "test"
 }

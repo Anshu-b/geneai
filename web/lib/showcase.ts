@@ -52,6 +52,8 @@ export interface ShoppingAggregate {
 }
 
 export interface BehaviorOrigin {
+  /** Engine (geneai_core/showcase.py) writes `id`; older files used `genome_id`. */
+  id?: string | null;
   genome_id?: string | null;
   provider: string;
   operator?: string;
@@ -162,8 +164,31 @@ export function parseShowcase(raw: unknown): ShowcaseFile {
     if (!shopping || !shopper || !Array.isArray(shopping.outfits)) {
       throw new Error("Shopping showcase is missing the shopper or outfits.");
     }
+    for (const outfit of shopping.outfits) {
+      const card = asRecord(outfit);
+      if (card) card.aggregate = normalizeShoppingAggregate(card.aggregate);
+    }
   }
   return raw as ShowcaseFile;
+}
+
+/** The engine builder writes score / n_feasible / mean_total_usd / mean_budget_usd. Accept both shapes. */
+function normalizeShoppingAggregate(value: unknown): ShoppingAggregate | null {
+  const row = asRecord(value);
+  if (!row) return null;
+  const pick = (...keys: string[]) => {
+    for (const key of keys) if (typeof row[key] === "number") return row[key] as number;
+    return null;
+  };
+  const n = pick("n_shoppers");
+  if (n == null) return null;
+  return {
+    n_shoppers: n,
+    feasible_count: pick("feasible_count", "n_feasible") ?? 0,
+    score_mean: pick("score_mean", "score"),
+    total_usd_mean: pick("total_usd_mean", "mean_total_usd") ?? 0,
+    budget_usd_mean: pick("budget_usd_mean", "mean_budget_usd") ?? 0,
+  };
 }
 
 export function isSampleShowcase(file: ShowcaseFile): boolean {
@@ -253,10 +278,11 @@ export function providerLabel(provider: string | undefined): string {
 export function originCredit(provider: string | undefined, origin: BehaviorOrigin | null | undefined): string | null {
   if (!origin?.provider) return null;
   if ((provider || "").toLowerCase() === origin.provider.toLowerCase()) return null;
-  const id = origin.genome_id ? ` ${origin.genome_id}` : "";
+  const genomeId = origin.id ?? origin.genome_id;
+  const id = genomeId ? ` ${genomeId}` : "";
   const operator = origin.operator || "variation";
   const generation = origin.generation ?? 0;
-  return `Found by ${providerLabel(origin.provider)} ${operator}${id}, rediscovered in gen ${generation}.`;
+  return `Found by ${providerLabel(origin.provider)} ${operator}${id} in gen ${generation}.`;
 }
 
 export function caseMissCount(policy: CloudPolicy): number {
