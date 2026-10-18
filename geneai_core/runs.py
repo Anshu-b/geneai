@@ -13,7 +13,8 @@ from geneai_core.domains.cloud import CLOUD_SEARCH_CEILING, CloudSchedulingAdapt
 from geneai_core.domains.shopping import RECORDED_CATALOG_PATH, ShoppingAdapter, load_catalog, shopping_objective, write_recorded_catalog
 from geneai_core.domains.toy import ToyOptimizationAdapter
 from geneai_core.domains.tsp import TspAdapter, tsp_objective
-from geneai_core.domains.liquid import LiquidAdapter, liquid_objective
+from geneai_core.domains.liquid import LiquidAdapter as LiquidV1Adapter, liquid_objective as liquid_v1_objective
+from geneai_core.domains.liquid_v2 import LiquidAdapter, liquid_objective
 from geneai_core.experiments import build_providers, toy_objective
 from geneai_core.providers.base import CredentialsError
 from geneai_core.providers.browser_use import BrowserUseClient, browser_use_blocker_message
@@ -41,6 +42,8 @@ def make_adapter(domain: str, *, seed: int, shopping_constraints: dict[str, Any]
         return adapter, tsp_objective(adapter)
     if domain == "liquid":
         return LiquidAdapter(seed=seed), liquid_objective()
+    if domain == "liquid_v1":
+        return LiquidV1Adapter(seed=seed), liquid_v1_objective()
     raise SystemExit(f"unknown domain {domain!r}. Use toy, cloud, shopping, tsp, or liquid.")
 
 
@@ -188,8 +191,8 @@ def _split_note(domain: str, *, catalog_source: str | None = None) -> str:
         )
     if domain == "liquid":
         return (
-            "Train, validation, and test are disjoint fictional scenario variants of liquid-laptop-v1 "
-            "(3 train, 2 validation, 2 test: purchase size, savings balance, APR, market moves, MSFT basis). "
+            "Train, validation, and test are disjoint fictional scenario variants of liquid-laptop-v2 "
+            "(3 train, 2 validation, 2 test: purchase size, savings, SBL and card APRs, market moves, lot gains). "
             "Fitness is the mean of -(modeled cost + lambda x risk penalty) in dollars, lambda = 1. "
             "Champion selection uses validation only."
         )

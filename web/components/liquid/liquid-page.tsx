@@ -81,7 +81,7 @@ export function LiquidPage({ src, runSrc }: { src: string; runSrc: string }) {
         <div className="mt-6 max-w-3xl rounded-2xl border border-line bg-raise px-5 py-4" data-testid="liquid-request">
           <p className="kicker">The request</p>
           <p className="mt-2 text-lg leading-relaxed text-ivory">
-            “Pay for a $3,000 laptop. Keep at least $5,000 in savings, never sell my NVDA, and only borrow if it is actually cheaper. Over the next 90 days, which mix of my money costs me the least?”
+            “I need $6,000 for a laptop and a monitor setup. Keep at least $5,000 in savings and never sell my NVDA. I could sell stock (all of it is up, some short-term), draw a 7% line against stock I pledge, or use a 0% card that jumps to 24% after 60 days. Over 90 days, which mix costs me the least without leaving me exposed?”
           </p>
         </div>
         <p className="mt-3 max-w-3xl text-sm text-faint" data-testid="liquid-disclaimer">
@@ -113,7 +113,7 @@ function Body({ file }: { file: LiquidFile }) {
             <p className="kicker">Taxable stock lots</p>
             <table className="mt-2 w-full text-sm">
               <thead className="text-left text-faint">
-                <tr><th className="py-1 font-normal">Lot</th><th className="font-normal">Value</th><th className="font-normal">Paid</th><th className="font-normal">If sold</th></tr>
+                <tr><th className="py-1 font-normal">Lot</th><th className="font-normal">Value</th><th className="font-normal">Paid</th><th className="font-normal">If sold (90 days)</th></tr>
               </thead>
               <tbody className="font-mono">
                 {s.lots.map((lot) => {
@@ -124,7 +124,7 @@ function Body({ file }: { file: LiquidFile }) {
                       <td className="py-1.5 text-ivory">{lot.symbol}{locked ? <span className="ml-2 rounded bg-amber/15 px-1.5 text-[10px] uppercase text-amber">protected</span> : null}</td>
                       <td>{usd(lot.market_value_cents, 0)}</td>
                       <td>{usd(lot.basis_cents, 0)}</td>
-                      <td className={gain < 0 ? "text-teal" : "text-dim"}>{gain < 0 ? `${usd(-gain, 0)} loss · no tax` : `${usd(gain, 0)} gain · taxed ${(s.assumptions.long_term_gain_rate * 100).toFixed(0)}%`}</td>
+                      <td className="text-dim">{`${usd(gain, 0)} gain · ${lot.holding_period === "short" ? "short-term " + (s.assumptions.short_term_gain_rate * 100).toFixed(0) : "long-term " + (s.assumptions.long_term_gain_rate * 100).toFixed(0)}% tax`}{lot.dividend_yield ? ` · ${(lot.dividend_yield * 100).toFixed(1)}% dividend lost` : ""}</td>
                     </tr>
                   );
                 })}
@@ -132,17 +132,19 @@ function Body({ file }: { file: LiquidFile }) {
             </table>
           </div>
           <div className="rounded-2xl border border-dashed border-danger/50 p-4">
-            <p className="kicker">Credit line (a liability)</p>
-            <p className="mt-2 font-mono text-2xl text-ivory">up to {usd(s.credit.maximum_draw_cents, 0)}</p>
-            <p className="mt-1 text-sm text-dim">{(s.credit.apr * 100).toFixed(0)}% APR, hypothetically approved. Borrowing capacity is not money you own.</p>
+            <p className="kicker">Credit (liabilities, not assets)</p>
+            <p className="mt-2 text-sm text-ivory"><span className="font-mono">Securities-backed line · {(s.sbl.apr * 100).toFixed(0)}% APR</span></p>
+            <p className="text-xs text-dim">Draw up to {(s.sbl.max_ltv * 100).toFixed(0)}% of the lots you pledge (max {usd(s.sbl.maximum_draw_cents, 0)}). Pledged lots are locked: they can&apos;t be sold. A 30% drop past {(s.sbl.max_ltv * 100).toFixed(0)}% LTV is a margin call.</p>
+            <p className="mt-2 text-sm text-ivory"><span className="font-mono">0%-intro card · up to {usd(s.intro_card.limit_cents, 0)}</span></p>
+            <p className="text-xs text-dim">{(s.intro_card.intro_apr * 100).toFixed(0)}% for {s.intro_card.intro_days} days, then {(s.intro_card.apr_after * 100).toFixed(0)}% APR.</p>
           </div>
         </div>
-        <p className="mt-3 text-sm text-dim">Total assets {usd(totalAssetsCents(s), 0)} (credit excluded). Purchase {usd(s.purchase_cents, 0)} over {s.horizon_days} days.</p>
+        <p className="mt-3 text-sm text-dim">Total assets {usd(totalAssetsCents(s), 0)} (credit excluded; pledged lots are still assets, just locked). Purchase {usd(s.purchase_cents, 0)} over {s.horizon_days} days. No source is free.</p>
       </section>
 
       <section className="mt-14" data-testid="liquid-compare">
         <h2 className="font-serif text-3xl tracking-tight text-ivory">GeneAI&apos;s policy vs a single GPT-5.5 answer</h2>
-        <p className="mt-2 max-w-3xl text-sm text-dim">Both are funding <em>policies</em>, run through the same deterministic evaluator on the default $3,000 laptop. Single attempt vs evolutionary search, not compute-matched.</p>
+        <p className="mt-2 max-w-3xl text-sm text-dim">Both are funding <em>policies</em>, run through the same deterministic evaluator on the default $6,000 purchase. Single attempt vs evolutionary search, not compute-matched.</p>
         <div className="mt-6 grid gap-5 lg:grid-cols-2">
           {geneai ? <CandidatePanel c={geneai} accent /> : null}
           {oneShot ? <CandidatePanel c={oneShot} /> : null}
@@ -191,7 +193,7 @@ function AllocationBar({ e }: { e: ScenarioEval }) {
   const entries = Object.entries(e.allocation_cents).filter(([, v]) => v > 0);
   return (
     <div className="mt-5">
-      <p className="kicker">Where the $3,000 comes from</p>
+      <p className="kicker">Where the money comes from</p>
       <div className="mt-2 flex h-9 w-full overflow-hidden rounded-lg border border-line" role="img" aria-label="Funding allocation">
         {entries.map(([k, v]) => (
           <div key={k} style={{ width: `${(v / total) * 100}%`, background: SOURCE_COLOR[k] ?? "var(--prov-other)" }} className="flex items-center justify-center overflow-hidden whitespace-nowrap px-1 font-mono text-[11px] text-black/80" title={`${SOURCE_LABEL[k] ?? k} ${usd(v, 0)}`}>
@@ -212,7 +214,9 @@ function Ledger({ e }: { e: ScenarioEval }) {
   const rows: [string, number][] = [
     ["Tax on realized gains", e.costs_cents.estimated_tax],
     ["Savings interest given up", e.costs_cents.foregone_savings_interest],
-    ["Borrowing interest", e.costs_cents.borrowing_interest],
+    ["Dividends given up on sold lots", e.costs_cents.dividends_forgone],
+    ["Securities-backed line interest", e.costs_cents.sbl_interest],
+    ["Card interest (after the 0% period)", e.costs_cents.card_interest],
     ["Fees", e.costs_cents.fees],
   ];
   return (
@@ -226,15 +230,15 @@ function Ledger({ e }: { e: ScenarioEval }) {
           <tr className="border-t border-ivory/30"><td className="py-1.5 font-sans text-ivory">Total modeled cost</td><td className="text-right text-lg text-ivory">{usd(e.total_cost_cents)}</td></tr>
         </tbody>
       </table>
-      {e.realized_loss_cents > 0 ? <p className="mt-1 text-xs text-faint">Realizes a {usd(e.realized_loss_cents)} loss. Counted as $0 benefit: no tax rebate is assumed.</p> : null}
+      {e.stress.post_purchase.pledged_lots?.length ? <p className="mt-1 text-xs text-faint">Pledged as collateral (locked, not sold): {e.stress.post_purchase.pledged_lots.map((l) => SOURCE_LABEL[l] ?? l).join(", ")} · {usd(e.stress.post_purchase.pledged_cents ?? 0, 0)}.</p> : null}
     </div>
   );
 }
 
 function Stress({ e }: { e: ScenarioEval }) {
   const items = [
-    { k: "rate", t: e.stress.rate_shock.label, ok: e.stress.rate_shock.passed, d: e.stress.rate_shock.passed ? "no borrowing exposed" : `+${usd(e.stress.rate_shock.extra_interest_cents)} interest` },
-    { k: "market", t: e.stress.market_drop.label, ok: e.stress.market_drop.passed, d: e.stress.market_drop.loan_to_value_after_drop == null ? "no loan against the portfolio" : `loan-to-value ${(e.stress.market_drop.loan_to_value_after_drop * 100).toFixed(0)}%` },
+    { k: "rate", t: e.stress.rate_shock.label, ok: e.stress.rate_shock.passed, d: e.stress.rate_shock.passed ? "no rate exposure" : `+${usd(e.stress.rate_shock.extra_interest_cents)} interest` },
+    { k: "market", t: e.stress.market_drop.label, ok: e.stress.market_drop.passed, d: e.stress.market_drop.loan_to_value_after_drop == null ? "nothing borrowed against stock" : `line at ${(e.stress.market_drop.loan_to_value_after_drop * 100).toFixed(0)}% LTV after the drop${e.stress.market_drop.margin_call ? " · margin call" : ""}` },
     { k: "emergency", t: e.stress.emergency.label, ok: e.stress.emergency.passed, d: `${usd(e.stress.emergency.cash_above_reserve_cents, 0)} cash above the reserve` },
   ];
   return (
@@ -256,8 +260,8 @@ function Stress({ e }: { e: ScenarioEval }) {
 function Scoreboard({ file }: { file: LiquidFile }) {
   const rows = file.candidates;
   const cols: { key: string; label: string; hint: string; better: "lower" | "higher"; get: (c: LiquidCandidate) => number | null | undefined; fmt: (v: number) => string }[] = [
-    { key: "cost", label: "Modeled cost", hint: "default laptop", better: "lower", get: (c) => c.base?.total_cost_cents, fmt: (v) => usd(v) },
-    { key: "risk", label: "Risk penalty", hint: "default laptop", better: "lower", get: (c) => c.base?.risk_penalty_cents, fmt: (v) => usd(v) },
+    { key: "cost", label: "Modeled cost", hint: "default $6,000", better: "lower", get: (c) => c.base?.total_cost_cents, fmt: (v) => usd(v) },
+    { key: "risk", label: "Risk penalty", hint: "default $6,000", better: "lower", get: (c) => c.base?.risk_penalty_cents, fmt: (v) => usd(v) },
     { key: "stress", label: "Stress passed", hint: "of 3", better: "higher", get: (c) => c.base?.stress_passes, fmt: (v) => `${v}/3` },
     { key: "val", label: "Validation fitness", hint: `${file.variants.validation?.length ?? 0} scenarios`, better: "higher", get: (c) => c.splits?.validation.fitness, fmt: (v) => v.toFixed(2) },
     { key: "test", label: "Held-out test fitness", hint: `${file.variants.test?.length ?? 0} unseen scenarios`, better: "higher", get: (c) => c.splits?.test.fitness, fmt: (v) => v.toFixed(2) },
@@ -402,7 +406,7 @@ function Assumptions({ file }: { file: LiquidFile }) {
         <li>Cost: {String(file.model.cost_formula)}.</li>
         <li>Risk (shown separately): {String(file.model.risk_formula)}.</li>
         <li>{String(file.model.fitness_formula)}</li>
-        <li>Simple interest over 90 days. One flat 20% long-term gains rate. Wash sales, loss limits, state tax, and expected stock returns are not modeled.</li>
+        <li>Simple interest over 90 days. Flat 30% short-term and 20% long-term gains rates. Wash sales, state tax, price moves on unsold stock, and expected stock returns are not modeled. The card&apos;s 24% applies only to the 30 days after its 0% period inside the horizon.</li>
         <li>Train, validation, and test are fictional variants: {Object.entries(file.variants).map(([split, rows]) => `${split}: ${rows.map((r) => r.note).join("; ")}`).join(" · ")}.</li>
         <li>Evaluator {file.run.evaluator_version}. Fictional data. Simplified tax model. Not financial advice. Selling appreciated stock can trigger tax; borrowing creates debt.</li>
       </ul>

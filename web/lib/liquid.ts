@@ -8,6 +8,8 @@ export interface LiquidLot {
   basis_cents: number;
   holding_period: string;
   sellable: boolean;
+  dividend_yield?: number;
+  pledgeable?: boolean;
 }
 
 export interface LiquidScenario {
@@ -17,16 +19,17 @@ export interface LiquidScenario {
   checking: { balance_cents: number; minimum_cents: number };
   savings: { balance_cents: number; minimum_cents: number; apy: number };
   lots: LiquidLot[];
-  credit: { approved: boolean; maximum_draw_cents: number; apr: number; fee_cents: number };
+  sbl: { approved: boolean; apr: number; max_ltv: number; maximum_draw_cents: number; fee_cents: number };
+  intro_card: { approved: boolean; intro_apr: number; intro_days: number; apr_after: number; limit_cents: number; fee_cents: number };
   assumptions: { long_term_gain_rate: number; short_term_gain_rate: number; loss_tax_benefit_mode: string; trade_fee_cents: number };
-  constraints: { allow_borrowing: boolean; max_modeled_borrow_cents: number; protect: string[] };
+  constraints: { allow_borrowing: boolean; protect: string[] };
 }
 
 export interface StressResult {
   rate_shock: { label: string; passed: boolean; extra_interest_cents: number };
-  market_drop: { label: string; passed: boolean; portfolio_after_drop_cents: number; loan_to_value_after_drop: number | null };
+  market_drop: { label: string; passed: boolean; portfolio_after_drop_cents: number; loan_to_value_after_drop: number | null; margin_call?: boolean };
   emergency: { label: string; passed: boolean; cash_above_reserve_cents: number; shortfall_cents: number };
-  post_purchase: { checking_cents: number; savings_cents: number };
+  post_purchase: { checking_cents: number; savings_cents: number; pledged_cents?: number; pledged_lots?: string[] };
 }
 
 export interface ScenarioEval {
@@ -34,7 +37,7 @@ export interface ScenarioEval {
   feasible: boolean;
   constraint_violations: string[];
   allocation_cents: Record<string, number>;
-  costs_cents: { estimated_tax: number; foregone_savings_interest: number; borrowing_interest: number; fees: number };
+  costs_cents: { estimated_tax: number; foregone_savings_interest: number; dividends_forgone: number; sbl_interest: number; card_interest: number; fees: number };
   total_cost_cents: number;
   realized_gain_cents: number;
   realized_loss_cents: number;
@@ -122,20 +125,22 @@ export const SOURCE_LABEL: Record<string, string> = {
   checking: "Checking",
   savings: "Savings",
   "nvda-1": "NVDA",
+  "amzn-1": "AMZN",
   "aapl-1": "AAPL",
-  "msft-1": "MSFT",
   "etf-1": "ETF",
-  credit: "Credit line",
+  sbl: "Securities-backed line",
+  intro_card: "0%-intro card",
 };
 
 export const SOURCE_COLOR: Record<string, string> = {
   checking: "var(--amber)",
   savings: "var(--teal)",
   "aapl-1": "var(--violet)",
-  "msft-1": "var(--edge-rose)",
+  "amzn-1": "var(--edge-rose)",
   "etf-1": "var(--prov-veri)",
   "nvda-1": "var(--faint)",
-  credit: "var(--danger)",
+  sbl: "var(--danger)",
+  intro_card: "var(--prov-creao)",
 };
 
 export type Better = "lower" | "higher";

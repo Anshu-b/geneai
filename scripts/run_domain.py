@@ -28,7 +28,7 @@ from geneai_core.runs import execute_domain_run  # noqa: E402
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="GeneAI domain run on the unchanged controller")
-    parser.add_argument("--domain", choices=["cloud", "shopping", "toy", "tsp", "liquid"], required=True)
+    parser.add_argument("--domain", choices=["cloud", "shopping", "toy", "tsp", "liquid", "liquid_v1"], required=True)
     parser.add_argument("--mode", choices=["mock", "hybrid", "live"], required=True)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--population", type=int, default=24)

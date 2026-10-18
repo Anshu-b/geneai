@@ -20,14 +20,14 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from geneai_core.domains.liquid import (  # noqa: E402
+from geneai_core.domains.liquid_v2 import (  # noqa: E402
     BASELINE_LABELS,
-    COLLATERAL_FAIL_PENALTY_CENTS,
     EMERGENCY_CENTS,
     EMERGENCY_SHORTFALL_RATE,
     EVALUATOR_VERSION,
     LAMBDA,
-    MAX_LTV_AFTER_DROP,
+    MARGIN_CALL_PENALTY_CENTS,
+    MAX_LTV,
     SPLITS,
     LiquidAdapter,
     base_scenario,
@@ -93,7 +93,9 @@ def main() -> None:
     champ_id = export["champion_id"]
     champ = genomes[champ_id]
 
-    candidates = [_candidate(adapter, "geneai", "GeneAI champion", "veri+creao (hybrid run)", champ["payload"])]
+    contributed = sorted({g["provider"] for g in export["genomes"]} & {"veri", "creao"})
+    hybrid_label = "hybrid run · genomes from " + (" + ".join(contributed) or "no model") + (" · CREAO wrote none" if "creao" not in contributed else "")
+    candidates = [_candidate(adapter, "geneai", "GeneAI champion", hybrid_label, champ["payload"])]
     one = export.get("one_shot_baseline") or {}
     one_payload = one.get("payload") if isinstance(one.get("payload"), dict) else None
     one_label = "GPT-5.5 one-shot"
@@ -173,10 +175,10 @@ def main() -> None:
             "lambda": LAMBDA,
             "emergency_cents": EMERGENCY_CENTS,
             "emergency_shortfall_rate": EMERGENCY_SHORTFALL_RATE,
-            "collateral_fail_penalty_cents": COLLATERAL_FAIL_PENALTY_CENTS,
-            "max_ltv_after_drop": MAX_LTV_AFTER_DROP,
-            "cost_formula": "tax on realized gains (20% long-term, losses earn no rebate) + savings interest foregone (4% APY x 90/365) + borrowing interest (APR x 90/365) + fees",
-            "risk_formula": "5% of any shortfall below $2,000 of cash above the savings floor + extra interest if APR rises 5 points + $100 if a loan exceeds 50% loan-to-value after a 30% market drop",
+            "margin_call_penalty_cents": MARGIN_CALL_PENALTY_CENTS,
+            "max_ltv": MAX_LTV,
+            "cost_formula": "tax on realized gains (30% short-term, 20% long-term) + savings interest foregone (4.5% APY x 90/365) + dividends forgone on sold lots + securities-backed line interest (7% APR x 90/365) + card interest (0% for 60 days, then 24% for 30 days) + fees",
+            "risk_formula": "5% of any shortfall below $2,000 of cash above the savings floor + extra interest if every credit APR rises 5 points + $150 margin call if a 30% market drop pushes the securities-backed line over 50% loan-to-value of the pledged lots",
             "fitness_formula": "fitness = -(modeled cost + lambda x risk penalty), lambda = 1. Mean over a split's scenario variants.",
         },
         "candidates": candidates,

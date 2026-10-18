@@ -15,7 +15,7 @@ describe("liquid", () => {
   it("reads the recorded run and keeps credit out of assets", () => {
     const file = parseLiquid(fixture);
     expect(file.mode).toBe("saved_run_replay");
-    expect(totalAssetsCents(file.scenario)).toBe(2_850_000);
+    expect(totalAssetsCents(file.scenario)).toBe(3_350_000);
     const geneai = file.candidates.find((c) => c.key === "geneai");
     expect(geneai?.valid).toBe(true);
     for (const c of file.candidates) {
