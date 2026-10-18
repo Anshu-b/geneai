@@ -70,13 +70,11 @@ def wrapper_schema(payload_schema: dict[str, Any]) -> dict[str, Any]:
 def seed_batch_note(*, count: int, avoid_hashes: list[str], temperature: float, sample_seed: int) -> str:
     """Tell a seed call to return several different genomes and to skip ones already kept."""
 
-    shown = ", ".join(avoid_hashes[:16]) if avoid_hashes else "(none yet)"
+    shown = ", ".join(avoid_hashes[:8]) if avoid_hashes else "none"
     return (
-        f"\nReturn {count} distinct candidates in one JSON object: "
-        '{"candidates":[{"payload":{...},"hypothesis":"..."}]}. '
-        "Change weights, tie-breaks, or class overrides so the payloads are not copies. "
-        f"Do not repeat these canonical hashes: {shown}. "
-        f"This call uses temperature {temperature} and sample seed {sample_seed}."
+        f"\nReturn {count} compact JSON candidates. hypothesis is one line. "
+        f"Do not repeat avoid_hashes ({shown}). "
+        f"temperature {temperature} sample_seed {sample_seed}."
     )
 
 

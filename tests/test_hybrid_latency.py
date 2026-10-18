@@ -15,6 +15,7 @@ from geneai_core.controller import EvolutionController
 from geneai_core.domains.cloud import CloudSchedulingAdapter, cloud_objective
 from geneai_core.domains.toy import ToyOptimizationAdapter
 from geneai_core.experiments import toy_objective
+from geneai_core.operators import parse_context
 from geneai_core.providers.mock import MockAgentProvider, MockModelProvider
 from geneai_core.schemas import EvolutionConfig
 from geneai_core.store import RunRepository
@@ -146,3 +147,43 @@ async def test_mocked_hybrid_latency_finishes_twelve_by_five(tmp_path) -> None:
     assert result.summary["champion_validation_fitness"] is not None
     assert elapsed < 360
     assert result.summary["budget"]["elapsed_seconds"] < 360
+
+
+class _TokenRateModel(MockModelProvider):
+    """25s of generation for every 400 completion tokens. Matches the measured L4 rate."""
+
+    async def propose(self, instruction, schema, *, call_id):
+        batch = int(parse_context(instruction).get("batch_size") or 1)
+        batch = max(1, min(2, batch))
+        await asyncio.sleep(25 * (400 * batch) / 400)
+        return await super().propose(instruction, schema, call_id=call_id)
+
+
+@pytest.mark.asyncio
+async def test_generations_finish_at_l4_token_rate(tmp_path) -> None:
+    repository = RunRepository(tmp_path)
+    started = time.perf_counter()
+    result = await EvolutionController().evolve(
+        objective=toy_objective(),
+        adapter=ToyOptimizationAdapter(seed=7),
+        config=EvolutionConfig(
+            seed=7,
+            population_size=4,
+            generations=2,
+            elite_count=1,
+            strategist_calls_per_generation=0,
+            max_concurrent_model_calls=4,
+            max_model_calls=40,
+            max_evaluations=80,
+            max_wall_seconds=900,
+        ),
+        providers={"model": _TokenRateModel(), "workflow": MockAgentProvider()},
+        mode="mock",
+        repository=repository,
+    )
+    elapsed = time.perf_counter() - started
+    assert result.generations_completed == 2
+    assert result.stop_reason == "generation_limit"
+    assert result.summary["champion_validation_fitness"] is not None
+    assert elapsed < 900
+    assert result.summary["budget"]["elapsed_seconds"] < 900

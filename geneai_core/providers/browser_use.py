@@ -34,7 +34,17 @@ CATALOG_SCHEMA: dict[str, Any] = {
             "items": {
                 "type": "object",
                 "additionalProperties": False,
-                "required": ["title", "price", "product_url", "image_url", "retailer", "availability"],
+                "required": [
+                    "title",
+                    "price",
+                    "product_url",
+                    "image_url",
+                    "retailer",
+                    "availability",
+                    "role",
+                    "colors",
+                    "style",
+                ],
                 "properties": {
                     "title": {"type": "string"},
                     "price": {"type": "number"},
@@ -42,8 +52,13 @@ CATALOG_SCHEMA: dict[str, Any] = {
                     "product_url": {"type": "string"},
                     "image_url": {"type": "string"},
                     "retailer": {"type": "string"},
-                    "role": {"type": "string"},
+                    "role": {
+                        "type": "string",
+                        "enum": ["top", "bottom", "shoes", "layer", "accessory"],
+                    },
                     "colors": {"type": "array", "items": {"type": "string"}},
+                    "style": {"type": "array", "items": {"type": "string"}},
+                    "occasions": {"type": "array", "items": {"type": "string"}},
                     "sizes": {"type": "array", "items": {"type": "string"}},
                     "availability": {"type": "string"},
                 },
@@ -109,9 +124,11 @@ class BrowserUseClient:
         if not catalog_url.startswith("https://") and not catalog_url.startswith("http://"):
             raise ProviderError("catalog_url must be an http(s) URL. No request was sent.")
         task = (
-            "Read the public catalog page and list apparel products you can actually open. "
+            "Read the public catalog page. Collect 30 to 40 products spread across roles. "
+            "Each role must be one of top, bottom, shoes, layer, accessory. "
+            "For every product return title, price, product_url, image_url, retailer, availability, "
+            "role, colors, and style tags. Include occasion tags when the page states them. "
             "Do not sign in, do not add to cart, and do not enter payment. "
-            "For each product return title, price, product_url, image_url, retailer, and availability. "
             "product_url and image_url must be the URLs you opened. "
             f"Page: {catalog_url}. Request: {query}"
         )

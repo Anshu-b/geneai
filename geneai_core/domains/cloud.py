@@ -419,6 +419,35 @@ def _rules(
     }
 
 
+# Measured by scripts/cloud_oracle_search.py (seed 42, cloud-scheduler-v3).
+# Not a GeneAI champion and not recomputed during a run.
+CLOUD_SEARCH_CEILING: dict[str, Any] = {
+    "label": "non-GeneAI reference",
+    "method": "random samples plus hill-climb on train, select on validation, test read once",
+    "source": "scripts/cloud_oracle_search.py",
+    "evaluator": "cloud-scheduler-v3",
+    "seed": 42,
+    "oracle": {
+        "train": -1.4307296154304623,
+        "validation": -1.5848065221180798,
+        "test": -1.581589322380942,
+    },
+    "deadline_weighted": {
+        "train": -1.5269014004674266,
+        "validation": -1.6344745961198561,
+        "test": -1.600963325837405,
+    },
+    "rounded": {
+        "oracle": {"train": -1.431, "validation": -1.585, "test": -1.582},
+        "deadline_weighted": {"train": -1.527, "validation": -1.634, "test": -1.601},
+    },
+    "note": (
+        "Search ceiling from a non-GeneAI reference run. "
+        "This row is not the champion of the evolutionary export it is attached to."
+    ),
+}
+
+
 def baseline_payload(name: str) -> dict[str, Any]:
     """The four hand policies written in the score DSL, not as Python branches."""
 

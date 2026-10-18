@@ -16,7 +16,7 @@ from typing import Any
 from geneai_core.domains.base import DomainAdapter
 from geneai_core.schemas import Evaluation, Genome, ObjectiveSpec
 
-ROLES = ("top", "bottom", "layer", "shoes")
+ROLES = ("top", "bottom", "layer", "shoes", "accessory")
 FAMILIES = ("neutral_layers", "campus_uniform", "bright_training")
 COLORS = ("catalog_default", "black", "bone", "sage", "navy", "neon")
 SIZES = ("S", "M", "L")
@@ -82,6 +82,54 @@ def write_recorded_catalog(catalog: dict[str, Any], path: Path | None = None) ->
     return target
 
 
+def _catalog_role(value: Any) -> str:
+    text = str(value or "").strip().lower().replace("-", "_").replace(" ", "_")
+    if text in ROLES:
+        return text
+    return "accessory"
+
+
+def _tag_list(value: Any) -> list[str]:
+    if isinstance(value, str):
+        parts = value.replace("/", ",").split(",")
+        return [part.strip().lower() for part in parts if part.strip()]
+    if isinstance(value, list):
+        return [str(part).strip().lower() for part in value if str(part).strip()]
+    return []
+
+
+def _style_tags(item: dict[str, Any]) -> list[str]:
+    tags = _tag_list(item.get("style") or item.get("styles") or item.get("style_tags"))
+    if tags:
+        return tags[:6]
+    title = str(item.get("title") or "").lower()
+    colors = [str(color).lower() for color in item.get("colors") or []]
+    found: list[str] = []
+    if any(word in title for word in ("train", "gym", "run", "sport", "track")):
+        found.append("athletic")
+    if any(color in {"neon", "red", "orange", "pink"} for color in colors):
+        found.append("bright")
+    if any(color in NEUTRAL for color in colors) or any(word in title for word in ("silk", "wool", "knit", "oxford")):
+        found.append("neutral")
+    return found[:6] or ["unspecified"]
+
+
+def _occasion_tags(item: dict[str, Any]) -> list[str]:
+    tags = _tag_list(item.get("occasions") or item.get("occasion"))
+    if tags:
+        return tags[:6]
+    title = str(item.get("title") or "").lower()
+    style = set(_style_tags(item))
+    found: list[str] = []
+    if "gym" in title or "athletic" in style:
+        found.append("gym")
+    if any(word in title for word in ("silk", "wool", "dinner", "blouse")):
+        found.append("dinner")
+    if any(word in title for word in ("campus", "oxford", "denim")):
+        found.append("campus")
+    return found[:6] or ["unspecified"]
+
+
 def _http_url(value: Any) -> bool:
     return isinstance(value, str) and (value.startswith("https://") or value.startswith("http://"))
 
@@ -105,7 +153,7 @@ def products_from_browser_output(output: Any, *, run_id: str, session_id: str | 
         if not isinstance(item, dict) or not _http_url(item.get("product_url")):
             dropped += 1
             continue
-        role = item.get("role") if item.get("role") in ROLES else "top"
+        role = _catalog_role(item.get("role"))
         price = item.get("price")
         if isinstance(price, bool) or not isinstance(price, (int, float)) or float(price) < 0:
             dropped += 1
@@ -124,8 +172,8 @@ def products_from_browser_output(output: Any, *, run_id: str, session_id: str | 
                 "role": role,
                 "colors": [str(color) for color in item.get("colors") or ["black"]][:6],
                 "sizes": [str(size) for size in item.get("sizes") or ["M"]][:6],
-                "style": ["neutral"],
-                "occasions": ["campus", "dinner"],
+                "style": _style_tags(item),
+                "occasions": _occasion_tags(item),
                 "availability": availability,
                 "source_product_url": item["product_url"],
             }
@@ -339,12 +387,31 @@ class ShoppingAdapter(DomainAdapter):
             if required_size and item.get("size") != required_size:
                 raise ValueError(f"size must be {required_size}")
 
+    def seeded_baselines(self) -> list[dict[str, Any]]:
+        outfits = _hand_baselines(self.catalog)
+        return [
+            {
+                "name": name,
+                "payload": payload,
+                "hypothesis": f"seeded baseline {name}",
+            }
+            for name, payload in outfits
+        ]
+
+    def oneshot_hint(self) -> str:
+        return (
+            "Choose 2 or 3 items and use each role at most once. "
+            "One item per role. A repeated role is invalid and will be reported as invalid."
+        )
+
     def seed_instructions(self, objective: ObjectiveSpec) -> str:
         return (
             "Propose an outfit JSON object with keys payload and hypothesis. "
-            "payload.items has 2 or 3 catalog products with distinct roles. "
-            "Use product_id values from the fixture catalog only. "
-            "color_id may be catalog_default. Do not invent product URLs.\n"
+            "payload.items has 2 or 3 catalog products. One item per role. "
+            "Never repeat a role. "
+            "Use product_id values from the catalog only. "
+            "color_id may be catalog_default. Do not invent product URLs. "
+            "hypothesis is one line.\n"
             f"Catalog ids: {sorted(self._by_id)}\n"
             f"Objective: {objective.prompt}"
         )
@@ -486,7 +553,7 @@ def shopping_objective(*, palette: str = "neutral", budget: float = 300.0, occas
     return ObjectiveSpec(
         domain="shopping",
         prompt=(
-            "Build a 2-3 piece outfit from the committed catalog, size M. "
+            "Build a 2-3 piece outfit from the catalog, size M, one item per role. "
             "Train, validation, and test are disjoint shopper profiles. "
             "Fitness on a split is the mean subjective score across that split's shoppers. "
             "Fixture rows have no product URL and are not purchasable."
@@ -494,6 +561,46 @@ def shopping_objective(*, palette: str = "neutral", budget: float = 300.0, occas
         constraints={"size": "M", "currency": "USD"},
         evaluation_version="shopping-outfit-v2",
     )
+
+
+def _hand_baselines(catalog: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
+    source = str(catalog.get("source") or "")
+    by_id = {str(item.get("product_id")): item for item in catalog.get("products") or []}
+    if source == "fixture" and {"fx_top_01", "fx_bottom_01", "fx_layer_01", "fx_top_03", "fx_bottom_03"} <= set(by_id):
+        return [("neutral_outfit", neutral_outfit()), ("gym_outfit", gym_outfit())]
+    by_role: dict[str, list[dict[str, Any]]] = {}
+    for product in catalog.get("products") or []:
+        if isinstance(product, dict) and product.get("role") in ROLES:
+            by_role.setdefault(str(product["role"]), []).append(product)
+    outfits: list[tuple[str, dict[str, Any]]] = []
+    for name, roles in (("neutral_outfit", ("top", "bottom", "layer")), ("gym_outfit", ("top", "bottom"))):
+        items = []
+        for role in roles:
+            choices = by_role.get(role) or []
+            if not choices:
+                items = []
+                break
+            product = choices[0 if name == "neutral_outfit" else min(1, len(choices) - 1)]
+            colors = list(product.get("colors") or [])
+            color = "catalog_default" if "catalog_default" in colors or not colors else str(colors[0])
+            sizes = list(product.get("sizes") or ["M"])
+            size = "M" if "M" in sizes else str(sizes[0])
+            items.append(
+                {"product_id": product["product_id"], "color_id": color, "size": size, "role": product["role"]}
+            )
+        if len(items) >= 2:
+            family = "neutral_layers" if name == "neutral_outfit" else "bright_training"
+            outfits.append(
+                (
+                    name,
+                    {
+                        "family": family,
+                        "items": items,
+                        "styling_notes": f"hand baseline {name} from catalog {catalog.get('catalog_id')}",
+                    },
+                )
+            )
+    return outfits
 
 
 def neutral_outfit() -> dict[str, Any]:

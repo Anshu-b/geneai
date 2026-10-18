@@ -35,6 +35,10 @@ EXAMPLE_BASE_URL = f"{VERI_ORIGIN}/v1/deployments/{EXAMPLE_DEPLOYMENT_ID}"
 VERI_CONCURRENCY_TARGET = 8
 VERI_COST_PER_HOUR_USD = 1.05
 VERI_WAKE_TIMEOUT_S = 180.0
+# L4 Qwen-7B generates about 16 tokens/s. A 400-token genome is ~25s.
+# 30s timed out every evolution call. 120s covers two compact genomes.
+VERI_REQUEST_TIMEOUT_S = 120.0
+VERI_TOKENS_PER_GENOME = 400
 
 
 def veri_deployment_base_url(deployment_id: str) -> str:
@@ -55,9 +59,10 @@ class VeriProvider(OpenAICompatibleProvider):
         model: str,
         client: Any | None = None,
         temperature: float = 0.2,
-        max_tokens: int = 800,
+        max_tokens: int = VERI_TOKENS_PER_GENOME,
         in_flight_limit: int = VERI_CONCURRENCY_TARGET,
         wake_timeout_s: float = VERI_WAKE_TIMEOUT_S,
+        request_timeout_s: float = VERI_REQUEST_TIMEOUT_S,
         sleeper: Any | None = None,
     ) -> None:
         if in_flight_limit < 1:
@@ -74,6 +79,7 @@ class VeriProvider(OpenAICompatibleProvider):
             mode="live",
             in_flight_limit=in_flight_limit,
             wake_timeout_s=wake_timeout_s,
+            request_timeout_s=request_timeout_s,
             sleeper=sleeper,
         )
 
@@ -89,6 +95,7 @@ class VeriProvider(OpenAICompatibleProvider):
                 f"VERI_MODEL defaults to {EXAMPLE_MODEL} when unset."
             )
         wake_timeout_s = float(os.environ.get("VERI_WAKE_TIMEOUT_SECONDS", str(VERI_WAKE_TIMEOUT_S)))
+        request_timeout_s = float(os.environ.get("VERI_TIMEOUT_SECONDS", str(VERI_REQUEST_TIMEOUT_S)))
         raw_limit = os.environ.get("VERI_CONCURRENCY", "").strip()
         in_flight_limit = int(raw_limit) if raw_limit else VERI_CONCURRENCY_TARGET
         return cls(
@@ -97,6 +104,7 @@ class VeriProvider(OpenAICompatibleProvider):
             model=model,
             in_flight_limit=in_flight_limit,
             wake_timeout_s=wake_timeout_s,
+            request_timeout_s=request_timeout_s,
         )
 
 
@@ -117,5 +125,7 @@ def veri_blocker_message() -> str:
             "Deployment: Qwen/Qwen2.5-7B-Instruct on vLLM, 1x L4-24GB, concurrency_target 8, about $1.05/hr.",
             "In-flight chat calls are capped at 8. 429 and 503 (deployment_waking) retry with Retry-After.",
             "A cold start answers 503 for a few minutes. Default wake budget is 180 seconds.",
+            "Each completion times out at VERI_TIMEOUT_SECONDS (default 120). This GPU is ~16 tokens/s.",
+            "Genome calls stay compact: at most 2 candidates, about 400 tokens each.",
         ]
     )

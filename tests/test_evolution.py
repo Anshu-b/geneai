@@ -201,6 +201,8 @@ async def test_strategist_slots_prefer_crossover_and_run_together(tmp_path: Path
             await release.wait()
             state["current"] -= 1
             proposal = await inner.run_workflow(workflow_name, inputs, call_id=call_id)
+            proposal.payload = dict(proposal.payload)
+            proposal.payload["description"] = f"strategist {call_id}"
             proposal.provider = "creao"
             proposal.provider_run_id = "0897c113-58b0-43bf-8a7c-e56f705efa24"
             proposal.extra.update(

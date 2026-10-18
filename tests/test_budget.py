@@ -33,7 +33,9 @@ async def test_model_call_cap_returns_partial_export(tmp_path: Path) -> None:
         mode="mock",
         repository=repository,
     )
-    assert result.status == "completed"
+    assert result.status == "degraded"
+    assert result.generations_completed == 0
+    assert result.summary["degraded_reason"]
     assert result.stop_reason == "max_model_calls"
     assert model.calls + workflow.calls <= 2
     assert result.summary["budget"]["model_calls"] <= 2
@@ -54,7 +56,8 @@ async def test_evaluation_cap_stops_new_evaluations(tmp_path: Path) -> None:
         mode="mock",
         repository=repository,
     )
-    assert result.status == "completed"
+    assert result.status == "degraded"
+    assert result.generations_completed == 0
     assert result.stop_reason == "max_evaluations"
     assert result.summary["budget"]["evaluations"] <= 2
     assert not any(item.data_split == "test" for item in repository.evaluations)

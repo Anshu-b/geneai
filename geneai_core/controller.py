@@ -25,6 +25,7 @@ from geneai_core.operators import (
     wrapper_schema,
 )
 from geneai_core.providers.base import Proposal, ProviderError
+from geneai_core.providers.mock import fill_schema
 from geneai_core.schemas import (
     PROMPT_VERSION,
     Evaluation,
@@ -45,7 +46,7 @@ from geneai_core.store import RunRepository
 
 # One seed call asks for several genomes. Temperatures rotate so repeated
 # calls are not samples from the same narrow distribution.
-_SEED_BATCH = 4
+_SEED_BATCH = 2
 _SEED_TEMPERATURES = (0.4, 0.8, 1.1, 0.6)
 
 
@@ -127,6 +128,8 @@ class EvolutionController:
         generations_completed = 0
         stop_reason = "generation_limit"
         status = "completed"
+        random_filled = 0
+        degraded_reason: str | None = None
         champion_id: str | None = None
         elite_preserved: list[dict[str, Any]] = []
 
@@ -398,7 +401,7 @@ class EvolutionController:
                 "parents": [item.payload for item in context_parents],
                 "invalid_payload": invalid_payload,
                 "batch_size": effective_batch,
-                "avoid_hashes": sorted(seen_hashes)[:32],
+                "avoid_hashes": sorted(seen_hashes)[:8],
             }
             if temperature is not None:
                 context["temperature"] = float(temperature)
@@ -579,6 +582,23 @@ class EvolutionController:
                         if len(population) >= config.population_size:
                             break
                         population.append(child)
+            if len(population) < config.population_size:
+                random_filled = _fill_random_seeds(
+                    adapter=adapter,
+                    objective=objective,
+                    config=config,
+                    population=population,
+                    budget=budget,
+                    accept_payload=accept_payload,
+                    evaluate_genome=evaluate_genome,
+                    counters=counters,
+                )
+                if random_filled:
+                    degraded_reason = (
+                        f"model seeding left the population short; "
+                        f"filled {random_filled} deterministic random genomes "
+                        f"(provider=random) after the hand-written baselines"
+                    )
             if not population:
                 status = "failed"
                 stop_reason = budget.exhausted_reason or "no_valid_seeds"
@@ -760,7 +780,13 @@ class EvolutionController:
                 evaluate_genome,
             )
             champion_id = None if champion is None else champion.genome.id
-            if status != "cancelled":
+            if status == "completed" and generations_completed == 0:
+                degraded_reason = degraded_reason or f"stopped before generation 1 ({stop_reason})"
+            if degraded_reason and status == "completed":
+                status = "degraded"
+            if status == "cancelled":
+                pass
+            else:
                 repository.emit(
                     "run.completed",
                     {
@@ -768,10 +794,12 @@ class EvolutionController:
                         "champion_id": champion_id,
                         "generations_completed": generations_completed,
                         "mode": mode,
+                        "status": status,
+                        "degraded_reason": degraded_reason,
                     },
                     provenance,
                 )
-            else:
+            if status == "cancelled":
                 repository.emit(
                     "run.cancelled",
                     {"stop_reason": "cancelled", "champion_id": champion_id},
@@ -802,6 +830,9 @@ class EvolutionController:
             elite_preserved,
             generations_completed,
         )
+        if degraded_reason:
+            summary["degraded_reason"] = degraded_reason
+            summary["status"] = "degraded"
         repository.finalize(
             status=status,
             stop_reason=stop_reason,
@@ -809,6 +840,67 @@ class EvolutionController:
             summary=summary,
         )
         return _result(repository, status, stop_reason, champion_id, generations_completed, summary)
+
+
+def _fill_random_seeds(
+    *,
+    adapter: DomainAdapter,
+    objective: ObjectiveSpec,
+    config: EvolutionConfig,
+    population: list[Individual],
+    budget: Budget,
+    accept_payload: Any,
+    evaluate_genome: Any,
+    counters: dict[str, int],
+) -> int:
+    """Deterministic schema fills so a short model seed does not end the run."""
+
+    rng = random.Random(config.seed + 17)
+    added = 0
+    attempts = 0
+    limit = max(8, config.population_size * 8)
+    while len(population) < config.population_size and attempts < limit and budget.allows_evaluation():
+        attempts += 1
+        raw = fill_schema(adapter.genome_schema(), rng)
+        if not isinstance(raw, dict):
+            continue
+        proposal = Proposal(
+            payload=raw,
+            hypothesis="deterministic random seed",
+            provider="random",
+            provider_run_id=f"random-{attempts}",
+            mode="random",
+            extra={"random_seed": True},
+        )
+        genome, _reason = accept_payload(
+            proposal,
+            operator="seed",
+            origin="seed",
+            parent_ids=[],
+            generation=0,
+            role="random_seed",
+            provider_role="random",
+        )
+        if genome is None:
+            continue
+        evaluation = evaluate_genome(genome, "train")
+        if evaluation is None:
+            continue
+        counters["seed"] += 1
+        population.append(Individual(genome=genome, evaluation=evaluation))
+        added += 1
+    del objective
+    return added
+
+
+def _provider_mode_note(mode: str | None, providers_meta: list[dict[str, Any]] | None) -> str:
+    rows = providers_meta or []
+    described = ", ".join(
+        f"{row.get('name') or 'provider'}={row.get('mode') or 'unknown'}" for row in rows
+    ) or "no providers recorded"
+    if mode == "mock":
+        return f"mode=mock. Providers: {described}. Mock calls are not sponsor execution."
+    return f"mode={mode or 'unknown'}. Providers: {described}."
 
 
 def _plan_variation(
@@ -1119,7 +1211,7 @@ def _summary(
         "elite_preserved": preserved_ids,
         "population_ids": [item.genome.id for item in population],
         "budget": budget.snapshot().model_dump(mode="json"),
-        "provider_mode_note": "provider_mode=mock is not sponsor execution",
+        "provider_mode_note": _provider_mode_note(repository.mode, repository.providers_meta),
     }
 
 

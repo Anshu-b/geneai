@@ -86,29 +86,27 @@ class OpenAICompatibleProvider:
     async def propose(self, instruction: str, schema: dict[str, Any], *, call_id: str) -> Proposal:
         started = time.perf_counter()
         context = parse_context(instruction)
-        batch_size = _positive_int(context.get("batch_size"), default=1, cap=8)
+        batch_size = _positive_int(context.get("batch_size"), default=1, cap=2)
         temperature = context.get("temperature")
         sample_seed = context.get("sample_seed")
+        token_cap = completion_token_cap(batch_size=batch_size, max_tokens=self.max_tokens)
         if batch_size > 1:
             system = (
-                f"You propose {batch_size} distinct candidate genomes. "
-                'Reply with one JSON object {"candidates":[{"payload":{...},"hypothesis":"..."}]}. '
-                "payload must match the schema. The payloads must not be copies. No markdown."
+                f"Return compact JSON only: {batch_size} distinct genomes. "
+                '{"candidates":[{"payload":{},"hypothesis":"one line"}]}. '
+                "hypothesis is one line. No markdown and no rationale."
             )
-            token_cap = min(3200, max(self.max_tokens, 800 * batch_size))
         else:
             system = (
-                "You propose one candidate genome. Reply with a single JSON object "
-                "containing keys payload and hypothesis. payload must match the schema. "
-                "No markdown."
+                "Return compact JSON only: one object with payload and hypothesis. "
+                "hypothesis is one line. No markdown and no rationale."
             )
-            token_cap = self.max_tokens
+        schema_text = prompt_schema_text(schema)
+        user = f"{instruction}\n\nJSON schema:\n{schema_text}"
+        user, schema_trimmed = trim_user_prompt(user, schema_text)
         messages = [
             {"role": "system", "content": system},
-            {
-                "role": "user",
-                "content": f"{instruction}\n\nJSON schema:\n{json.dumps(schema, sort_keys=True)}",
-            },
+            {"role": "user", "content": user},
         ]
         text, response, used_response_format = await self._complete(
             messages,
@@ -153,6 +151,10 @@ class OpenAICompatibleProvider:
                 "candidates": candidates if len(candidates) > 1 else [],
                 "temperature": self.temperature if temperature is None else float(temperature),
                 "sample_seed": None if sample_seed is None else int(sample_seed),
+                "prompt_chars": sum(len(item["content"]) for item in messages),
+                "prompt_tokens_estimate": estimate_tokens("".join(item["content"] for item in messages)),
+                "completion_token_cap": token_cap,
+                "schema_trimmed": schema_trimmed,
             },
         )
 
@@ -249,6 +251,80 @@ class OpenAICompatibleProvider:
     async def _sleep(self, delay: float) -> None:
         sleeper = self._sleeper or asyncio.sleep
         await sleeper(delay)
+
+
+def completion_token_cap(*, batch_size: int, max_tokens: int) -> int:
+    """About 400 generated tokens per genome, and at most two genomes per call."""
+
+    batch = max(1, min(2, int(batch_size)))
+    per_genome = min(400, max(1, int(max_tokens)))
+    return per_genome * batch
+
+
+def estimate_tokens(text: str) -> int:
+    return max(1, (len(text) + 3) // 4)
+
+
+def prompt_schema_text(schema: dict[str, Any]) -> str:
+    raw = json.dumps(schema, sort_keys=True, separators=(",", ":"))
+    if len(raw) <= 1500:
+        return raw
+    return json.dumps(_schema_sketch(schema), sort_keys=True, separators=(",", ":"))
+
+
+def trim_user_prompt(user: str, schema_text: str) -> tuple[str, bool]:
+    """Drop a repeated schema dump when the prompt is already large."""
+
+    if estimate_tokens(user) <= 900:
+        return user, False
+    marker = "\n\nJSON schema:\n"
+    if marker in user:
+        head = user.split(marker, 1)[0]
+        note = "\n\nSchema omitted: follow the keys already described. Compact JSON only."
+        if len(schema_text) > 400:
+            return head + note, True
+    if len(user) > 3600:
+        return user[:3600] + "\n…trimmed", True
+    return user, False
+
+
+def _schema_sketch(schema: dict[str, Any], depth: int = 0) -> Any:
+    if depth > 3:
+        return schema.get("type", "value")
+    if "const" in schema:
+        return {"const": schema["const"]}
+    if "enum" in schema:
+        values = schema["enum"]
+        if isinstance(values, list) and len(values) > 8:
+            values = values[:8]
+        return {"enum": values}
+    options = schema.get("anyOf") or schema.get("oneOf")
+    if isinstance(options, list):
+        shown = [_schema_sketch(item, depth + 1) if isinstance(item, dict) else item for item in options[:4]]
+        sketch: dict[str, Any] = {"anyOf": shown}
+        if len(options) > 4:
+            sketch["more"] = len(options) - 4
+        return sketch
+    if schema.get("type") == "object" or "properties" in schema:
+        props = schema.get("properties") or {}
+        return {
+            "type": "object",
+            "required": schema.get("required"),
+            "properties": {
+                key: _schema_sketch(value, depth + 1) if isinstance(value, dict) else value
+                for key, value in list(props.items())[:12]
+            },
+        }
+    if schema.get("type") == "array":
+        items = schema.get("items") or {}
+        return {
+            "type": "array",
+            "minItems": schema.get("minItems"),
+            "maxItems": schema.get("maxItems"),
+            "items": _schema_sketch(items, depth + 1) if isinstance(items, dict) else {},
+        }
+    kept = {key: schema[key] for key in ("type", "minimum", "maximum") if key in schema}
+    return kept or {"type": "value"}
 
 
 def _positive_int(value: Any, *, default: int, cap: int) -> int:

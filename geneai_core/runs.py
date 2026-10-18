@@ -9,15 +9,15 @@ from typing import Any
 from geneai_core.benchmark.oneshot import attach_baseline, frontier_blocker_message, run_frontier_oneshot
 from geneai_core.controller import EvolutionController
 from geneai_core.domains.base import DomainAdapter
-from geneai_core.domains.cloud import CloudSchedulingAdapter, cloud_objective
-from geneai_core.domains.shopping import ShoppingAdapter, shopping_objective, write_recorded_catalog
+from geneai_core.domains.cloud import CLOUD_SEARCH_CEILING, CloudSchedulingAdapter, cloud_objective
+from geneai_core.domains.shopping import RECORDED_CATALOG_PATH, ShoppingAdapter, load_catalog, shopping_objective, write_recorded_catalog
 from geneai_core.domains.toy import ToyOptimizationAdapter
 from geneai_core.experiments import build_providers, toy_objective
 from geneai_core.providers.base import CredentialsError
 from geneai_core.providers.browser_use import BrowserUseClient, browser_use_blocker_message
 from geneai_core.registry import DomainRegistry
 from geneai_core.schemas import EvolutionConfig, Genome, ObjectiveSpec, RunResult
-from geneai_core.store import RunRepository
+from geneai_core.store import RunRepository, export_integrity, verify_export
 
 
 def make_adapter(domain: str, *, seed: int, shopping_constraints: dict[str, Any] | None = None, catalog: dict[str, Any] | None = None) -> tuple[DomainAdapter, ObjectiveSpec]:
@@ -58,9 +58,10 @@ async def execute_domain_run(
     catalog_url: str | None = None,
     attach_oneshot: bool = True,
     max_wall_seconds: int = 900,
+    catalog: str | None = None,
 ) -> RunResult:
-    catalog = None
-    if domain == "shopping" and mode == "live":
+    loaded_catalog = _load_shopping_catalog(domain, catalog)
+    if domain == "shopping" and mode == "live" and loaded_catalog is None:
         if not catalog_url:
             raise SystemExit(
                 "BLOCKED: live shopping was not executed. No browser call was made.\n"
@@ -76,9 +77,8 @@ async def execute_domain_run(
             query="neutral and athletic apparel with visible prices, sizes, image URLs, retailer, and product page URLs",
         )
         write_recorded_catalog(catalog)
-    elif domain == "shopping":
-        catalog = None
-    adapter, objective = make_adapter(domain, seed=seed, catalog=catalog)
+        loaded_catalog = catalog
+    adapter, objective = make_adapter(domain, seed=seed, catalog=loaded_catalog)
     if hasattr(adapter, "bind_objective"):
         adapter.bind_objective(objective)  # type: ignore[attr-defined]
     DomainRegistry.register(adapter)
@@ -117,19 +117,61 @@ async def execute_domain_run(
             "reason": record.get("reason"),
         }
     result.summary["baselines"] = _baseline_report(adapter, objective)
-    result.summary["split_note"] = _split_note(domain)
+    catalog_source = None
+    if domain == "shopping":
+        catalog_source = str(getattr(adapter, "catalog", {}).get("source") or "fixture")
+    result.summary["split_note"] = _split_note(domain, catalog_source=catalog_source)
     result.summary["quant_domain"] = "skipped"
+    if domain == "cloud" and result.export_path:
+        _attach_export_field(result.export_path, "cloud_ceiling", CLOUD_SEARCH_CEILING)
+        result.summary["cloud_ceiling"] = CLOUD_SEARCH_CEILING
     _write_summary(result)
     return result
 
 
-def _split_note(domain: str) -> str:
+def _load_shopping_catalog(domain: str, catalog: str | None) -> dict[str, Any] | None:
+    if domain != "shopping" or not catalog or catalog == "fixture":
+        return None
+    if catalog == "recorded":
+        if not RECORDED_CATALOG_PATH.is_file():
+            raise SystemExit(
+                "BLOCKED: --catalog recorded was requested but "
+                f"{RECORDED_CATALOG_PATH} does not exist. "
+                "Run shopping --mode live --catalog-url once to cache a collection, "
+                "or pass a path. The fixture catalog was not substituted."
+            )
+        return load_catalog(RECORDED_CATALOG_PATH)
+    path = Path(catalog)
+    if not path.is_file():
+        raise SystemExit(f"BLOCKED: catalog file {catalog} does not exist. No fixture was substituted.")
+    return load_catalog(path)
+
+
+def _attach_export_field(export_path: Path | str, key: str, value: dict[str, Any]) -> None:
+    path = Path(export_path)
+    document = json.loads(path.read_text(encoding="utf-8"))
+    document[key] = value
+    document["integrity_sha256"] = export_integrity(document)
+    if not verify_export(document):
+        raise RuntimeError(f"export integrity failed after attaching {key}")
+    path.write_text(json.dumps(document, indent=2, sort_keys=True), encoding="utf-8")
+
+
+def _split_note(domain: str, *, catalog_source: str | None = None) -> str:
     if domain == "shopping":
+        source = catalog_source or "fixture"
+        purchasable = "Fixture rows have no product URL and are not purchasable." if source == "fixture" else (
+            "Recorded rows keep the URLs from the Browser Use collection. They are not a fixture."
+            if source == "recorded"
+            else f"Catalog source is {source}."
+        )
         return (
-            "Train, validation, and test are disjoint shopper profiles over one fixture catalog. "
+            f"Train, validation, and test are disjoint shopper profiles over one catalog "
+            f"(source={source}). "
             "Fitness is the mean subjective score on that split. "
             "The test shoppers are unread before champion.frozen. "
-            "Scores are not comparable to cloud fitness, and fixture rows are not purchasable."
+            "Scores are not comparable to cloud fitness. "
+            f"{purchasable}"
         )
     if domain == "cloud":
         return (

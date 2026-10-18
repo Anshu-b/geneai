@@ -42,6 +42,11 @@ def parse_args() -> argparse.Namespace:
         help="Stop after this many seconds. The current generation still finishes its evaluations, and the champion is scored on validation.",
     )
     parser.add_argument("--catalog-url", default=None, help="Required for shopping --mode live. No retailer default.")
+    parser.add_argument(
+        "--catalog",
+        default=None,
+        help="fixture, recorded, or a path. recorded replays data/catalogs/shopping_recorded.json and does not call Browser Use.",
+    )
     parser.add_argument("--out", default="runs")
     parser.add_argument("--skip-oneshot", action="store_true")
     return parser.parse_args()
@@ -68,6 +73,7 @@ def main() -> None:
                 max_wall_seconds=args.max_wall_seconds,
                 root=args.out,
                 catalog_url=args.catalog_url,
+                catalog=args.catalog,
                 attach_oneshot=not args.skip_oneshot,
             )
         )

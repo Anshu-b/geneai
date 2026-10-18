@@ -161,18 +161,31 @@ def debug_result_text(document: dict[str, Any]) -> str:
     return ""
 
 
+def _artifact_blob(item: dict[str, Any]) -> str:
+    return " ".join(str(item.get(key) or "") for key in ("id", "title", "url", "type")).lower()
+
+
+def _is_json_artifact(item: dict[str, Any]) -> bool:
+    blob = _artifact_blob(item)
+    mime = str(item.get("type") or "").lower()
+    return mime == "application/json" or blob.endswith(".json") or ".json" in blob
+
+
 def children_artifact(document: dict[str, Any]) -> dict[str, Any] | None:
+    """Prefer an application/json artifact whose name contains ``children``.
+
+    The mutator sometimes omits ``chatText`` and writes ``geneai_mutate_result.json``
+    instead. Any JSON artifact is acceptable when none mention children.
+    """
+
     result = document.get("result")
     if not isinstance(result, dict) or not isinstance(result.get("artifacts"), list):
         return None
-    for item in result["artifacts"]:
-        if not isinstance(item, dict):
-            continue
-        title = str(item.get("title") or "")
-        artifact_id = str(item.get("id") or "")
-        if "children.json" in title or artifact_id.endswith("children.json"):
-            return item
-    return None
+    json_artifacts = [item for item in result["artifacts"] if isinstance(item, dict) and _is_json_artifact(item)]
+    if not json_artifacts:
+        return None
+    json_artifacts.sort(key=lambda item: (0 if "children" in _artifact_blob(item) else 1, _artifact_blob(item)))
+    return json_artifacts[0]
 
 
 def server_interval_ms(document: dict[str, Any]) -> int | None:
@@ -614,7 +627,7 @@ class CreaoProvider:
             chat_error.provider_run_id = run_id
             raise chat_error
         raise ProviderError(
-            f"CREAO run {run_id} completed without result.chatText or a children.json artifact. "
+            f"CREAO run {run_id} completed without result.chatText or an application/json artifact. "
             "result.text was not parsed.",
             code="EMPTY_RESULT",
             provider_run_id=run_id,

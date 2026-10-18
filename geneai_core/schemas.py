@@ -202,7 +202,7 @@ class BudgetSnapshot(BaseModel):
 
 class RunResult(BaseModel):
     run_id: str
-    status: Literal["completed", "cancelled", "failed"]
+    status: Literal["completed", "cancelled", "failed", "degraded"]
     stop_reason: str
     mode: str
     champion_id: str | None = None

@@ -47,10 +47,14 @@ def _skipped(reason: str) -> dict[str, Any]:
     }
 
 
-def _prompt(objective: ObjectiveSpec, schema: dict[str, Any]) -> str:
+def _prompt(objective: ObjectiveSpec, schema: dict[str, Any], *, hint: str = "") -> str:
+    extra = f"\n{hint.strip()}\n" if hint.strip() else "\n"
     return (
         "Propose one candidate. Reply with a single JSON object containing payload and hypothesis. "
-        "payload must match the schema. No markdown and no second guess.\n"
+        "payload must match the schema. No markdown and no second guess. "
+        "If the domain is an outfit, use one item per role and never repeat a role. "
+        "An invalid payload is reported as invalid. It is not repaired."
+        f"{extra}"
         f"Objective: {objective.prompt}\n"
         f"Constraints: {json.dumps(objective.constraints, sort_keys=True)}\n"
         f"Schema: {json.dumps(schema, sort_keys=True)}"
@@ -71,7 +75,8 @@ async def run_frontier_oneshot(
         except CredentialsError as exc:
             return _skipped(str(exc))
     schema = wrapper_schema(adapter.genome_schema())
-    prompt = _prompt(objective, schema)
+    hint = adapter.oneshot_hint() if hasattr(adapter, "oneshot_hint") else ""
+    prompt = _prompt(objective, schema, hint=str(hint or ""))
     started = time.perf_counter()
     try:
         proposal = await provider.propose(prompt, schema, call_id="oneshot")

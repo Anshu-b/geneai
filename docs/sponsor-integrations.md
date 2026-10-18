@@ -103,7 +103,13 @@ not converted to USD.
 
 The mutator has no seed operator. Initial genomes and random immigrants go
 through the model provider. Mutation and crossover go through CREAO in hybrid
-mode.
+mode. If `result.chatText` is empty, an `application/json` artifact is read
+instead (`children` in the name is preferred; `geneai_mutate_result.json` is
+accepted). `result.text` is still ignored.
+
+Veri completions use `VERI_TIMEOUT_SECONDS` (default 120). The L4 deployment
+generates about 16 tokens per second, so a 30 second cap timed out. Each call
+asks for at most two genomes and about 400 tokens per genome.
 
 `UnverifiedCreaoCliProvider` raises on construction. It is not wired to the
 controller or the smoke script.
