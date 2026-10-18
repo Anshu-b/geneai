@@ -1,11 +1,6 @@
 {
-  "schema": "geneai-showcase-v1",
-  "domain": "cloud_scheduling",
-  "run_id": "run_37cb66650b80",
-  "export_integrity_sha256": "fb01fca6137d27617264eec5d10805ad0ae29d70ac32dfc9924b43e6ea336545",
-  "split": "test",
-  "case_id": "sample-shown-workload",
-  "case_note": "Development sample for layout only. Schedules and split totals are not the recorded evaluator. The shown case is one example; the comparison row is the whole held-out split. Replace this file with the real cloud_scheduling_showcase.json.",
+  "case_id": "test-49",
+  "case_note": "Not cherry-picked. For each held-out test case, margin is the champion fitness minus the best hand-written baseline on that same case (an infeasible score counts as missing). The case shown is the median margin. An even count uses the lower of the two central margins, then the smaller case id. Selected test-49 (margin -0.001040).",
   "cloud": {
     "units": {
       "time": "minutes",
@@ -13,231 +8,809 @@
     },
     "machines": [
       {
-        "id": "cpu-1",
+        "id": "a0",
         "kind": "cpu",
-        "cpu": 8,
-        "mem_gb": 32,
+        "cpu": 4,
+        "mem_gb": 8,
         "gpu": 0
       },
       {
-        "id": "cpu-2",
+        "id": "a1",
         "kind": "cpu",
-        "cpu": 8,
-        "mem_gb": 32,
+        "cpu": 4,
+        "mem_gb": 8,
         "gpu": 0
       },
       {
-        "id": "highmem-1",
+        "id": "b0",
+        "kind": "cpu",
+        "cpu": 4,
+        "mem_gb": 8,
+        "gpu": 0
+      },
+      {
+        "id": "b1",
+        "kind": "cpu",
+        "cpu": 4,
+        "mem_gb": 8,
+        "gpu": 0
+      },
+      {
+        "id": "m0",
         "kind": "highmem",
-        "cpu": 16,
-        "mem_gb": 128,
-        "gpu": 0
-      },
-      {
-        "id": "gpu-1",
-        "kind": "gpu",
         "cpu": 8,
         "mem_gb": 64,
+        "gpu": 0
+      },
+      {
+        "id": "g0",
+        "kind": "gpu",
+        "cpu": 4,
+        "mem_gb": 16,
         "gpu": 1
       }
     ],
     "jobs": [
       {
-        "id": "j01",
-        "class": "interactive",
-        "cpu": 2,
-        "mem_gb": 4,
+        "id": "j00",
+        "class": "highmem",
+        "cpu": 8,
+        "mem_gb": 40,
         "gpu": 0,
-        "arrival_min": 0,
-        "duration_min": 8,
-        "deadline_min": 16,
+        "arrival_min": 0.03,
+        "duration_min": 6.3119,
+        "deadline_min": 6.8745,
         "hard_deadline": true
       },
       {
-        "id": "j02",
+        "id": "j01",
         "class": "batch",
         "cpu": 4,
         "mem_gb": 8,
         "gpu": 0,
-        "arrival_min": 0,
-        "duration_min": 10,
-        "deadline_min": 22,
+        "arrival_min": 0.06,
+        "duration_min": 5.731,
+        "deadline_min": 23.8786,
+        "hard_deadline": false
+      },
+      {
+        "id": "j02",
+        "class": "sla",
+        "cpu": 2,
+        "mem_gb": 2,
+        "gpu": 0,
+        "arrival_min": 0.09,
+        "duration_min": 2.2684,
+        "deadline_min": 3.7274,
         "hard_deadline": true
       },
       {
         "id": "j03",
-        "class": "gpu",
-        "cpu": 4,
-        "mem_gb": 16,
-        "gpu": 1,
-        "arrival_min": 0,
-        "duration_min": 12,
-        "deadline_min": 13,
-        "hard_deadline": true
-      },
-      {
-        "id": "j04",
-        "class": "highmem",
-        "cpu": 8,
-        "mem_gb": 64,
-        "gpu": 0,
-        "arrival_min": 0,
-        "duration_min": 14,
-        "deadline_min": 13,
-        "hard_deadline": true
-      },
-      {
-        "id": "j05",
-        "class": "interactive",
-        "cpu": 2,
-        "mem_gb": 4,
-        "gpu": 0,
-        "arrival_min": 2,
-        "duration_min": 6,
-        "deadline_min": 20,
-        "hard_deadline": true
-      },
-      {
-        "id": "j06",
         "class": "batch",
         "cpu": 2,
         "mem_gb": 8,
         "gpu": 0,
-        "arrival_min": 0,
-        "duration_min": 16,
-        "deadline_min": 15,
+        "arrival_min": 0.12,
+        "duration_min": 4.9485,
+        "deadline_min": 20.8357,
+        "hard_deadline": false
+      },
+      {
+        "id": "j04",
+        "class": "sla",
+        "cpu": 2,
+        "mem_gb": 2,
+        "gpu": 0,
+        "arrival_min": 4.9247,
+        "duration_min": 2.215,
+        "deadline_min": 9.313,
+        "hard_deadline": true
+      },
+      {
+        "id": "j05",
+        "class": "sla",
+        "cpu": 2,
+        "mem_gb": 2,
+        "gpu": 0,
+        "arrival_min": 4.9547,
+        "duration_min": 1.0718,
+        "deadline_min": 7.5082,
+        "hard_deadline": true
+      },
+      {
+        "id": "j06",
+        "class": "gpu",
+        "cpu": 4,
+        "mem_gb": 8,
+        "gpu": 1,
+        "arrival_min": 4.9847,
+        "duration_min": 4.6576,
+        "deadline_min": 10.6564,
         "hard_deadline": true
       },
       {
         "id": "j07",
-        "class": "gpu",
+        "class": "batch",
         "cpu": 4,
-        "mem_gb": 16,
-        "gpu": 1,
-        "arrival_min": 4,
-        "duration_min": 10,
-        "deadline_min": 23,
-        "hard_deadline": true
+        "mem_gb": 4,
+        "gpu": 0,
+        "arrival_min": 5.0147,
+        "duration_min": 8.5718,
+        "deadline_min": 33.2743,
+        "hard_deadline": false
       },
       {
         "id": "j08",
-        "class": "interactive",
+        "class": "batch",
+        "cpu": 4,
+        "mem_gb": 4,
+        "gpu": 0,
+        "arrival_min": 5.0447,
+        "duration_min": 4.9108,
+        "deadline_min": 31.4948,
+        "hard_deadline": false
+      },
+      {
+        "id": "j09",
+        "class": "sla",
+        "cpu": 2,
+        "mem_gb": 2,
+        "gpu": 0,
+        "arrival_min": 9.1461,
+        "duration_min": 1.1308,
+        "deadline_min": 11.5183,
+        "hard_deadline": true
+      },
+      {
+        "id": "j10",
+        "class": "sla",
+        "cpu": 2,
+        "mem_gb": 2,
+        "gpu": 0,
+        "arrival_min": 9.1761,
+        "duration_min": 1.3818,
+        "deadline_min": 12.6531,
+        "hard_deadline": true
+      },
+      {
+        "id": "j11",
+        "class": "sla",
+        "cpu": 2,
+        "mem_gb": 2,
+        "gpu": 0,
+        "arrival_min": 9.2061,
+        "duration_min": 1.9809,
+        "deadline_min": 12.9151,
+        "hard_deadline": true
+      },
+      {
+        "id": "j12",
+        "class": "highmem",
+        "cpu": 8,
+        "mem_gb": 40,
+        "gpu": 0,
+        "arrival_min": 9.2361,
+        "duration_min": 7.8886,
+        "deadline_min": 18.2611,
+        "hard_deadline": true
+      },
+      {
+        "id": "j13",
+        "class": "highmem",
+        "cpu": 8,
+        "mem_gb": 40,
+        "gpu": 0,
+        "arrival_min": 9.2661,
+        "duration_min": 7.1854,
+        "deadline_min": 18.2058,
+        "hard_deadline": true
+      },
+      {
+        "id": "j14",
+        "class": "batch",
         "cpu": 2,
         "mem_gb": 4,
         "gpu": 0,
-        "arrival_min": 6,
-        "duration_min": 8,
-        "deadline_min": 30,
+        "arrival_min": 14.5081,
+        "duration_min": 9.0642,
+        "deadline_min": 44.1962,
         "hard_deadline": false
+      },
+      {
+        "id": "j15",
+        "class": "highmem",
+        "cpu": 8,
+        "mem_gb": 40,
+        "gpu": 0,
+        "arrival_min": 14.5381,
+        "duration_min": 7.2869,
+        "deadline_min": 23.3806,
+        "hard_deadline": true
+      },
+      {
+        "id": "j16",
+        "class": "batch",
+        "cpu": 4,
+        "mem_gb": 8,
+        "gpu": 0,
+        "arrival_min": 14.5681,
+        "duration_min": 9.6424,
+        "deadline_min": 38.8901,
+        "hard_deadline": false
+      },
+      {
+        "id": "j17",
+        "class": "batch",
+        "cpu": 2,
+        "mem_gb": 8,
+        "gpu": 0,
+        "arrival_min": 14.5981,
+        "duration_min": 4.4249,
+        "deadline_min": 31.7319,
+        "hard_deadline": false
+      },
+      {
+        "id": "j18",
+        "class": "batch",
+        "cpu": 4,
+        "mem_gb": 8,
+        "gpu": 0,
+        "arrival_min": 14.6281,
+        "duration_min": 6.158,
+        "deadline_min": 36.4988,
+        "hard_deadline": false
+      },
+      {
+        "id": "j19",
+        "class": "batch",
+        "cpu": 2,
+        "mem_gb": 8,
+        "gpu": 0,
+        "arrival_min": 19.6923,
+        "duration_min": 8.6724,
+        "deadline_min": 45.7583,
+        "hard_deadline": false
+      },
+      {
+        "id": "j20",
+        "class": "gpu",
+        "cpu": 4,
+        "mem_gb": 8,
+        "gpu": 1,
+        "arrival_min": 19.7223,
+        "duration_min": 4.7287,
+        "deadline_min": 25.9986,
+        "hard_deadline": true
+      },
+      {
+        "id": "j21",
+        "class": "batch",
+        "cpu": 4,
+        "mem_gb": 4,
+        "gpu": 0,
+        "arrival_min": 19.7523,
+        "duration_min": 6.1602,
+        "deadline_min": 41.0339,
+        "hard_deadline": false
+      },
+      {
+        "id": "j22",
+        "class": "batch",
+        "cpu": 4,
+        "mem_gb": 4,
+        "gpu": 0,
+        "arrival_min": 19.7823,
+        "duration_min": 7.2938,
+        "deadline_min": 47.6426,
+        "hard_deadline": false
+      },
+      {
+        "id": "j23",
+        "class": "sla",
+        "cpu": 2,
+        "mem_gb": 2,
+        "gpu": 0,
+        "arrival_min": 19.8123,
+        "duration_min": 1.2455,
+        "deadline_min": 22.0464,
+        "hard_deadline": true
+      },
+      {
+        "id": "j24",
+        "class": "sla",
+        "cpu": 2,
+        "mem_gb": 2,
+        "gpu": 0,
+        "arrival_min": 24.2639,
+        "duration_min": 2.0643,
+        "deadline_min": 27.399,
+        "hard_deadline": true
+      },
+      {
+        "id": "j25",
+        "class": "batch",
+        "cpu": 2,
+        "mem_gb": 8,
+        "gpu": 0,
+        "arrival_min": 24.2939,
+        "duration_min": 7.6995,
+        "deadline_min": 53.4403,
+        "hard_deadline": false
+      },
+      {
+        "id": "j26",
+        "class": "batch",
+        "cpu": 2,
+        "mem_gb": 8,
+        "gpu": 0,
+        "arrival_min": 24.3239,
+        "duration_min": 8.2158,
+        "deadline_min": 47.9581,
+        "hard_deadline": false
+      },
+      {
+        "id": "j27",
+        "class": "sla",
+        "cpu": 2,
+        "mem_gb": 2,
+        "gpu": 0,
+        "arrival_min": 24.3539,
+        "duration_min": 2.0282,
+        "deadline_min": 27.2464,
+        "hard_deadline": true
+      },
+      {
+        "id": "j28",
+        "class": "batch",
+        "cpu": 4,
+        "mem_gb": 4,
+        "gpu": 0,
+        "arrival_min": 24.3839,
+        "duration_min": 5.852,
+        "deadline_min": 50.5827,
+        "hard_deadline": false
+      },
+      {
+        "id": "j29",
+        "class": "highmem",
+        "cpu": 8,
+        "mem_gb": 40,
+        "gpu": 0,
+        "arrival_min": 30.0765,
+        "duration_min": 4.457,
+        "deadline_min": 36.2814,
+        "hard_deadline": true
+      },
+      {
+        "id": "j30",
+        "class": "batch",
+        "cpu": 2,
+        "mem_gb": 8,
+        "gpu": 0,
+        "arrival_min": 30.1065,
+        "duration_min": 5.9598,
+        "deadline_min": 54.8854,
+        "hard_deadline": false
+      },
+      {
+        "id": "j31",
+        "class": "highmem",
+        "cpu": 8,
+        "mem_gb": 40,
+        "gpu": 0,
+        "arrival_min": 30.1365,
+        "duration_min": 6.4031,
+        "deadline_min": 38.5393,
+        "hard_deadline": true
+      },
+      {
+        "id": "j32",
+        "class": "gpu",
+        "cpu": 4,
+        "mem_gb": 8,
+        "gpu": 1,
+        "arrival_min": 30.1665,
+        "duration_min": 5.3388,
+        "deadline_min": 36.5843,
+        "hard_deadline": true
+      },
+      {
+        "id": "j33",
+        "class": "batch",
+        "cpu": 4,
+        "mem_gb": 4,
+        "gpu": 0,
+        "arrival_min": 30.1965,
+        "duration_min": 7.5548,
+        "deadline_min": 55.4524,
+        "hard_deadline": false
+      },
+      {
+        "id": "j34",
+        "class": "batch",
+        "cpu": 2,
+        "mem_gb": 8,
+        "gpu": 0,
+        "arrival_min": 34.4692,
+        "duration_min": 6.5011,
+        "deadline_min": 61.4913,
+        "hard_deadline": false
+      },
+      {
+        "id": "j35",
+        "class": "sla",
+        "cpu": 2,
+        "mem_gb": 2,
+        "gpu": 0,
+        "arrival_min": 34.4992,
+        "duration_min": 1.9411,
+        "deadline_min": 38.3352,
+        "hard_deadline": true
       }
     ],
     "policies": [
       {
         "key": "champion",
         "label": "GeneAI champion",
-        "provider": "veri",
+        "provider": "random",
         "genome_id": "g0060",
-        "description": "Sample champion policy for the layout.",
+        "description": "local perturbation",
         "rules_plain": [
-          "Run GPU jobs only on gpu-1, and the high-memory job only on highmem-1.",
-          "Put short interactive work on a free CPU before a long batch job.",
-          "Do not start a job before it arrives."
+          "Consider the first 24 waiting jobs.",
+          "Prefer jobs with a hard deadline (weight 0.50).",
+          "Prefer short jobs (weight 0.24).",
+          "Prefer the machine class that matches the job (weight 0.20).",
+          "Prefer packing onto already busy CPUs (weight 0.07).",
+          "Break ties by deadline, then job_id, then machine_id."
         ],
         "feasible": true,
         "infeasible_reason": null,
         "schedule": [
           {
-            "job_id": "j01",
-            "machine_id": "cpu-1",
-            "start_min": 0,
-            "end_min": 8,
-            "wait_min": 0,
-            "deadline_min": 16,
+            "job_id": "j00",
+            "machine_id": "m0",
+            "start_min": 0.03,
+            "end_min": 6.3419,
+            "wait_min": 0.0,
+            "deadline_min": 6.8745,
             "missed_deadline": false
           },
           {
-            "job_id": "j05",
-            "machine_id": "cpu-1",
-            "start_min": 8,
-            "end_min": 14,
-            "wait_min": 6,
-            "deadline_min": 20,
+            "job_id": "j01",
+            "machine_id": "a0",
+            "start_min": 0.06,
+            "end_min": 5.791,
+            "wait_min": 0.0,
+            "deadline_min": 23.8786,
             "missed_deadline": false
           },
           {
             "job_id": "j02",
-            "machine_id": "cpu-2",
-            "start_min": 0,
-            "end_min": 10,
-            "wait_min": 0,
-            "deadline_min": 22,
+            "machine_id": "a1",
+            "start_min": 0.09,
+            "end_min": 2.3584,
+            "wait_min": 0.0,
+            "deadline_min": 3.7274,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j03",
+            "machine_id": "b0",
+            "start_min": 0.12,
+            "end_min": 5.0685,
+            "wait_min": 0.0,
+            "deadline_min": 20.8357,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j04",
+            "machine_id": "a1",
+            "start_min": 4.9247,
+            "end_min": 7.1397,
+            "wait_min": 0.0,
+            "deadline_min": 9.313,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j05",
+            "machine_id": "a1",
+            "start_min": 4.9547,
+            "end_min": 6.0265,
+            "wait_min": 0.0,
+            "deadline_min": 7.5082,
             "missed_deadline": false
           },
           {
             "job_id": "j06",
-            "machine_id": "cpu-2",
-            "start_min": 10,
-            "end_min": 26,
-            "wait_min": 10,
-            "deadline_min": 15,
-            "missed_deadline": true
-          },
-          {
-            "job_id": "j08",
-            "machine_id": "cpu-2",
-            "start_min": 26,
-            "end_min": 34,
-            "wait_min": 20,
-            "deadline_min": 30,
-            "missed_deadline": true
-          },
-          {
-            "job_id": "j04",
-            "machine_id": "highmem-1",
-            "start_min": 0,
-            "end_min": 14,
-            "wait_min": 0,
-            "deadline_min": 13,
-            "missed_deadline": true
-          },
-          {
-            "job_id": "j03",
-            "machine_id": "gpu-1",
-            "start_min": 0,
-            "end_min": 12,
-            "wait_min": 0,
-            "deadline_min": 13,
+            "machine_id": "g0",
+            "start_min": 4.9847,
+            "end_min": 9.6423,
+            "wait_min": 0.0,
+            "deadline_min": 10.6564,
             "missed_deadline": false
           },
           {
             "job_id": "j07",
-            "machine_id": "gpu-1",
-            "start_min": 12,
-            "end_min": 22,
-            "wait_min": 8,
-            "deadline_min": 23,
+            "machine_id": "b1",
+            "start_min": 5.0147,
+            "end_min": 13.5865,
+            "wait_min": 0.0,
+            "deadline_min": 33.2743,
             "missed_deadline": false
+          },
+          {
+            "job_id": "j08",
+            "machine_id": "b0",
+            "start_min": 5.0685,
+            "end_min": 9.9793,
+            "wait_min": 0.0238,
+            "deadline_min": 31.4948,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j09",
+            "machine_id": "a0",
+            "start_min": 9.1461,
+            "end_min": 10.2769,
+            "wait_min": 0.0,
+            "deadline_min": 11.5183,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j10",
+            "machine_id": "a0",
+            "start_min": 9.1761,
+            "end_min": 10.5579,
+            "wait_min": 0.0,
+            "deadline_min": 12.6531,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j11",
+            "machine_id": "a1",
+            "start_min": 9.2061,
+            "end_min": 11.187,
+            "wait_min": 0.0,
+            "deadline_min": 12.9151,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j12",
+            "machine_id": "m0",
+            "start_min": 9.2361,
+            "end_min": 17.1247,
+            "wait_min": 0.0,
+            "deadline_min": 18.2611,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j14",
+            "machine_id": "a0",
+            "start_min": 14.5081,
+            "end_min": 23.5723,
+            "wait_min": 0.0,
+            "deadline_min": 44.1962,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j16",
+            "machine_id": "a1",
+            "start_min": 14.5681,
+            "end_min": 24.2105,
+            "wait_min": 0.0,
+            "deadline_min": 38.8901,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j17",
+            "machine_id": "b0",
+            "start_min": 14.5981,
+            "end_min": 19.023,
+            "wait_min": 0.0,
+            "deadline_min": 31.7319,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j18",
+            "machine_id": "b1",
+            "start_min": 14.6281,
+            "end_min": 20.7861,
+            "wait_min": 0.0,
+            "deadline_min": 36.4988,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j13",
+            "machine_id": "m0",
+            "start_min": 17.1247,
+            "end_min": 24.3101,
+            "wait_min": 7.8586,
+            "deadline_min": 18.2058,
+            "missed_deadline": true
+          },
+          {
+            "job_id": "j19",
+            "machine_id": "b0",
+            "start_min": 19.6923,
+            "end_min": 28.3647,
+            "wait_min": 0.0,
+            "deadline_min": 45.7583,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j20",
+            "machine_id": "g0",
+            "start_min": 19.7223,
+            "end_min": 24.451,
+            "wait_min": 0.0,
+            "deadline_min": 25.9986,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j23",
+            "machine_id": "a0",
+            "start_min": 19.8123,
+            "end_min": 21.0578,
+            "wait_min": 0.0,
+            "deadline_min": 22.0464,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j21",
+            "machine_id": "b1",
+            "start_min": 20.7861,
+            "end_min": 26.9463,
+            "wait_min": 1.0338,
+            "deadline_min": 41.0339,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j22",
+            "machine_id": "a0",
+            "start_min": 23.5723,
+            "end_min": 30.8661,
+            "wait_min": 3.79,
+            "deadline_min": 47.6426,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j24",
+            "machine_id": "a1",
+            "start_min": 24.2639,
+            "end_min": 26.3282,
+            "wait_min": 0.0,
+            "deadline_min": 27.399,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j15",
+            "machine_id": "m0",
+            "start_min": 24.3101,
+            "end_min": 31.597,
+            "wait_min": 9.772,
+            "deadline_min": 23.3806,
+            "missed_deadline": true
+          },
+          {
+            "job_id": "j27",
+            "machine_id": "a1",
+            "start_min": 24.3539,
+            "end_min": 26.3821,
+            "wait_min": 0.0,
+            "deadline_min": 27.2464,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j28",
+            "machine_id": "g0",
+            "start_min": 24.451,
+            "end_min": 30.303,
+            "wait_min": 0.0671,
+            "deadline_min": 50.5827,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j25",
+            "machine_id": "a1",
+            "start_min": 26.3821,
+            "end_min": 34.0816,
+            "wait_min": 2.0882,
+            "deadline_min": 53.4403,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j26",
+            "machine_id": "b1",
+            "start_min": 26.9463,
+            "end_min": 35.1621,
+            "wait_min": 2.6224,
+            "deadline_min": 47.9581,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j30",
+            "machine_id": "b0",
+            "start_min": 30.1065,
+            "end_min": 36.0663,
+            "wait_min": 0.0,
+            "deadline_min": 54.8854,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j32",
+            "machine_id": "g0",
+            "start_min": 30.303,
+            "end_min": 35.6418,
+            "wait_min": 0.1365,
+            "deadline_min": 36.5843,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j33",
+            "machine_id": "a0",
+            "start_min": 30.8661,
+            "end_min": 38.4209,
+            "wait_min": 0.6696,
+            "deadline_min": 55.4524,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j29",
+            "machine_id": "m0",
+            "start_min": 31.597,
+            "end_min": 36.054,
+            "wait_min": 1.5205,
+            "deadline_min": 36.2814,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j34",
+            "machine_id": "a1",
+            "start_min": 34.4692,
+            "end_min": 40.9703,
+            "wait_min": 0.0,
+            "deadline_min": 61.4913,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j35",
+            "machine_id": "b1",
+            "start_min": 35.1621,
+            "end_min": 37.1032,
+            "wait_min": 0.6629,
+            "deadline_min": 38.3352,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j31",
+            "machine_id": "m0",
+            "start_min": 36.054,
+            "end_min": 42.4571,
+            "wait_min": 5.9175,
+            "deadline_min": 38.5393,
+            "missed_deadline": true
           }
         ],
         "summary": {
-          "avg_completion_min": 17.5,
-          "p95_wait_min": 20,
+          "avg_completion_min": 6.253,
+          "p95_wait_min": 6.4028,
           "sla_misses": 3,
-          "hard_deadline_misses": 2,
-          "energy_kwh": 0.697,
-          "makespan_min": 34,
-          "capacity_violations": 0
+          "hard_deadline_misses": 3,
+          "energy_kwh": 3.7362,
+          "makespan_min": 42.4571,
+          "capacity_violations": 0,
+          "fitness": -1.320807
         },
         "aggregate": {
-          "avg_completion_min": 19.4,
-          "p95_wait_min": 12,
-          "sla_misses": 31,
-          "hard_deadline_misses": 24,
-          "energy_kwh": 8.64,
-          "makespan_min": 33.5,
+          "n_cases": 18,
+          "avg_completion_min": 10.1518,
+          "p95_wait_min": 17.8341,
+          "sla_misses": 177,
+          "hard_deadline_misses": 168,
+          "energy_kwh": 78.7322,
+          "makespan_min": 44.5773,
           "capacity_violations": 0,
-          "fitness": -1.48,
-          "n_cases": 12
+          "fitness": -1.5499
         },
         "behavior_origin": {
           "genome_id": "g0051",
@@ -248,228 +821,736 @@
       },
       {
         "key": "gpt55_one_shot",
-        "label": "GPT-5.5 one shot",
+        "label": "GPT-5.5 one-shot",
         "provider": "openai",
         "genome_id": null,
-        "description": "Sample single attempt, outside the evolutionary loop.",
+        "description": "Eligibility-filtered composed weighted queue: prioritize short urgent work on feasible low-cost machines, avoid overloaded CPU/memory placements, and apply strong affinity for GPU and high-memory classes.",
         "rules_plain": [
-          "One prompt wrote the whole assignment.",
-          "It kept the special machines legal, then stacked most CPU jobs onto cpu-1."
+          "Consider the first 18 waiting jobs.",
+          "Prefer jobs with a hard deadline (weight 0.82).",
+          "Prefer short jobs (weight 0.72).",
+          "Prefer jobs close to their deadline (weight 0.62).",
+          "Prefer lower-power machines (weight 0.58).",
+          "Prefer the machine class that matches the job (weight 0.55).",
+          "Avoid packing onto already busy memory (weight -0.54).",
+          "Avoid packing onto already busy CPUs (weight -0.46).",
+          "Prefer machines with free CPU (weight 0.44).",
+          "Avoid the next machine in rotation (weight -0.32).",
+          "Prefer jobs that have already waited (weight 0.28).",
+          "Break ties by deadline, then duration, then machine_cost, then free_cpu.",
+          "For gpu jobs, weight the machine class that matches the job at 1.00 instead of the default.",
+          "For high_mem jobs, weight the machine class that matches the job at 0.92 instead of the default."
         ],
         "feasible": true,
         "infeasible_reason": null,
         "schedule": [
           {
+            "job_id": "j00",
+            "machine_id": "m0",
+            "start_min": 0.03,
+            "end_min": 6.3419,
+            "wait_min": 0.0,
+            "deadline_min": 6.8745,
+            "missed_deadline": false
+          },
+          {
             "job_id": "j01",
-            "machine_id": "cpu-1",
-            "start_min": 0,
-            "end_min": 8,
-            "wait_min": 0,
-            "deadline_min": 16,
+            "machine_id": "b1",
+            "start_min": 0.06,
+            "end_min": 5.791,
+            "wait_min": 0.0,
+            "deadline_min": 23.8786,
             "missed_deadline": false
           },
           {
             "job_id": "j02",
-            "machine_id": "cpu-1",
-            "start_min": 8,
-            "end_min": 18,
-            "wait_min": 8,
-            "deadline_min": 22,
+            "machine_id": "b0",
+            "start_min": 0.09,
+            "end_min": 2.3584,
+            "wait_min": 0.0,
+            "deadline_min": 3.7274,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j03",
+            "machine_id": "a1",
+            "start_min": 0.12,
+            "end_min": 5.0685,
+            "wait_min": 0.0,
+            "deadline_min": 20.8357,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j04",
+            "machine_id": "a0",
+            "start_min": 4.9247,
+            "end_min": 7.1397,
+            "wait_min": 0.0,
+            "deadline_min": 9.313,
             "missed_deadline": false
           },
           {
             "job_id": "j05",
-            "machine_id": "cpu-1",
-            "start_min": 18,
-            "end_min": 24,
-            "wait_min": 16,
-            "deadline_min": 20,
-            "missed_deadline": true
+            "machine_id": "b0",
+            "start_min": 4.9547,
+            "end_min": 6.0265,
+            "wait_min": 0.0,
+            "deadline_min": 7.5082,
+            "missed_deadline": false
           },
           {
             "job_id": "j06",
-            "machine_id": "cpu-1",
-            "start_min": 24,
-            "end_min": 40,
-            "wait_min": 24,
-            "deadline_min": 15,
-            "missed_deadline": true
+            "machine_id": "g0",
+            "start_min": 4.9847,
+            "end_min": 9.6423,
+            "wait_min": 0.0,
+            "deadline_min": 10.6564,
+            "missed_deadline": false
           },
           {
             "job_id": "j08",
-            "machine_id": "cpu-1",
-            "start_min": 40,
-            "end_min": 48,
-            "wait_min": 34,
-            "deadline_min": 30,
-            "missed_deadline": true
-          },
-          {
-            "job_id": "j04",
-            "machine_id": "highmem-1",
-            "start_min": 8,
-            "end_min": 22,
-            "wait_min": 8,
-            "deadline_min": 13,
-            "missed_deadline": true
-          },
-          {
-            "job_id": "j03",
-            "machine_id": "gpu-1",
-            "start_min": 6,
-            "end_min": 18,
-            "wait_min": 6,
-            "deadline_min": 13,
-            "missed_deadline": true
+            "machine_id": "a1",
+            "start_min": 5.0685,
+            "end_min": 9.9793,
+            "wait_min": 0.0238,
+            "deadline_min": 31.4948,
+            "missed_deadline": false
           },
           {
             "job_id": "j07",
-            "machine_id": "gpu-1",
-            "start_min": 18,
-            "end_min": 28,
-            "wait_min": 14,
-            "deadline_min": 23,
+            "machine_id": "b1",
+            "start_min": 5.791,
+            "end_min": 14.3628,
+            "wait_min": 0.7763,
+            "deadline_min": 33.2743,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j09",
+            "machine_id": "b0",
+            "start_min": 9.1461,
+            "end_min": 10.2769,
+            "wait_min": 0.0,
+            "deadline_min": 11.5183,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j10",
+            "machine_id": "a0",
+            "start_min": 9.1761,
+            "end_min": 10.5579,
+            "wait_min": 0.0,
+            "deadline_min": 12.6531,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j11",
+            "machine_id": "m0",
+            "start_min": 9.2061,
+            "end_min": 11.187,
+            "wait_min": 0.0,
+            "deadline_min": 12.9151,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j13",
+            "machine_id": "m0",
+            "start_min": 11.187,
+            "end_min": 18.3724,
+            "wait_min": 1.9209,
+            "deadline_min": 18.2058,
+            "missed_deadline": true
+          },
+          {
+            "job_id": "j14",
+            "machine_id": "b1",
+            "start_min": 14.5081,
+            "end_min": 23.5723,
+            "wait_min": 0.0,
+            "deadline_min": 44.1962,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j16",
+            "machine_id": "b0",
+            "start_min": 14.5681,
+            "end_min": 24.2105,
+            "wait_min": 0.0,
+            "deadline_min": 38.8901,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j17",
+            "machine_id": "a1",
+            "start_min": 14.5981,
+            "end_min": 19.023,
+            "wait_min": 0.0,
+            "deadline_min": 31.7319,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j18",
+            "machine_id": "a0",
+            "start_min": 14.6281,
+            "end_min": 20.7861,
+            "wait_min": 0.0,
+            "deadline_min": 36.4988,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j12",
+            "machine_id": "m0",
+            "start_min": 18.3724,
+            "end_min": 26.261,
+            "wait_min": 9.1363,
+            "deadline_min": 18.2611,
+            "missed_deadline": true
+          },
+          {
+            "job_id": "j19",
+            "machine_id": "a1",
+            "start_min": 19.6923,
+            "end_min": 28.3647,
+            "wait_min": 0.0,
+            "deadline_min": 45.7583,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j20",
+            "machine_id": "g0",
+            "start_min": 19.7223,
+            "end_min": 24.451,
+            "wait_min": 0.0,
+            "deadline_min": 25.9986,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j23",
+            "machine_id": "b1",
+            "start_min": 19.8123,
+            "end_min": 21.0578,
+            "wait_min": 0.0,
+            "deadline_min": 22.0464,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j21",
+            "machine_id": "a0",
+            "start_min": 20.7861,
+            "end_min": 26.9463,
+            "wait_min": 1.0338,
+            "deadline_min": 41.0339,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j22",
+            "machine_id": "b1",
+            "start_min": 23.5723,
+            "end_min": 30.8661,
+            "wait_min": 3.79,
+            "deadline_min": 47.6426,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j24",
+            "machine_id": "b0",
+            "start_min": 24.2639,
+            "end_min": 26.3282,
+            "wait_min": 0.0,
+            "deadline_min": 27.399,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j27",
+            "machine_id": "b0",
+            "start_min": 24.3539,
+            "end_min": 26.3821,
+            "wait_min": 0.0,
+            "deadline_min": 27.2464,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j25",
+            "machine_id": "g0",
+            "start_min": 24.451,
+            "end_min": 32.1505,
+            "wait_min": 0.1571,
+            "deadline_min": 53.4403,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j26",
+            "machine_id": "g0",
+            "start_min": 24.451,
+            "end_min": 32.6668,
+            "wait_min": 0.1271,
+            "deadline_min": 47.9581,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j15",
+            "machine_id": "m0",
+            "start_min": 26.261,
+            "end_min": 33.5479,
+            "wait_min": 11.7229,
+            "deadline_min": 23.3806,
+            "missed_deadline": true
+          },
+          {
+            "job_id": "j28",
+            "machine_id": "b0",
+            "start_min": 26.3821,
+            "end_min": 32.2341,
+            "wait_min": 1.9982,
+            "deadline_min": 50.5827,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j30",
+            "machine_id": "a1",
+            "start_min": 30.1065,
+            "end_min": 36.0663,
+            "wait_min": 0.0,
+            "deadline_min": 54.8854,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j33",
+            "machine_id": "a0",
+            "start_min": 30.1965,
+            "end_min": 37.7513,
+            "wait_min": 0.0,
+            "deadline_min": 55.4524,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j32",
+            "machine_id": "g0",
+            "start_min": 32.6668,
+            "end_min": 38.0056,
+            "wait_min": 2.5003,
+            "deadline_min": 36.5843,
+            "missed_deadline": true
+          },
+          {
+            "job_id": "j29",
+            "machine_id": "m0",
+            "start_min": 33.5479,
+            "end_min": 38.0049,
+            "wait_min": 3.4714,
+            "deadline_min": 36.2814,
+            "missed_deadline": true
+          },
+          {
+            "job_id": "j34",
+            "machine_id": "b1",
+            "start_min": 34.4692,
+            "end_min": 40.9703,
+            "wait_min": 0.0,
+            "deadline_min": 61.4913,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j35",
+            "machine_id": "b0",
+            "start_min": 34.4992,
+            "end_min": 36.4403,
+            "wait_min": 0.0,
+            "deadline_min": 38.3352,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j31",
+            "machine_id": "m0",
+            "start_min": 38.0049,
+            "end_min": 44.408,
+            "wait_min": 7.8684,
+            "deadline_min": 38.5393,
             "missed_deadline": true
           }
         ],
         "summary": {
-          "avg_completion_min": 25.75,
-          "p95_wait_min": 34,
+          "avg_completion_min": 6.4854,
+          "p95_wait_min": 8.1854,
           "sla_misses": 6,
-          "hard_deadline_misses": 5,
-          "energy_kwh": 0.984,
-          "makespan_min": 48,
-          "capacity_violations": 0
+          "hard_deadline_misses": 6,
+          "energy_kwh": 3.8888,
+          "makespan_min": 44.408,
+          "capacity_violations": 0,
+          "fitness": -1.506634
         },
         "aggregate": {
-          "avg_completion_min": 28.1,
-          "p95_wait_min": 24,
-          "sla_misses": 67,
-          "hard_deadline_misses": 51,
-          "energy_kwh": 13.4,
-          "makespan_min": 48.2,
-          "capacity_violations": 2,
-          "fitness": -1.91,
-          "n_cases": 12
-        },
-        "behavior_origin": {
-          "genome_id": null,
-          "provider": "openai",
-          "operator": "one_shot",
-          "generation": 0
+          "n_cases": 18,
+          "avg_completion_min": 10.2448,
+          "p95_wait_min": 18.9927,
+          "sla_misses": 167,
+          "hard_deadline_misses": 161,
+          "energy_kwh": 79.8224,
+          "makespan_min": 46.3941,
+          "capacity_violations": 0,
+          "fitness": -1.6983
         }
       },
       {
         "key": "deadline_weighted",
-        "label": "Deadline weighted",
+        "label": "Hand-written deadline weighted",
         "provider": "baseline",
         "genome_id": "g0004",
-        "description": "Hand-written baseline that ranks by deadline pressure.",
+        "description": "seeded baseline deadline_weighted",
         "rules_plain": [
-          "Prefer the job whose deadline is closest.",
-          "Still refuse a machine that cannot hold the job."
+          "Consider the first 36 waiting jobs.",
+          "Prefer jobs close to their deadline (weight 0.85).",
+          "Prefer short jobs (weight 0.50).",
+          "Break ties by deadline, then job_id, then machine_id."
         ],
         "feasible": true,
         "infeasible_reason": null,
         "schedule": [
           {
-            "job_id": "j05",
-            "machine_id": "cpu-1",
-            "start_min": 2,
-            "end_min": 8,
-            "wait_min": 0,
-            "deadline_min": 20,
+            "job_id": "j00",
+            "machine_id": "m0",
+            "start_min": 0.03,
+            "end_min": 6.3419,
+            "wait_min": 0.0,
+            "deadline_min": 6.8745,
             "missed_deadline": false
           },
           {
             "job_id": "j01",
-            "machine_id": "cpu-1",
-            "start_min": 8,
-            "end_min": 16,
-            "wait_min": 8,
-            "deadline_min": 16,
-            "missed_deadline": false
-          },
-          {
-            "job_id": "j08",
-            "machine_id": "cpu-1",
-            "start_min": 16,
-            "end_min": 24,
-            "wait_min": 10,
-            "deadline_min": 30,
+            "machine_id": "a0",
+            "start_min": 0.06,
+            "end_min": 5.791,
+            "wait_min": 0.0,
+            "deadline_min": 23.8786,
             "missed_deadline": false
           },
           {
             "job_id": "j02",
-            "machine_id": "cpu-2",
-            "start_min": 0,
-            "end_min": 10,
-            "wait_min": 0,
-            "deadline_min": 22,
+            "machine_id": "a1",
+            "start_min": 0.09,
+            "end_min": 2.3584,
+            "wait_min": 0.0,
+            "deadline_min": 3.7274,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j03",
+            "machine_id": "b0",
+            "start_min": 0.12,
+            "end_min": 5.0685,
+            "wait_min": 0.0,
+            "deadline_min": 20.8357,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j04",
+            "machine_id": "a1",
+            "start_min": 4.9247,
+            "end_min": 7.1397,
+            "wait_min": 0.0,
+            "deadline_min": 9.313,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j05",
+            "machine_id": "a1",
+            "start_min": 4.9547,
+            "end_min": 6.0265,
+            "wait_min": 0.0,
+            "deadline_min": 7.5082,
             "missed_deadline": false
           },
           {
             "job_id": "j06",
-            "machine_id": "cpu-2",
-            "start_min": 10,
-            "end_min": 26,
-            "wait_min": 10,
-            "deadline_min": 15,
-            "missed_deadline": true
-          },
-          {
-            "job_id": "j04",
-            "machine_id": "highmem-1",
-            "start_min": 0,
-            "end_min": 14,
-            "wait_min": 0,
-            "deadline_min": 13,
-            "missed_deadline": true
-          },
-          {
-            "job_id": "j03",
-            "machine_id": "gpu-1",
-            "start_min": 0,
-            "end_min": 12,
-            "wait_min": 0,
-            "deadline_min": 13,
+            "machine_id": "g0",
+            "start_min": 4.9847,
+            "end_min": 9.6423,
+            "wait_min": 0.0,
+            "deadline_min": 10.6564,
             "missed_deadline": false
           },
           {
             "job_id": "j07",
-            "machine_id": "gpu-1",
-            "start_min": 14,
-            "end_min": 24,
-            "wait_min": 10,
-            "deadline_min": 23,
+            "machine_id": "b1",
+            "start_min": 5.0147,
+            "end_min": 13.5865,
+            "wait_min": 0.0,
+            "deadline_min": 33.2743,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j08",
+            "machine_id": "b0",
+            "start_min": 5.0685,
+            "end_min": 9.9793,
+            "wait_min": 0.0238,
+            "deadline_min": 31.4948,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j09",
+            "machine_id": "a0",
+            "start_min": 9.1461,
+            "end_min": 10.2769,
+            "wait_min": 0.0,
+            "deadline_min": 11.5183,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j10",
+            "machine_id": "a0",
+            "start_min": 9.1761,
+            "end_min": 10.5579,
+            "wait_min": 0.0,
+            "deadline_min": 12.6531,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j11",
+            "machine_id": "a1",
+            "start_min": 9.2061,
+            "end_min": 11.187,
+            "wait_min": 0.0,
+            "deadline_min": 12.9151,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j12",
+            "machine_id": "m0",
+            "start_min": 9.2361,
+            "end_min": 17.1247,
+            "wait_min": 0.0,
+            "deadline_min": 18.2611,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j14",
+            "machine_id": "a0",
+            "start_min": 14.5081,
+            "end_min": 23.5723,
+            "wait_min": 0.0,
+            "deadline_min": 44.1962,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j16",
+            "machine_id": "a1",
+            "start_min": 14.5681,
+            "end_min": 24.2105,
+            "wait_min": 0.0,
+            "deadline_min": 38.8901,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j17",
+            "machine_id": "b0",
+            "start_min": 14.5981,
+            "end_min": 19.023,
+            "wait_min": 0.0,
+            "deadline_min": 31.7319,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j18",
+            "machine_id": "b1",
+            "start_min": 14.6281,
+            "end_min": 20.7861,
+            "wait_min": 0.0,
+            "deadline_min": 36.4988,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j13",
+            "machine_id": "m0",
+            "start_min": 17.1247,
+            "end_min": 24.3101,
+            "wait_min": 7.8586,
+            "deadline_min": 18.2058,
+            "missed_deadline": true
+          },
+          {
+            "job_id": "j19",
+            "machine_id": "b0",
+            "start_min": 19.6923,
+            "end_min": 28.3647,
+            "wait_min": 0.0,
+            "deadline_min": 45.7583,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j20",
+            "machine_id": "g0",
+            "start_min": 19.7223,
+            "end_min": 24.451,
+            "wait_min": 0.0,
+            "deadline_min": 25.9986,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j23",
+            "machine_id": "a0",
+            "start_min": 19.8123,
+            "end_min": 21.0578,
+            "wait_min": 0.0,
+            "deadline_min": 22.0464,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j21",
+            "machine_id": "b1",
+            "start_min": 20.7861,
+            "end_min": 26.9463,
+            "wait_min": 1.0338,
+            "deadline_min": 41.0339,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j22",
+            "machine_id": "a0",
+            "start_min": 23.5723,
+            "end_min": 30.8661,
+            "wait_min": 3.79,
+            "deadline_min": 47.6426,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j24",
+            "machine_id": "a1",
+            "start_min": 24.2639,
+            "end_min": 26.3282,
+            "wait_min": 0.0,
+            "deadline_min": 27.399,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j15",
+            "machine_id": "m0",
+            "start_min": 24.3101,
+            "end_min": 31.597,
+            "wait_min": 9.772,
+            "deadline_min": 23.3806,
+            "missed_deadline": true
+          },
+          {
+            "job_id": "j27",
+            "machine_id": "a1",
+            "start_min": 24.3539,
+            "end_min": 26.3821,
+            "wait_min": 0.0,
+            "deadline_min": 27.2464,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j28",
+            "machine_id": "g0",
+            "start_min": 24.451,
+            "end_min": 30.303,
+            "wait_min": 0.0671,
+            "deadline_min": 50.5827,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j26",
+            "machine_id": "a1",
+            "start_min": 26.3821,
+            "end_min": 34.5979,
+            "wait_min": 2.0582,
+            "deadline_min": 47.9581,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j25",
+            "machine_id": "b1",
+            "start_min": 26.9463,
+            "end_min": 34.6458,
+            "wait_min": 2.6524,
+            "deadline_min": 53.4403,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j30",
+            "machine_id": "b0",
+            "start_min": 30.1065,
+            "end_min": 36.0663,
+            "wait_min": 0.0,
+            "deadline_min": 54.8854,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j32",
+            "machine_id": "g0",
+            "start_min": 30.303,
+            "end_min": 35.6418,
+            "wait_min": 0.1365,
+            "deadline_min": 36.5843,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j33",
+            "machine_id": "a0",
+            "start_min": 30.8661,
+            "end_min": 38.4209,
+            "wait_min": 0.6696,
+            "deadline_min": 55.4524,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j29",
+            "machine_id": "m0",
+            "start_min": 31.597,
+            "end_min": 36.054,
+            "wait_min": 1.5205,
+            "deadline_min": 36.2814,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j35",
+            "machine_id": "a1",
+            "start_min": 34.5979,
+            "end_min": 36.539,
+            "wait_min": 0.0987,
+            "deadline_min": 38.3352,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j34",
+            "machine_id": "b1",
+            "start_min": 34.6458,
+            "end_min": 41.1469,
+            "wait_min": 0.1766,
+            "deadline_min": 61.4913,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j31",
+            "machine_id": "m0",
+            "start_min": 36.054,
+            "end_min": 42.4571,
+            "wait_min": 5.9175,
+            "deadline_min": 38.5393,
             "missed_deadline": true
           }
         ],
         "summary": {
-          "avg_completion_min": 16.75,
-          "p95_wait_min": 10,
+          "avg_completion_min": 6.2423,
+          "p95_wait_min": 6.4028,
           "sla_misses": 3,
           "hard_deadline_misses": 3,
-          "energy_kwh": 0.533,
-          "makespan_min": 26,
-          "capacity_violations": 0
+          "energy_kwh": 3.753,
+          "makespan_min": 42.4571,
+          "capacity_violations": 0,
+          "fitness": -1.319767
         },
         "aggregate": {
-          "avg_completion_min": 22.6,
-          "p95_wait_min": 16,
-          "sla_misses": 44,
-          "hard_deadline_misses": 33,
-          "energy_kwh": 10.15,
-          "makespan_min": 39.0,
+          "n_cases": 18,
+          "avg_completion_min": 10.3123,
+          "p95_wait_min": 18.9162,
+          "sla_misses": 175,
+          "hard_deadline_misses": 175,
+          "energy_kwh": 80.3998,
+          "makespan_min": 45.9963,
           "capacity_violations": 0,
-          "fitness": -1.62,
-          "n_cases": 12
-        },
-        "behavior_origin": {
-          "genome_id": "g0004",
-          "provider": "baseline",
-          "operator": "seed",
-          "generation": 0
+          "fitness": -1.601
         }
       },
       {
@@ -477,115 +1558,368 @@
         "label": "Round robin",
         "provider": "baseline",
         "genome_id": "g0001",
-        "description": "Hand-written baseline that queues jobs onto the first legal machine.",
+        "description": "seeded baseline round_robin",
         "rules_plain": [
-          "Take jobs in a fixed order.",
-          "Place each one on the first machine that can run its class.",
-          "Do not look at deadlines."
+          "Consider the first 36 waiting jobs.",
+          "Prefer the next machine in rotation (weight 1.00).",
+          "Prefer jobs that have already waited (weight 0.10).",
+          "Break ties by arrival, then job_id, then machine_id."
         ],
         "feasible": true,
         "infeasible_reason": null,
         "schedule": [
           {
-            "job_id": "j06",
-            "machine_id": "cpu-1",
-            "start_min": 0,
-            "end_min": 16,
-            "wait_min": 0,
-            "deadline_min": 15,
-            "missed_deadline": true
-          },
-          {
-            "job_id": "j02",
-            "machine_id": "cpu-1",
-            "start_min": 16,
-            "end_min": 26,
-            "wait_min": 16,
-            "deadline_min": 22,
-            "missed_deadline": true
-          },
-          {
-            "job_id": "j08",
-            "machine_id": "cpu-1",
-            "start_min": 26,
-            "end_min": 34,
-            "wait_min": 20,
-            "deadline_min": 30,
-            "missed_deadline": true
-          },
-          {
-            "job_id": "j05",
-            "machine_id": "cpu-1",
-            "start_min": 34,
-            "end_min": 40,
-            "wait_min": 32,
-            "deadline_min": 20,
-            "missed_deadline": true
+            "job_id": "j00",
+            "machine_id": "m0",
+            "start_min": 0.03,
+            "end_min": 6.3419,
+            "wait_min": 0.0,
+            "deadline_min": 6.8745,
+            "missed_deadline": false
           },
           {
             "job_id": "j01",
-            "machine_id": "cpu-1",
-            "start_min": 40,
-            "end_min": 48,
-            "wait_min": 40,
-            "deadline_min": 16,
-            "missed_deadline": true
+            "machine_id": "g0",
+            "start_min": 0.06,
+            "end_min": 5.791,
+            "wait_min": 0.0,
+            "deadline_min": 23.8786,
+            "missed_deadline": false
           },
           {
-            "job_id": "j04",
-            "machine_id": "highmem-1",
-            "start_min": 0,
-            "end_min": 14,
-            "wait_min": 0,
-            "deadline_min": 13,
-            "missed_deadline": true
+            "job_id": "j02",
+            "machine_id": "a0",
+            "start_min": 0.09,
+            "end_min": 2.3584,
+            "wait_min": 0.0,
+            "deadline_min": 3.7274,
+            "missed_deadline": false
           },
           {
             "job_id": "j03",
-            "machine_id": "gpu-1",
-            "start_min": 2,
-            "end_min": 14,
-            "wait_min": 2,
-            "deadline_min": 13,
-            "missed_deadline": true
+            "machine_id": "a1",
+            "start_min": 0.12,
+            "end_min": 5.0685,
+            "wait_min": 0.0,
+            "deadline_min": 20.8357,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j04",
+            "machine_id": "b0",
+            "start_min": 4.9247,
+            "end_min": 7.1397,
+            "wait_min": 0.0,
+            "deadline_min": 9.313,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j05",
+            "machine_id": "b1",
+            "start_min": 4.9547,
+            "end_min": 6.0265,
+            "wait_min": 0.0,
+            "deadline_min": 7.5082,
+            "missed_deadline": false
           },
           {
             "job_id": "j07",
-            "machine_id": "gpu-1",
-            "start_min": 16,
-            "end_min": 26,
-            "wait_min": 12,
-            "deadline_min": 23,
+            "machine_id": "a0",
+            "start_min": 5.0147,
+            "end_min": 13.5865,
+            "wait_min": 0.0,
+            "deadline_min": 33.2743,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j08",
+            "machine_id": "a1",
+            "start_min": 5.0685,
+            "end_min": 9.9793,
+            "wait_min": 0.0238,
+            "deadline_min": 31.4948,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j06",
+            "machine_id": "g0",
+            "start_min": 5.791,
+            "end_min": 10.4486,
+            "wait_min": 0.8063,
+            "deadline_min": 10.6564,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j09",
+            "machine_id": "b0",
+            "start_min": 9.1461,
+            "end_min": 10.2769,
+            "wait_min": 0.0,
+            "deadline_min": 11.5183,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j10",
+            "machine_id": "b1",
+            "start_min": 9.1761,
+            "end_min": 10.5579,
+            "wait_min": 0.0,
+            "deadline_min": 12.6531,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j11",
+            "machine_id": "m0",
+            "start_min": 9.2061,
+            "end_min": 11.187,
+            "wait_min": 0.0,
+            "deadline_min": 12.9151,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j12",
+            "machine_id": "m0",
+            "start_min": 11.187,
+            "end_min": 19.0756,
+            "wait_min": 1.9509,
+            "deadline_min": 18.2611,
+            "missed_deadline": true
+          },
+          {
+            "job_id": "j14",
+            "machine_id": "g0",
+            "start_min": 14.5081,
+            "end_min": 23.5723,
+            "wait_min": 0.0,
+            "deadline_min": 44.1962,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j16",
+            "machine_id": "a0",
+            "start_min": 14.5681,
+            "end_min": 24.2105,
+            "wait_min": 0.0,
+            "deadline_min": 38.8901,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j17",
+            "machine_id": "a1",
+            "start_min": 14.5981,
+            "end_min": 19.023,
+            "wait_min": 0.0,
+            "deadline_min": 31.7319,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j18",
+            "machine_id": "b0",
+            "start_min": 14.6281,
+            "end_min": 20.7861,
+            "wait_min": 0.0,
+            "deadline_min": 36.4988,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j13",
+            "machine_id": "m0",
+            "start_min": 19.0756,
+            "end_min": 26.261,
+            "wait_min": 9.8095,
+            "deadline_min": 18.2058,
+            "missed_deadline": true
+          },
+          {
+            "job_id": "j19",
+            "machine_id": "g0",
+            "start_min": 19.6923,
+            "end_min": 28.3647,
+            "wait_min": 0.0,
+            "deadline_min": 45.7583,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j21",
+            "machine_id": "a1",
+            "start_min": 19.7523,
+            "end_min": 25.9125,
+            "wait_min": 0.0,
+            "deadline_min": 41.0339,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j22",
+            "machine_id": "b1",
+            "start_min": 19.7823,
+            "end_min": 27.0761,
+            "wait_min": 0.0,
+            "deadline_min": 47.6426,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j23",
+            "machine_id": "b0",
+            "start_min": 20.7861,
+            "end_min": 22.0316,
+            "wait_min": 0.9738,
+            "deadline_min": 22.0464,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j24",
+            "machine_id": "g0",
+            "start_min": 24.2639,
+            "end_min": 26.3282,
+            "wait_min": 0.0,
+            "deadline_min": 27.399,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j25",
+            "machine_id": "a0",
+            "start_min": 24.2939,
+            "end_min": 31.9934,
+            "wait_min": 0.0,
+            "deadline_min": 53.4403,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j26",
+            "machine_id": "b0",
+            "start_min": 24.3239,
+            "end_min": 32.5397,
+            "wait_min": 0.0,
+            "deadline_min": 47.9581,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j27",
+            "machine_id": "a1",
+            "start_min": 25.9125,
+            "end_min": 27.9407,
+            "wait_min": 1.5586,
+            "deadline_min": 27.2464,
+            "missed_deadline": true
+          },
+          {
+            "job_id": "j15",
+            "machine_id": "m0",
+            "start_min": 26.261,
+            "end_min": 33.5479,
+            "wait_min": 11.7229,
+            "deadline_min": 23.3806,
+            "missed_deadline": true
+          },
+          {
+            "job_id": "j28",
+            "machine_id": "b1",
+            "start_min": 27.0761,
+            "end_min": 32.9281,
+            "wait_min": 2.6922,
+            "deadline_min": 50.5827,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j20",
+            "machine_id": "g0",
+            "start_min": 28.3647,
+            "end_min": 33.0934,
+            "wait_min": 8.6424,
+            "deadline_min": 25.9986,
+            "missed_deadline": true
+          },
+          {
+            "job_id": "j30",
+            "machine_id": "a1",
+            "start_min": 30.1065,
+            "end_min": 36.0663,
+            "wait_min": 0.0,
+            "deadline_min": 54.8854,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j33",
+            "machine_id": "a0",
+            "start_min": 31.9934,
+            "end_min": 39.5482,
+            "wait_min": 1.7969,
+            "deadline_min": 55.4524,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j32",
+            "machine_id": "g0",
+            "start_min": 33.0934,
+            "end_min": 38.4322,
+            "wait_min": 2.9269,
+            "deadline_min": 36.5843,
+            "missed_deadline": true
+          },
+          {
+            "job_id": "j29",
+            "machine_id": "m0",
+            "start_min": 33.5479,
+            "end_min": 38.0049,
+            "wait_min": 3.4714,
+            "deadline_min": 36.2814,
+            "missed_deadline": true
+          },
+          {
+            "job_id": "j34",
+            "machine_id": "b0",
+            "start_min": 34.4692,
+            "end_min": 40.9703,
+            "wait_min": 0.0,
+            "deadline_min": 61.4913,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j35",
+            "machine_id": "b1",
+            "start_min": 34.4992,
+            "end_min": 36.4403,
+            "wait_min": 0.0,
+            "deadline_min": 38.3352,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j31",
+            "machine_id": "m0",
+            "start_min": 38.0049,
+            "end_min": 44.408,
+            "wait_min": 7.8684,
+            "deadline_min": 38.5393,
             "missed_deadline": true
           }
         ],
         "summary": {
-          "avg_completion_min": 27.25,
-          "p95_wait_min": 40,
+          "avg_completion_min": 6.7553,
+          "p95_wait_min": 8.9342,
           "sla_misses": 8,
-          "hard_deadline_misses": 7,
-          "energy_kwh": 0.984,
-          "makespan_min": 48,
-          "capacity_violations": 0
+          "hard_deadline_misses": 8,
+          "energy_kwh": 4.5611,
+          "makespan_min": 44.408,
+          "capacity_violations": 0,
+          "fitness": -1.705556
         },
         "aggregate": {
-          "avg_completion_min": 34.8,
-          "p95_wait_min": 31,
-          "sla_misses": 81,
-          "hard_deadline_misses": 63,
-          "energy_kwh": 16.2,
-          "makespan_min": 57.4,
+          "n_cases": 18,
+          "avg_completion_min": 10.6431,
+          "p95_wait_min": 19.3392,
+          "sla_misses": 183,
+          "hard_deadline_misses": 181,
+          "energy_kwh": 84.0032,
+          "makespan_min": 46.1355,
           "capacity_violations": 0,
-          "fitness": -2.14,
-          "n_cases": 12
-        },
-        "behavior_origin": {
-          "genome_id": "g0001",
-          "provider": "baseline",
-          "operator": "seed",
-          "generation": 0
+          "fitness": -1.7206
         }
       }
     ]
-  }
+  },
+  "schema": "geneai-showcase-v1",
+  "domain": "cloud_scheduling",
+  "run_id": "run_37cb66650b80",
+  "export_integrity_sha256": "fb01fca6137d27617264eec5d10805ad0ae29d70ac32dfc9924b43e6ea336545",
+  "split": "test"
 }
