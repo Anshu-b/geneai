@@ -1,0 +1,409 @@
+"""Phase 2: cloud and shopping share the Phase 1 controller. No sponsor calls."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import httpx
+import pytest
+
+from geneai_core.benchmark.oneshot import attach_baseline, run_frontier_oneshot
+from geneai_core.controller import EvolutionController
+from geneai_core.domains.cloud import (
+    SPLIT_INDEXES,
+    CloudSchedulingAdapter,
+    baseline_payload,
+    simulate,
+    workload,
+)
+from geneai_core.domains.shopping import (
+    ShoppingAdapter,
+    gym_outfit,
+    load_catalog,
+    neutral_outfit,
+    products_from_browser_output,
+)
+from geneai_core.providers.base import CredentialsError, Proposal, ProviderError
+from geneai_core.providers.browser_use import API_ORIGIN, BrowserUseClient
+from geneai_core.providers.mock import MockAgentProvider, MockModelProvider
+from geneai_core.runs import execute_domain_run
+from geneai_core.schemas import EvolutionConfig, Genome, ObjectiveSpec
+from geneai_core.store import RunRepository, verify_export
+
+
+def _genome(payload: dict) -> Genome:
+    return Genome(
+        id="g",
+        run_id="r",
+        generation=0,
+        operator="seed",
+        payload=payload,
+        hypothesis="hand",
+        provider="handwritten",
+        created_at="",
+        content_hash="g",
+    )
+
+
+def test_cloud_is_deterministic_and_capacity_safe() -> None:
+    payload = baseline_payload("shortest_job")
+    jobs = workload(7, 3)
+    first = simulate(payload, jobs)
+    second = simulate(payload, jobs)
+    assert first == second
+    assert first["violations"] == 0
+    assert first["completed"] == len(jobs)
+    adapter = CloudSchedulingAdapter(seed=7)
+    objective = ObjectiveSpec(domain=adapter.name, prompt="schedule", evaluation_version=adapter.evaluator_version)
+    for name in ("round_robin", "shortest_job", "least_loaded", "deadline_weighted"):
+        adapter.validate(baseline_payload(name), objective)
+        for split in ("train", "validation", "test"):
+            evaluation = adapter.evaluate(_genome(baseline_payload(name)), split)
+            assert evaluation.feasible, evaluation.feedback
+            assert evaluation.metrics["violations"] == 0
+    train = set(SPLIT_INDEXES["train"])
+    validation = set(SPLIT_INDEXES["validation"])
+    test = set(SPLIT_INDEXES["test"])
+    assert train.isdisjoint(validation)
+    assert train.isdisjoint(test)
+    assert validation.isdisjoint(test)
+
+
+def test_cloud_baselines_and_bad_rules() -> None:
+    adapter = CloudSchedulingAdapter(seed=42)
+    scores = {}
+    for name in ("round_robin", "shortest_job", "deadline_weighted"):
+        evaluation = adapter.evaluate(_genome(baseline_payload(name)), "train")
+        assert evaluation.fitness is not None
+        scores[name] = evaluation.fitness
+    assert scores["shortest_job"] >= scores["round_robin"]
+    assert scores["deadline_weighted"] >= scores["round_robin"]
+    objective = ObjectiveSpec(domain="cloud_scheduling", prompt="x", evaluation_version="cloud-scheduler-v1")
+    with pytest.raises(ValueError):
+        adapter.validate(
+            {
+                "policy_family": "weighted_queue",
+                "rules": {
+                    "prefer_short_jobs": True,
+                    "cpu_pressure_weight": 2.0,
+                    "memory_pressure_weight": 0.1,
+                    "deadline_urgency_weight": 0.1,
+                    "max_queue_depth": 4,
+                },
+                "description": "too heavy",
+            },
+            objective,
+        )
+    with pytest.raises(ValueError):
+        adapter.validate(
+            {
+                "policy_family": "python",
+                "rules": baseline_payload("round_robin")["rules"],
+                "description": "not a family",
+            },
+            objective,
+        )
+
+
+def test_shopping_fixture_constraints_and_ranking() -> None:
+    catalog = load_catalog()
+    assert catalog["source"] == "fixture"
+    assert catalog["browser_use_run_id"] is None
+    for product in catalog["products"]:
+        assert product["product_url"] is None
+        assert product["image_url"] is None
+        assert product["availability"] == "unknown"
+    neutral = ShoppingAdapter(
+        constraints={"budget": 300, "size": "M", "palette": "neutral", "occasions": ["campus", "dinner"]}
+    )
+    bright = ShoppingAdapter(
+        constraints={"budget": 300, "size": "M", "palette": "bright", "occasions": ["gym"]}
+    )
+    neutral_score = neutral.evaluate(_genome(neutral_outfit()), "train")
+    gym_on_neutral = neutral.evaluate(_genome(gym_outfit()), "train")
+    gym_score = bright.evaluate(_genome(gym_outfit()), "train")
+    neutral_on_bright = bright.evaluate(_genome(neutral_outfit()), "train")
+    assert neutral_score.feasible and gym_on_neutral.feasible
+    assert neutral_score.fitness > gym_on_neutral.fitness
+    assert gym_score.fitness > neutral_on_bright.fitness
+    assert neutral_score.metrics["purchasable"] == 0.0
+    assert neutral_score.fitness == neutral.evaluate(_genome(neutral_outfit()), "test").fitness
+    over = {
+        "family": "neutral_layers",
+        "items": [
+            {"product_id": "fx_top_04", "color_id": "bone", "size": "M", "role": "top"},
+            {"product_id": "fx_bottom_04", "color_id": "black", "size": "M", "role": "bottom"},
+            {"product_id": "fx_layer_02", "color_id": "black", "size": "M", "role": "layer"},
+        ],
+        "styling_notes": "over budget",
+    }
+    assert not neutral.evaluate(_genome(over), "validation").feasible
+    objective = ObjectiveSpec(
+        domain="shopping",
+        prompt="outfit",
+        constraints={"budget": 300, "size": "M", "palette": "neutral", "occasions": ["dinner"]},
+        evaluation_version="shopping-outfit-v1",
+    )
+    with pytest.raises(ValueError, match="unknown product"):
+        neutral.validate(
+            {
+                "family": "neutral_layers",
+                "items": [
+                    {"product_id": "not_a_product", "color_id": "black", "size": "M", "role": "top"},
+                    {"product_id": "fx_bottom_01", "color_id": "sage", "size": "M", "role": "bottom"},
+                ],
+                "styling_notes": "missing",
+            },
+            objective,
+        )
+    with pytest.raises(ValueError, match="size"):
+        neutral.validate(
+            {
+                "family": "neutral_layers",
+                "items": [
+                    {"product_id": "fx_top_04", "color_id": "black", "size": "S", "role": "top"},
+                    {"product_id": "fx_bottom_01", "color_id": "sage", "size": "M", "role": "bottom"},
+                ],
+                "styling_notes": "wrong size",
+            },
+            objective,
+        )
+
+
+def test_browser_output_drops_rows_without_urls() -> None:
+    catalog = products_from_browser_output(
+        {
+            "products": [
+                {
+                    "title": "Known tee",
+                    "price": 20,
+                    "currency": "USD",
+                    "product_url": "https://shop.example/p/1",
+                    "role": "top",
+                    "availability": "in_stock",
+                },
+                {"title": "No page", "price": 10, "currency": "USD", "role": "bottom"},
+                {"title": "Bad price", "price": "free", "product_url": "https://shop.example/p/2"},
+            ]
+        },
+        run_id="run_test",
+        session_id="sess",
+        model="browser-use",
+    )
+    assert catalog["source"] == "browser_use"
+    assert catalog["dropped_without_url"] == 2
+    assert len(catalog["products"]) == 1
+    assert catalog["products"][0]["product_url"] == "https://shop.example/p/1"
+
+
+@pytest.mark.asyncio
+async def test_browser_use_client_parses_v4_and_refuses_other_hosts(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("BROWSER_USE_API_KEY", raising=False)
+    calls = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        assert request.headers["x-browser-use-api-key"] == "bu_test"
+        path = request.url.path
+        if request.method == "POST" and path.endswith("/runs"):
+            return httpx.Response(200, json={"id": "run_1", "status": "queued", "sessionId": "sess", "model": "bu"})
+        if path.endswith("/status"):
+            return httpx.Response(200, json={"status": "completed"})
+        return httpx.Response(
+            200,
+            json={
+                "status": "completed",
+                "output": {
+                    "products": [
+                        {
+                            "title": "Known tee",
+                            "price": 20,
+                            "currency": "USD",
+                            "product_url": "https://shop.example/p/1",
+                            "image_url": "https://shop.example/i/1.jpg",
+                            "role": "top",
+                            "availability": "in_stock",
+                        },
+                        {"title": "Dropped", "price": 5, "currency": "USD", "role": "bottom"},
+                    ]
+                },
+                "model": "bu-model",
+                "sessionId": "sess",
+                "updatedAt": "2026-10-18T00:00:00Z",
+                "totalCostUsd": "0.02",
+            },
+        )
+
+    client = BrowserUseClient(api_key="bu_test", client=httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+    catalog = await client.collect_catalog(catalog_url="https://shop.example/c", query="tees")
+    assert catalog["browser_use_run_id"] == "run_1"
+    assert catalog["source"] == "browser_use"
+    assert len(catalog["products"]) == 1
+    assert calls["n"] == 3
+    with pytest.raises(ProviderError, match="non Browser Use"):
+        await client._request("GET", "https://evil.example/api/v2/tasks", None)
+    with pytest.raises(CredentialsError):
+        BrowserUseClient.from_env()
+
+
+@pytest.mark.asyncio
+async def test_browser_use_empty_catalog_does_not_substitute_the_fixture() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST":
+            return httpx.Response(200, json={"id": "run_empty", "status": "queued"})
+        if str(request.url).endswith("/status"):
+            return httpx.Response(200, json={"status": "completed"})
+        return httpx.Response(
+            200,
+            json={"status": "completed", "output": {"products": [{"title": "no url", "price": 1}]}},
+        )
+
+    client = BrowserUseClient(api_key="bu_test", client=httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+    with pytest.raises(ProviderError, match="fixture catalog was not substituted") as caught:
+        await client.collect_catalog(catalog_url="https://shop.example/c", query="tees")
+    assert caught.value.code == "EMPTY_CATALOG"
+
+
+@pytest.mark.asyncio
+async def test_oneshot_skips_without_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("FRONTIER_API_KEY", raising=False)
+    monkeypatch.delenv("FRONTIER_BASE_URL", raising=False)
+    monkeypatch.delenv("FRONTIER_MODEL", raising=False)
+
+    def explode(*_args, **_kwargs):
+        raise AssertionError("OpenAI client must not be constructed")
+
+    monkeypatch.setattr("openai.AsyncOpenAI", explode)
+    adapter = CloudSchedulingAdapter(seed=1)
+    record = await run_frontier_oneshot(
+        adapter=adapter,
+        objective=ObjectiveSpec(domain=adapter.name, prompt="schedule", evaluation_version=adapter.evaluator_version),
+    )
+    assert record["status"] == "skipped"
+    assert record["calls"] == 0
+    assert record["compute_matched"] is False
+
+
+@pytest.mark.asyncio
+async def test_oneshot_one_call_invalid_stays_invalid_and_export_verifies(tmp_path: Path) -> None:
+    class FakeFrontier:
+        model = "fake-model"
+        base_url = "https://frontier.example/v1"
+        calls = 0
+
+        async def propose(self, instruction: str, schema: dict, *, call_id: str) -> Proposal:
+            del instruction, schema
+            self.calls += 1
+            assert call_id == "oneshot"
+            return Proposal(
+                payload={"policy_family": "not-a-policy", "rules": {}, "description": "bad"},
+                hypothesis="one try",
+                provider="frontier",
+                provider_run_id="fake-1",
+                model=self.model,
+                mode="live",
+            )
+
+        async def aclose(self) -> None:
+            return None
+
+    provider = FakeFrontier()
+    adapter = CloudSchedulingAdapter(seed=3)
+    objective = ObjectiveSpec(domain=adapter.name, prompt="schedule", evaluation_version=adapter.evaluator_version)
+    record = await run_frontier_oneshot(adapter=adapter, objective=objective, provider=provider)  # type: ignore[arg-type]
+    assert provider.calls == 1
+    assert record["status"] == "invalid"
+    assert record["feasible"] is False
+    assert record["compute_matched"] is False
+    assert record["calls"] == 1
+    document = {
+        "schema_version": "1.0",
+        "one_shot_baseline": None,
+        "run": {"id": "local"},
+    }
+    from geneai_core.store import export_integrity
+
+    document["integrity_sha256"] = export_integrity(document)
+    path = tmp_path / "export.json"
+    path.write_text(json.dumps(document), encoding="utf-8")
+    updated = attach_baseline(path, record)
+    assert updated["one_shot_baseline"]["status"] == "invalid"
+    assert updated["one_shot_baseline"]["compute_matched"] is False
+    assert verify_export(updated)
+
+
+@pytest.mark.asyncio
+async def test_cloud_and_shopping_share_one_controller(tmp_path: Path) -> None:
+    controller = EvolutionController()
+    providers = {"model": MockModelProvider(), "workflow": MockAgentProvider()}
+    cloud = CloudSchedulingAdapter(seed=5)
+    shopping = ShoppingAdapter()
+    shopping.bind_objective(
+        ObjectiveSpec(
+            domain=shopping.name,
+            prompt="bound",
+            constraints={"budget": 300, "size": "M", "palette": "neutral", "occasions": ["campus", "dinner"]},
+            evaluation_version=shopping.evaluator_version,
+        )
+    )
+    cloud_result = await controller.evolve(
+        objective=ObjectiveSpec(
+            domain=cloud.name,
+            prompt="Schedule without exceeding CPU or memory.",
+            evaluation_version=cloud.evaluator_version,
+        ),
+        adapter=cloud,
+        config=EvolutionConfig(seed=5, population_size=4, generations=1, elite_count=1, max_model_calls=80),
+        providers=providers,
+        mode="mock",
+        repository=RunRepository(tmp_path / "cloud"),
+    )
+    shopping_result = await controller.evolve(
+        objective=ObjectiveSpec(
+            domain=shopping.name,
+            prompt="Neutral outfit, size M, budget 300.",
+            constraints={"budget": 300, "size": "M", "palette": "neutral", "occasions": ["campus", "dinner"]},
+            evaluation_version=shopping.evaluator_version,
+        ),
+        adapter=shopping,
+        config=EvolutionConfig(seed=5, population_size=4, generations=1, elite_count=1, max_model_calls=80),
+        providers={"model": MockModelProvider(), "workflow": MockAgentProvider()},
+        mode="mock",
+        repository=RunRepository(tmp_path / "shopping"),
+    )
+    assert cloud_result.status == "completed", cloud_result.summary
+    assert shopping_result.status == "completed", shopping_result.summary
+    assert cloud_result.summary["domain"] == "cloud_scheduling"
+    assert shopping_result.summary["domain"] == "shopping"
+    assert cloud_result.champion_id and shopping_result.champion_id
+    for item in shopping_result.summary["champion_payload"]["items"]:
+        assert item["product_id"].startswith("fx_")
+        assert item["product_id"] in shopping._by_id
+
+
+@pytest.mark.asyncio
+async def test_domain_run_exports_replay_and_skips_oneshot(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("FRONTIER_API_KEY", raising=False)
+    monkeypatch.delenv("FRONTIER_BASE_URL", raising=False)
+    monkeypatch.delenv("FRONTIER_MODEL", raising=False)
+    result = await execute_domain_run(
+        domain="shopping",
+        mode="mock",
+        seed=4,
+        population_size=4,
+        generations=1,
+        root=tmp_path,
+        elite_count=1,
+    )
+    assert result.status == "completed"
+    document = json.loads(Path(result.export_path).read_text(encoding="utf-8"))
+    assert document["schema_version"] == "1.0"
+    assert document["run"]["domain"] == "shopping"
+    assert document["run"]["mode"] == "mock"
+    assert document["one_shot_baseline"]["status"] == "skipped"
+    assert document["one_shot_baseline"]["compute_matched"] is False
+    assert document["one_shot_baseline"]["comparison_label"] == "single attempt vs evolutionary search"
+    assert verify_export(document)
+    assert "neutral_outfit" in result.summary["baselines"]
+    assert result.summary["baselines"]["neutral_outfit"]["train"]["feasible"] is True

@@ -1,6 +1,6 @@
 # Demo storyboard
 
-Phase 3 builds the site. Phase 1 only produces the export that site will play.
+Phase 3 builds the site. Phase 2 writes the replay export that site will play.
 
 A judge-facing run is a recorded export (`mode` stays whatever the run actually
 was: `mock` or `hybrid`). Playback must not be labeled live. The lineage view

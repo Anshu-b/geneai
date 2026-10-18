@@ -1,7 +1,7 @@
 [project]
 name = "geneai"
 version = "0.1.0"
-description = "Domain-agnostic evolutionary search runtime. Phase 1 is the headless engine."
+description = "Domain-agnostic evolutionary search. One controller runs toy, cloud, and shopping."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

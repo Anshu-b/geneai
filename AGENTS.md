@@ -3,15 +3,17 @@
 GeneAI is one domain-agnostic evolutionary controller. Domain demos are
 plugins. Do not fork the engine per demo.
 
-## Phase 1 status
+## Status
 
-Implemented: typed contracts, registry, toy_optimization, tournament selection,
-mutation, crossover, elitism, immigrants, repair, dedup, pruning, budgets,
-lineage JSONL, section 13.3 export, Mock providers, VeriProvider, CreaoProvider
-(app-scoped GeneAI Mutator), FrontierProvider (unused by the loop), smoke
-scripts, and tests.
+Implemented: typed contracts, registry, the shared controller, toy_optimization,
+cloud_scheduling, shopping (fixture catalog plus Browser Use v4 client),
+tournament selection, mutation, crossover, elitism, immigrants, repair, dedup,
+pruning, budgets, lineage JSONL, section 13.3 export, Mock providers,
+VeriProvider, CreaoProvider (app-scoped GeneAI Mutator), FrontierProvider
+one-shot arm, and tests.
 
-Not implemented: shopping, cloud, quant, Browser Use, one-shot runner, API, UI.
+Not implemented: quant, API, UI. Quant stays skipped until it can be added
+without crowding the two primary domains.
 
 ## Rules
 
@@ -38,11 +40,16 @@ Not implemented: shopping, cloud, quant, Browser Use, one-shot runner, API, UI.
 ```bash
 uv sync
 uv run pytest -q
-uv run python scripts/run_toy.py --mode mock --seed 42 --population 12 --generations 5
+uv run python scripts/run_domain.py --domain toy --mode mock --seed 42 --population 12 --generations 5
+uv run python scripts/run_domain.py --domain cloud --mode mock --seed 42 --population 8 --generations 3
+uv run python scripts/run_domain.py --domain shopping --mode mock --seed 42 --population 8 --generations 3
 uv run python scripts/smoke_veri.py
 uv run python scripts/smoke_creao.py
-uv run python scripts/run_toy.py --mode hybrid --seed 42 --population 8 --generations 3
+uv run python scripts/run_domain.py --domain cloud --mode hybrid --seed 42 --population 8 --generations 3
 ```
+
+Shopping `--mode live` also needs `BROWSER_USE_API_KEY` and `--catalog-url`.
+The fixture catalog is not a stand-in for that call.
 
 Smoke scripts exit 3 when credentials are missing and print the setup. They do
 not fake a call. Hybrid mode exits 3 rather than silently falling back to mock.

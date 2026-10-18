@@ -1,4 +1,4 @@
-# Architecture (Phase 1)
+# Architecture
 
 GeneAI has one evolutionary controller. A domain adapter is a plugin. Switching
 domains does not fork the controller, the operators, or the lineage schema.
@@ -20,7 +20,9 @@ RunRepository  events.jsonl + export.json (schema 1.0)
 ```
 
 The controller does not import toy, shopping, cloud, quant, Veri, or CREAO.
-`scripts/run_toy.py` registers `toy_optimization` and passes it in.
+`scripts/run_domain.py` registers `toy_optimization`, `cloud_scheduling`, or
+`shopping` and passes that adapter in. Hybrid mode is still CREAO for the
+strategist slots and Veri for bulk mutation.
 
 ## Loop
 
@@ -56,11 +58,10 @@ Every stored genome has `parent_ids`, `operator`, `content_hash`, and metadata
 Events use the section 13.2 names. Sequence numbers are a dense 1..N series.
 The export's `integrity_sha256` covers every field except itself.
 
-`run.mode` is `mock` or `hybrid` in Phase 1. It is never relabeled `recorded`
-or `live`. Provider calls carry `provider_mode` so a mock call cannot be shown
-as sponsor execution.
+`run.mode` is the mode you asked for (`mock`, `hybrid`, or `live`). It is never
+relabeled `recorded`. Provider calls carry `provider_mode` so a mock call
+cannot be shown as sponsor execution.
 
-## Not in this phase
-
-Shopping, cloud, quant, Browser Use, the one-shot runner, and the website are
-not implemented. `FrontierProvider` is only a client for that later baseline.
+Cloud workloads and the shopping catalog are scored by their adapters. The
+export schema is still 1.0. `one_shot_baseline` is either a skipped record or
+one frontier attempt. Quant is not implemented. The website is Phase 3.

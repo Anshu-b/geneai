@@ -68,7 +68,87 @@ def _clamp(value: float, schema: dict[str, Any]) -> float | int:
     return round(value, 6)
 
 
+def _schema_options(schema: dict[str, Any]) -> list[dict[str, Any]]:
+    raw = schema.get("anyOf") or schema.get("oneOf") or []
+    return [item for item in raw if isinstance(item, dict)]
+
+
+def _const_values(schema: dict[str, Any]) -> dict[str, Any]:
+    props = schema.get("properties") or {}
+    values: dict[str, Any] = {}
+    for key, spec in props.items():
+        if isinstance(spec, dict) and "const" in spec:
+            values[key] = spec["const"]
+    return values
+
+
+def _diversity_keys(item_schema: dict[str, Any]) -> list[str]:
+    """Property names that are const on every alternative. Used to avoid clones."""
+
+    options = _schema_options(item_schema)
+    if len(options) < 2:
+        return []
+    shared: set[str] | None = None
+    for option in options:
+        consts = set(_const_values(option))
+        shared = consts if shared is None else shared & consts
+    return sorted(shared or [])
+
+
+def _fill_array(schema: dict[str, Any], rng: random.Random) -> list[Any]:
+    item_schema = schema.get("items") or {}
+    minimum = int(schema.get("minItems") or 0)
+    maximum = int(schema.get("maxItems") or max(minimum, 0))
+    if maximum < minimum:
+        maximum = minimum
+    count = minimum if maximum == minimum else rng.randint(minimum, maximum)
+    keys = _diversity_keys(item_schema)
+    options = _schema_options(item_schema)
+    if not keys or not options:
+        return [fill_schema(item_schema, rng) for _ in range(count)]
+    used: dict[str, set[Any]] = {key: set() for key in keys}
+    built: list[Any] = []
+    guard = 0
+    while len(built) < count and guard < 80:
+        guard += 1
+        choices = []
+        for option in options:
+            consts = _const_values(option)
+            if any(consts.get(key) in used[key] for key in keys if key in consts):
+                continue
+            choices.append(option)
+        if not choices:
+            break
+        option = choices[rng.randrange(len(choices))]
+        for key, value in _const_values(option).items():
+            if key in used:
+                used[key].add(value)
+        built.append(fill_schema(option, rng))
+    while len(built) < minimum:
+        built.append(fill_schema(item_schema, rng))
+    return built
+
+
+def _diversity_collision(items: list[Any], keys: list[str]) -> bool:
+    seen: dict[str, set[Any]] = {key: set() for key in keys}
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        for key in keys:
+            if key not in item:
+                continue
+            if item[key] in seen[key]:
+                return True
+            seen[key].add(item[key])
+    return False
+
+
 def fill_schema(schema: dict[str, Any], rng: random.Random) -> Any:
+    if "const" in schema:
+        return schema["const"]
+    options = _schema_options(schema)
+    if options:
+        return fill_schema(options[rng.randrange(len(options))], rng)
     if "enum" in schema:
         return schema["enum"][rng.randrange(len(schema["enum"]))]
     kind = schema.get("type")
@@ -95,7 +175,7 @@ def fill_schema(schema: dict[str, Any], rng: random.Random) -> Any:
     if kind == "boolean":
         return bool(rng.randrange(2))
     if kind == "array":
-        return []
+        return _fill_array(schema, rng)
     return f"candidate-{rng.randrange(1000)}"
 
 
@@ -133,6 +213,10 @@ def mutate_one(parent: dict[str, Any], schema: dict[str, Any], rng: random.Rando
             continue
         _set_path(child, path, updated)
         return child
+    if _mutate_array(child, schema, rng):
+        return child
+    if _flip_enum(child, schema, rng):
+        return child
     description = str(child.get("description") or child.get("label") or "candidate")
     if "description" in child:
         child["description"] = f"{description} variant {rng.randrange(10000)}"
@@ -141,6 +225,88 @@ def mutate_one(parent: dict[str, Any], schema: dict[str, Any], rng: random.Rando
     else:
         child["note"] = f"variant {rng.randrange(10000)}"
     return child
+
+
+def _enum_paths(schema: dict[str, Any], prefix: list[str] | None = None) -> list[list[str]]:
+    prefix = prefix or []
+    found: list[list[str]] = []
+    if "enum" in schema and prefix:
+        found.append(prefix)
+    if schema.get("type") == "object" or "properties" in schema:
+        for key, child in (schema.get("properties") or {}).items():
+            if isinstance(child, dict):
+                found.extend(_enum_paths(child, prefix + [key]))
+    if schema.get("type") == "array" and isinstance(schema.get("items"), dict):
+        found.extend(_enum_paths(schema["items"], prefix + ["*"]))
+    return found
+
+
+def _array_paths(schema: dict[str, Any], prefix: list[str] | None = None) -> list[list[str]]:
+    prefix = prefix or []
+    found: list[list[str]] = []
+    if schema.get("type") == "array" and prefix:
+        found.append(prefix)
+    if schema.get("type") == "object" or "properties" in schema:
+        for key, child in (schema.get("properties") or {}).items():
+            if isinstance(child, dict):
+                found.extend(_array_paths(child, prefix + [key]))
+    return found
+
+
+def _mutate_array(payload: dict[str, Any], schema: dict[str, Any], rng: random.Random) -> bool:
+    paths = _array_paths(schema)
+    rng.shuffle(paths)
+    for path in paths:
+        current = _get_path(payload, path)
+        if not isinstance(current, list) or not current:
+            continue
+        item_schema = _schema_at(schema, path).get("items") or {}
+        index = rng.randrange(len(current))
+        keys = _diversity_keys(item_schema)
+        options = _schema_options(item_schema)
+        replacement: Any
+        if options and keys:
+            used: dict[str, set[Any]] = {key: set() for key in keys}
+            for position, item in enumerate(current):
+                if position == index or not isinstance(item, dict):
+                    continue
+                for key in keys:
+                    if key in item:
+                        used[key].add(item[key])
+            choices = []
+            for option in options:
+                consts = _const_values(option)
+                if any(consts.get(key) in used[key] for key in keys if key in consts):
+                    continue
+                choices.append(option)
+            if not choices:
+                continue
+            replacement = fill_schema(choices[rng.randrange(len(choices))], rng)
+        else:
+            replacement = fill_schema(item_schema, rng)
+        if replacement == current[index]:
+            continue
+        updated = list(current)
+        updated[index] = replacement
+        _set_path(payload, path, updated)
+        return True
+    return False
+
+
+def _flip_enum(payload: dict[str, Any], schema: dict[str, Any], rng: random.Random) -> bool:
+    paths = _enum_paths(schema)
+    rng.shuffle(paths)
+    for path in paths:
+        if "*" in path:
+            continue
+        current = _get_path(payload, path)
+        options = _schema_at(schema, path).get("enum") or []
+        choices = [option for option in options if option != current]
+        if not choices:
+            continue
+        _set_path(payload, path, choices[rng.randrange(len(choices))])
+        return True
+    return False
 
 
 def cross_payloads(
@@ -152,7 +318,30 @@ def cross_payloads(
     return _cross_node(left, right, schema, rng)
 
 
+def _matches_option(value: Any, option: dict[str, Any]) -> bool:
+    if not isinstance(value, dict):
+        return False
+    for key, expected in _const_values(option).items():
+        if value.get(key) != expected:
+            return False
+    props = option.get("properties") or {}
+    for key, spec in props.items():
+        if not isinstance(spec, dict) or "enum" not in spec or key not in value:
+            continue
+        if value[key] not in spec["enum"]:
+            return False
+    return True
+
+
 def _cross_node(left: Any, right: Any, schema: dict[str, Any], rng: random.Random) -> Any:
+    if "const" in schema:
+        return schema["const"]
+    options = _schema_options(schema)
+    if options:
+        matched = [value for value in (left, right) if any(_matches_option(value, option) for option in options)]
+        if matched:
+            return matched[rng.randrange(len(matched))]
+        return fill_schema(schema, rng)
     if "enum" in schema:
         choices = [value for value in (left, right) if value in schema["enum"]]
         if choices:
@@ -172,6 +361,25 @@ def _cross_node(left: Any, right: Any, schema: dict[str, Any], rng: random.Rando
         return built
     if kind in {"number", "integer"} and isinstance(left, (int, float)) and isinstance(right, (int, float)):
         return _clamp((float(left) + float(right)) / 2.0, schema)
+    if kind == "array":
+        item_schema = schema.get("items") or {}
+        left_list = left if isinstance(left, list) else []
+        right_list = right if isinstance(right, list) else []
+        if not left_list and not right_list:
+            return fill_schema(schema, rng)
+        length = max(len(left_list), len(right_list))
+        cap = schema.get("maxItems")
+        if isinstance(cap, int):
+            length = min(length, cap)
+        built = []
+        for index in range(length):
+            lv = left_list[index] if index < len(left_list) else None
+            rv = right_list[index] if index < len(right_list) else None
+            built.append(_cross_node(lv, rv, item_schema, rng))
+        floor = schema.get("minItems")
+        while isinstance(floor, int) and len(built) < floor:
+            built.append(fill_schema(item_schema, rng))
+        return built
     if left is not None and (rng.random() < 0.5 or right is None):
         return left
     if right is not None:
@@ -189,6 +397,15 @@ def repair_payload(invalid: dict[str, Any], schema: dict[str, Any], rng: random.
 
 
 def _repair_node(invalid: Any, schema: dict[str, Any], rng: random.Random, fallback: Any) -> Any:
+    if "const" in schema:
+        return schema["const"]
+    options = _schema_options(schema)
+    if options:
+        for option in options:
+            if _matches_option(invalid, option):
+                filled = fill_schema(option, rng)
+                return _repair_node(invalid, option, rng, filled)
+        return fill_schema(schema, rng)
     if "enum" in schema:
         if invalid in schema["enum"]:
             return invalid
@@ -216,6 +433,20 @@ def _repair_node(invalid: Any, schema: dict[str, Any], rng: random.Random, fallb
         if isinstance(invalid, str) and invalid:
             return invalid
         return fallback if isinstance(fallback, str) else "repaired"
+    if kind == "array":
+        item_schema = schema.get("items") or {}
+        source = invalid if isinstance(invalid, list) else []
+        built = [_repair_node(item, item_schema, rng, None) for item in source]
+        cap = schema.get("maxItems")
+        if isinstance(cap, int):
+            built = built[:cap]
+        floor = int(schema.get("minItems") or 0)
+        while len(built) < floor:
+            built.append(fill_schema(item_schema, rng))
+        keys = _diversity_keys(item_schema)
+        if keys and _diversity_collision(built, keys):
+            return fill_schema(schema, rng)
+        return built
     return invalid if invalid is not None else fallback
 
 

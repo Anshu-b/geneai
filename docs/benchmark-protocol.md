@@ -1,18 +1,22 @@
-# Benchmark protocol (not implemented)
+# Benchmark protocol
 
-Phase 2 will compare two arms on the same adapter, schema, and held-out split.
-This repository does not run that comparison yet. Exports set
-`one_shot_baseline` to null.
+Two arms, same adapter, same schema, same held-out test split.
 
-Arm A, frontier one-shot: one `FrontierProvider` request, no repair loop, same
-validator and evaluator. Invalid output stays invalid.
+Arm A, frontier one-shot: one `FrontierProvider.propose` call. No repair loop.
+Invalid output stays invalid. The record is `one_shot_baseline` on the export.
 
-Arm B, GeneAI: the Phase 1 controller, champion frozen on train and validation,
-then one test evaluation.
+Arm B, GeneAI: the unchanged controller. The champion is frozen on train and
+validation, then evaluated once on test.
 
-Report quality, feasibility, call counts, wall time, and cost. Cost is actual
-usage when the provider returns it, otherwise null. Do not describe the
-comparison as compute-matched: GeneAI evaluates more candidates.
+The comparison label is `single attempt vs evolutionary search`.
+`compute_matched` is always false. GeneAI scores more candidates, so a higher
+test fitness is not a compute-matched win.
 
-`FrontierProvider` is the client Arm A will call. It does not pick a vendor
-URL on its own.
+Cost is the provider's reported USD when a response includes it, otherwise
+null. A missing `FRONTIER_API_KEY`, `FRONTIER_BASE_URL`, or `FRONTIER_MODEL`
+writes `one_shot_baseline.status=skipped` and sends no request. The runner
+does not invent a vendor URL.
+
+`scripts/run_domain.py` attaches that record after the evolutionary export is
+signed, then recomputes `integrity_sha256`. Phase 3 can read the same schema
+1.0 document.

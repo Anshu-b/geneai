@@ -110,15 +110,40 @@ controller or the smoke script.
 
 ## Frontier
 
-`FrontierProvider` is an optional OpenAI-compatible client
-(`FRONTIER_API_KEY`, `FRONTIER_BASE_URL`, `FRONTIER_MODEL`) for the Phase 2
-one-shot arm. Phase 1 does not call it during evolution.
+`FrontierProvider` is the OpenAI-compatible client for the one-shot arm
+(`FRONTIER_API_KEY`, `FRONTIER_BASE_URL`, `FRONTIER_MODEL`). Evolution does not
+call it. `scripts/run_domain.py` makes one request after the champion is
+frozen. Missing variables skip the arm. The comparison is not compute-matched.
+
+## Browser Use
+
+Live shopping catalog collection uses Browser Use Cloud API v4 only:
+
+```text
+POST https://api.browser-use.com/api/v4/runs
+GET  https://api.browser-use.com/api/v4/runs/{id}/status
+GET  https://api.browser-use.com/api/v4/runs/{id}
+Header: X-Browser-Use-API-Key
+```
+
+The task forbids login, cart, and payment. A product row is kept only when the
+run returns an `http` or `https` `product_url`. Rows without one are dropped.
+An empty collection fails. The fixture catalog is not substituted and then
+called live. There is no default retailer host. `BROWSER_USE_API_KEY` plus
+`--catalog-url` are both required.
+
+The committed file `data/fixtures/shopping_catalog.json` has `source: fixture`,
+null `product_url` and `image_url`, and `availability: unknown`. Those rows
+are not purchasable and are not retailer listings.
+
+This is outfit search, not a Visa payment integration. Do not describe a
+product link as secured by Visa.
 
 ## Modes
 
 | mode | providers | evaluator | label |
 | --- | --- | --- | --- |
-| mock | deterministic local | toy | `provider_mode=mock` |
-| hybrid | real Veri + real CREAO | toy | run mode `hybrid`, calls `live` |
-| live | Phase 2 | real domain | not implemented |
+| mock | deterministic local | domain simulator or fixture catalog | `provider_mode=mock` |
+| hybrid | real Veri bulk + real CREAO strategist | same evaluator | run mode `hybrid`, calls `live` |
+| live | same providers as hybrid | shopping also requires a Browser Use catalog | not a silent fixture fallback |
 | replay | none | none | Phase 3 playback of an export |
