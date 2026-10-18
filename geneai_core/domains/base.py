@@ -48,6 +48,16 @@ class DomainAdapter(ABC):
     def species_of(self, payload: dict[str, Any]) -> str:
         return self.family_of(payload)
 
+    def seeded_baselines(self) -> list[dict[str, Any]]:
+        """Generation-0 payloads inserted before model seeds.
+
+        Each item has ``name``, ``payload``, and ``hypothesis``. The controller
+        labels them as seeded baselines. Domains without hand baselines return
+        an empty list.
+        """
+
+        return []
+
     def dataset_hashes(self, seed: int) -> dict[str, str]:
         def digest(split: str) -> str:
             raw = f"{self.name}|{self.evaluator_version}|{split}|{seed}"

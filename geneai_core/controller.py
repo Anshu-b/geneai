@@ -277,6 +277,8 @@ class EvolutionController:
                     "provider_mode": proposal.mode,
                     "provider_run_id": proposal.provider_run_id,
                     "provider_role": provider_role,
+                    "seeded_baseline": bool(proposal.extra.get("seeded_baseline")),
+                    "baseline_name": proposal.extra.get("baseline_name"),
                     "model": proposal.model,
                     "deployment_id": proposal.deployment_id,
                     "thread_id": proposal.extra.get("thread_id"),
@@ -438,6 +440,37 @@ class EvolutionController:
 
         try:
             repository.emit("generation.started", {"generation": 0, "phase": "seed"}, provenance)
+            for spec in adapter.seeded_baselines():
+                if len(population) >= config.population_size or not budget.allows_evaluation():
+                    break
+                name = str(spec.get("name") or "baseline")
+                payload = spec.get("payload")
+                if not isinstance(payload, dict):
+                    continue
+                proposal = Proposal(
+                    payload=payload,
+                    hypothesis=str(spec.get("hypothesis") or f"seeded baseline {name}"),
+                    provider="baseline",
+                    provider_run_id=f"baseline-{name}",
+                    mode="baseline",
+                    extra={"seeded_baseline": True, "baseline_name": name},
+                )
+                genome = accept_payload(
+                    proposal,
+                    operator="seed",
+                    origin="seed",
+                    parent_ids=[],
+                    generation=0,
+                    role="seeded_baseline",
+                    provider_role="baseline",
+                )
+                if genome is None:
+                    continue
+                evaluation = evaluate_genome(genome, "train")
+                if evaluation is None:
+                    continue
+                counters["seed"] += 1
+                population.append(Individual(genome=genome, evaluation=evaluation))
             attempts = 0
             while len(population) < config.population_size and attempts < config.population_size * 8:
                 if not budget.allows_model_call() or not budget.allows_evaluation():
@@ -511,6 +544,11 @@ class EvolutionController:
                                 "feasible": item.evaluation.feasible,
                                 "operator": item.genome.operator,
                                 "parent_ids": list(item.genome.parent_ids),
+                                "provider": item.genome.provider,
+                                "provider_role": item.genome.metadata.get("provider_role"),
+                                "provider_mode": item.genome.metadata.get("provider_mode"),
+                                "seeded_baseline": bool(item.genome.metadata.get("seeded_baseline")),
+                                "baseline_name": item.genome.metadata.get("baseline_name"),
                             }
                             for item in elites
                         ],
@@ -833,6 +871,7 @@ def _finish_generation(
         "pruned_ids": [item.genome.id for item in pruned],
         "best_fitness": None if best is None else best.evaluation.fitness,
         "best_genome_id": None if best is None else best.genome.id,
+        "best_provider": None if best is None else best.genome.provider,
         "families": sorted({str(item.genome.metadata.get("family")) for item in population}),
     }
     repository.checkpoint(

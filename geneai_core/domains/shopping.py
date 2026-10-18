@@ -23,6 +23,38 @@ SIZES = ("S", "M", "L")
 NEUTRAL = {"black", "bone", "sage", "navy"}
 FIXTURE_PATH = Path(__file__).resolve().parents[2] / "data" / "fixtures" / "shopping_catalog.json"
 
+# Disjoint shoppers. Train is larger. Validation and test use the same menu of
+# palettes, occasions, and budgets, in a different mix, so a held-out score is
+# not a copy of the training objective. Size stays M. Budgets stay at or above
+# 260 so a mid-price outfit is legal everywhere; the soft score is what moves.
+_OCCASION_MENU = (
+    ("campus", "dinner"),
+    ("dinner",),
+    ("gym", "campus"),
+    ("campus",),
+    ("gym",),
+    ("dinner", "gym"),
+)
+_BUDGET_MENU = (260, 300, 340, 300, 260, 340)
+_PALETTE_MENU = ("neutral", "bright")
+
+
+def _shopper(index: int) -> dict[str, Any]:
+    return {
+        "id": f"s{index:02d}",
+        "palette": _PALETTE_MENU[index % 2],
+        "occasions": list(_OCCASION_MENU[index % len(_OCCASION_MENU)]),
+        "budget": _BUDGET_MENU[index % len(_BUDGET_MENU)],
+        "size": "M",
+    }
+
+
+SHOPPERS = {
+    "train": tuple(_shopper(index) for index in range(0, 6)),
+    "validation": tuple(_shopper(index) for index in range(6, 9)),
+    "test": tuple(_shopper(index) for index in range(9, 12)),
+}
+
 
 def load_catalog(path: Path | None = None) -> dict[str, Any]:
     document = json.loads((path or FIXTURE_PATH).read_text(encoding="utf-8"))
@@ -172,7 +204,7 @@ def _score_outfit(
 
 class ShoppingAdapter(DomainAdapter):
     name = "shopping"
-    evaluator_version = "shopping-outfit-v1"
+    evaluator_version = "shopping-outfit-v2"
 
     def __init__(self, catalog: dict[str, Any] | None = None, constraints: dict[str, Any] | None = None) -> None:
         self.catalog = catalog or load_catalog()
@@ -234,15 +266,13 @@ class ShoppingAdapter(DomainAdapter):
         }
 
     def dataset_hashes(self, seed: int) -> dict[str, str]:
-        # The outfit task has one catalog. Splits change nothing about products;
-        # the held-out score is still computed only after the champion is frozen.
-        # Hashes differ by split name so the export records which partition was reserved.
         del seed
         catalog_id = str(self.catalog.get("catalog_id"))
         source = str(self.catalog.get("source"))
 
         def digest(split: str) -> str:
-            raw = f"{self.evaluator_version}|{catalog_id}|{source}|{split}"
+            shopper_ids = [shopper["id"] for shopper in SHOPPERS[split]]
+            raw = f"{self.evaluator_version}|{catalog_id}|{source}|{split}|{shopper_ids}"
             import hashlib
 
             return hashlib.sha256(raw.encode("utf-8")).hexdigest()
@@ -313,9 +343,29 @@ class ShoppingAdapter(DomainAdapter):
             f"Parent A: {a.payload}\nParent B: {b.payload}"
         )
 
+    def _resolved(self, payload: dict[str, Any], palette: str) -> list[tuple[dict[str, Any], str, str]]:
+        resolved: list[tuple[dict[str, Any], str, str]] = []
+        for item in payload["items"]:
+            product = self._by_id[item["product_id"]]
+            color = _chosen_color(product, str(item["color_id"]), palette)
+            resolved.append((product, color, str(item["size"])))
+        return resolved
+
+    def score_shopper(self, genome: Genome, shopper: dict[str, Any]) -> tuple[float, dict[str, float], list[str]]:
+        """Score one shopper. Used by split means and by tests of a single profile."""
+
+        resolved = self._resolved(genome.payload, str(shopper["palette"]))
+        fitness, metrics, violations = _score_outfit(
+            resolved,
+            budget=float(shopper["budget"]),
+            palette=str(shopper["palette"]),
+            occasions=list(shopper["occasions"]),
+        )
+        return fitness, metrics, violations
+
     def evaluate(self, genome: Genome, split: str) -> Evaluation:
         started = time.perf_counter()
-        if split not in {"train", "validation", "test"}:
+        if split not in SHOPPERS:
             raise ValueError(f"unknown split {split}")
         objective = ObjectiveSpec(
             domain=self.name,
@@ -327,34 +377,34 @@ class ShoppingAdapter(DomainAdapter):
             self.validate(genome.payload, objective)
         except ValueError as exc:
             return self._bad(genome, split, str(exc), started)
-        constraints = self._objective_constraints
-        budget = float(constraints.get("budget", 300))
-        palette = str(constraints.get("palette", "neutral"))
-        occasions = list(constraints.get("occasions") or ["campus"])
-        resolved: list[tuple[dict[str, Any], str, str]] = []
-        for item in genome.payload["items"]:
-            product = self._by_id[item["product_id"]]
-            color = _chosen_color(product, str(item["color_id"]), palette)
-            resolved.append((product, color, str(item["size"])))
-        fitness, metrics, violations = _score_outfit(
-            resolved, budget=budget, palette=palette, occasions=occasions
-        )
-        if violations:
-            return self._bad(genome, split, "; ".join(violations), started)
+        totals: dict[str, float] = {}
+        fitnesses: list[float] = []
+        shoppers = SHOPPERS[split]
+        for shopper in shoppers:
+            fitness, metrics, violations = self.score_shopper(genome, shopper)
+            if violations:
+                return self._bad(genome, split, f"{shopper['id']}: {'; '.join(violations)}", started)
+            fitnesses.append(fitness)
+            for key, value in metrics.items():
+                totals[key] = totals.get(key, 0.0) + float(value)
+        count = float(len(shoppers))
+        metrics = {key: value / count for key, value in totals.items()}
+        resolved = self._resolved(genome.payload, "neutral")
         purchasable = all(
             _http_url(item.get("product_url")) and item.get("availability") == "in_stock"
             for item, _c, _s in resolved
         )
-        metrics = dict(metrics)
         metrics["purchasable"] = 1.0 if purchasable else 0.0
+        metrics["shoppers"] = count
+        fitness = sum(fitnesses) / count
         return Evaluation(
             genome_id=genome.id,
             feasible=True,
             fitness=fitness,
             metrics=metrics,
             feedback=(
-                f"{split} subjective rubric fitness={fitness:.4f} spend={metrics['spend']:.2f}. "
-                f"Catalog source={self.catalog.get('source')}. "
+                f"{split} mean subjective fitness={fitness:.4f} over {int(count)} shoppers "
+                f"spend={metrics['spend']:.2f}. Catalog source={self.catalog.get('source')}. "
                 "Scores are not comparable to cloud milliseconds. "
                 + ("Purchasable links were verified." if purchasable else "Not purchasable: missing verified URL or stock.")
             ),
@@ -412,16 +462,17 @@ class ShoppingAdapter(DomainAdapter):
 
 
 def shopping_objective(*, palette: str = "neutral", budget: float = 300.0, occasions: list[str] | None = None) -> ObjectiveSpec:
-    occasions = occasions or ["campus", "dinner"]
+    del palette, budget, occasions
     return ObjectiveSpec(
         domain="shopping",
         prompt=(
-            "Build a 2-3 piece outfit from the committed catalog. "
-            f"Palette {palette}, size M, budget {budget:.0f} USD, occasions {', '.join(occasions)}. "
+            "Build a 2-3 piece outfit from the committed catalog, size M. "
+            "Train, validation, and test are disjoint shopper profiles. "
+            "Fitness on a split is the mean subjective score across that split's shoppers. "
             "Fixture rows have no product URL and are not purchasable."
         ),
-        constraints={"budget": budget, "size": "M", "palette": palette, "occasions": occasions, "currency": "USD"},
-        evaluation_version="shopping-outfit-v1",
+        constraints={"size": "M", "currency": "USD"},
+        evaluation_version="shopping-outfit-v2",
     )
 
 

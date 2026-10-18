@@ -102,6 +102,11 @@ def _fill_array(schema: dict[str, Any], rng: random.Random) -> list[Any]:
     if maximum < minimum:
         maximum = minimum
     count = minimum if maximum == minimum else rng.randint(minimum, maximum)
+    if schema.get("uniqueItems") and "enum" in item_schema:
+        options = list(item_schema["enum"])
+        rng.shuffle(options)
+        take = min(count, len(options))
+        return options[:take]
     keys = _diversity_keys(item_schema)
     options = _schema_options(item_schema)
     if not keys or not options:
@@ -533,7 +538,7 @@ class MockAgentProvider:
         if not isinstance(schema, dict):
             schema = {"type": "object"}
         proposal = await self._model.propose(instruction, schema, call_id=call_id)
-        proposal.provider = self.name
+        proposal.provider = "mock"
         proposal.provider_run_id = f"mock-agent-{call_id}"
         proposal.extra = {"workflow_name": workflow_name}
         if self.cost_per_call:

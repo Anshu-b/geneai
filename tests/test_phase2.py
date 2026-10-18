@@ -11,6 +11,7 @@ import pytest
 from geneai_core.benchmark.oneshot import attach_baseline, run_frontier_oneshot
 from geneai_core.controller import EvolutionController
 from geneai_core.domains.cloud import (
+    BASELINE_NAMES,
     SPLIT_INDEXES,
     CloudSchedulingAdapter,
     baseline_payload,
@@ -18,6 +19,7 @@ from geneai_core.domains.cloud import (
     workload,
 )
 from geneai_core.domains.shopping import (
+    SHOPPERS,
     ShoppingAdapter,
     gym_outfit,
     load_catalog,
@@ -75,35 +77,24 @@ def test_cloud_baselines_and_bad_rules() -> None:
     scores = {}
     for name in ("round_robin", "shortest_job", "deadline_weighted"):
         evaluation = adapter.evaluate(_genome(baseline_payload(name)), "train")
+        assert evaluation.feasible, evaluation.feedback
         assert evaluation.fitness is not None
         scores[name] = evaluation.fitness
     assert scores["shortest_job"] >= scores["round_robin"]
     assert scores["deadline_weighted"] >= scores["round_robin"]
-    objective = ObjectiveSpec(domain="cloud_scheduling", prompt="x", evaluation_version="cloud-scheduler-v1")
+    objective = ObjectiveSpec(domain="cloud_scheduling", prompt="x", evaluation_version=adapter.evaluator_version)
+    broken = baseline_payload("shortest_job")
+    broken["rules"]["score_weights"]["short_job"] = 2.0
     with pytest.raises(ValueError):
-        adapter.validate(
-            {
-                "policy_family": "weighted_queue",
-                "rules": {
-                    "prefer_short_jobs": True,
-                    "cpu_pressure_weight": 2.0,
-                    "memory_pressure_weight": 0.1,
-                    "deadline_urgency_weight": 0.1,
-                    "max_queue_depth": 4,
-                },
-                "description": "too heavy",
-            },
-            objective,
-        )
+        adapter.validate(broken, objective)
+    foreign = baseline_payload("round_robin")
+    foreign["policy_family"] = "python"
     with pytest.raises(ValueError):
-        adapter.validate(
-            {
-                "policy_family": "python",
-                "rules": baseline_payload("round_robin")["rules"],
-                "description": "not a family",
-            },
-            objective,
-        )
+        adapter.validate(foreign, objective)
+    cells = {index % 9 for index in range(18)}
+    assert cells == set(range(9))
+    assert {index % 9 for index in range(18, 36)} == cells
+    assert {index % 9 for index in range(36, 54)} == cells
 
 
 def test_shopping_fixture_constraints_and_ranking() -> None:
@@ -114,21 +105,25 @@ def test_shopping_fixture_constraints_and_ranking() -> None:
         assert product["product_url"] is None
         assert product["image_url"] is None
         assert product["availability"] == "unknown"
-    neutral = ShoppingAdapter(
-        constraints={"budget": 300, "size": "M", "palette": "neutral", "occasions": ["campus", "dinner"]}
-    )
-    bright = ShoppingAdapter(
-        constraints={"budget": 300, "size": "M", "palette": "bright", "occasions": ["gym"]}
-    )
-    neutral_score = neutral.evaluate(_genome(neutral_outfit()), "train")
-    gym_on_neutral = neutral.evaluate(_genome(gym_outfit()), "train")
-    gym_score = bright.evaluate(_genome(gym_outfit()), "train")
-    neutral_on_bright = bright.evaluate(_genome(neutral_outfit()), "train")
-    assert neutral_score.feasible and gym_on_neutral.feasible
-    assert neutral_score.fitness > gym_on_neutral.fitness
-    assert gym_score.fitness > neutral_on_bright.fitness
-    assert neutral_score.metrics["purchasable"] == 0.0
-    assert neutral_score.fitness == neutral.evaluate(_genome(neutral_outfit()), "test").fitness
+    adapter = ShoppingAdapter()
+    neutral_profile = {"id": "neutral", "palette": "neutral", "occasions": ["campus", "dinner"], "budget": 300, "size": "M"}
+    bright_profile = {"id": "bright", "palette": "bright", "occasions": ["gym"], "budget": 300, "size": "M"}
+    neutral_on_neutral, _, neutral_violations = adapter.score_shopper(_genome(neutral_outfit()), neutral_profile)
+    gym_on_neutral, _, gym_violations = adapter.score_shopper(_genome(gym_outfit()), neutral_profile)
+    gym_on_bright, _, _ = adapter.score_shopper(_genome(gym_outfit()), bright_profile)
+    neutral_on_bright, _, _ = adapter.score_shopper(_genome(neutral_outfit()), bright_profile)
+    assert not neutral_violations and not gym_violations
+    assert neutral_on_neutral > gym_on_neutral
+    assert gym_on_bright > neutral_on_bright
+    split_ids = {split: {shopper["id"] for shopper in SHOPPERS[split]} for split in SHOPPERS}
+    assert split_ids["train"].isdisjoint(split_ids["validation"])
+    assert split_ids["train"].isdisjoint(split_ids["test"])
+    assert split_ids["validation"].isdisjoint(split_ids["test"])
+    outfit = _genome(neutral_outfit())
+    split_scores = [adapter.evaluate(outfit, split).fitness for split in ("train", "validation", "test")]
+    assert all(score is not None for score in split_scores)
+    assert len({round(score, 6) for score in split_scores}) > 1
+    assert adapter.evaluate(outfit, "train").metrics["purchasable"] == 0.0
     over = {
         "family": "neutral_layers",
         "items": [
@@ -138,15 +133,15 @@ def test_shopping_fixture_constraints_and_ranking() -> None:
         ],
         "styling_notes": "over budget",
     }
-    assert not neutral.evaluate(_genome(over), "validation").feasible
+    assert not adapter.evaluate(_genome(over), "validation").feasible
     objective = ObjectiveSpec(
         domain="shopping",
         prompt="outfit",
-        constraints={"budget": 300, "size": "M", "palette": "neutral", "occasions": ["dinner"]},
-        evaluation_version="shopping-outfit-v1",
+        constraints={"size": "M"},
+        evaluation_version="shopping-outfit-v2",
     )
     with pytest.raises(ValueError, match="unknown product"):
-        neutral.validate(
+        adapter.validate(
             {
                 "family": "neutral_layers",
                 "items": [
@@ -158,7 +153,7 @@ def test_shopping_fixture_constraints_and_ranking() -> None:
             objective,
         )
     with pytest.raises(ValueError, match="size"):
-        neutral.validate(
+        adapter.validate(
             {
                 "family": "neutral_layers",
                 "items": [
@@ -407,3 +402,49 @@ async def test_domain_run_exports_replay_and_skips_oneshot(tmp_path: Path, monke
     assert verify_export(document)
     assert "neutral_outfit" in result.summary["baselines"]
     assert result.summary["baselines"]["neutral_outfit"]["train"]["feasible"] is True
+    train_fit = result.summary["baselines"]["neutral_outfit"]["train"]["fitness"]
+    test_fit = result.summary["baselines"]["neutral_outfit"]["test"]["fitness"]
+    assert train_fit != test_fit
+
+
+@pytest.mark.asyncio
+async def test_seeded_baselines_and_child_provider_are_on_the_export(tmp_path: Path) -> None:
+    result = await execute_domain_run(
+        domain="cloud",
+        mode="mock",
+        seed=3,
+        population_size=6,
+        generations=1,
+        root=tmp_path,
+        elite_count=1,
+        attach_oneshot=False,
+    )
+    assert result.status == "completed", result.summary
+    document = json.loads(Path(result.export_path).read_text(encoding="utf-8"))
+    assert verify_export(document)
+    seeded = [
+        genome
+        for genome in document["genomes"]
+        if genome["generation"] == 0 and genome["metadata"].get("seeded_baseline")
+    ]
+    assert {genome["metadata"]["baseline_name"] for genome in seeded} == set(BASELINE_NAMES)
+    assert all(genome["provider"] == "baseline" for genome in seeded)
+    allowed = {"mock", "baseline", "creao", "veri"}
+    for genome in document["genomes"]:
+        assert genome["provider"] in allowed
+    for event in document["events"]:
+        if event["type"] in {"genome.seeded", "genome.mutated", "genome.crossed", "genome.evaluated", "selection.pruned"}:
+            assert event["payload"].get("provider") in allowed
+        if event["type"] == "selection.elite":
+            assert event["payload"]["elites"]
+            assert all(row["provider"] in allowed for row in event["payload"]["elites"])
+        if event["type"] == "selection.tournament":
+            assert event["payload"]["winner_provider"] in allowed
+            assert all(row["provider"] in allowed for row in event["payload"]["participants"])
+    seeded_events = [
+        event
+        for event in document["events"]
+        if event["type"] == "genome.seeded" and event["payload"].get("seeded_baseline")
+    ]
+    assert len(seeded_events) == len(BASELINE_NAMES)
+    assert all(event["payload"]["provider"] == "baseline" for event in seeded_events)

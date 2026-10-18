@@ -9,9 +9,9 @@ evaluator. The website is a later phase.
 ```bash
 uv sync
 uv run pytest -q
-uv run python scripts/run_domain.py --domain toy --mode mock --seed 42 --population 12 --generations 5
-uv run python scripts/run_domain.py --domain cloud --mode mock --seed 42 --population 8 --generations 3
-uv run python scripts/run_domain.py --domain shopping --mode mock --seed 42 --population 8 --generations 3
+uv run python scripts/run_domain.py --domain toy --mode mock --seed 42
+uv run python scripts/run_domain.py --domain cloud --mode mock --seed 42
+uv run python scripts/run_domain.py --domain shopping --mode mock --seed 42
 ```
 
 Mock mode makes no network calls. The evaluator is real: the cloud simulator,
@@ -22,9 +22,11 @@ keeps `mode: mock` and attaches `one_shot_baseline`. Without frontier
 credentials that arm is `skipped`. The comparison is one attempt versus
 evolutionary search, and it is not compute-matched.
 
-Shopping train, validation, and test share one catalog. The test score is
-unread until the champion is frozen. Those fitness numbers are a subjective
-rubric. They are not comparable to cloud completion time.
+The default mock run is population 24 and 12 generations. Cloud generation 0
+includes the four hand-written scheduling baselines. Shopping train, validation,
+and test are disjoint shoppers, so the three scores are not the same number.
+The test split is unread until the champion is frozen. Shopping fitness is a
+subjective rubric. It is not comparable to cloud completion time.
 
 The fixture catalog (`data/fixtures/shopping_catalog.json`) is labeled
 `source: fixture`. Product URLs are null. Nothing in it is purchasable.

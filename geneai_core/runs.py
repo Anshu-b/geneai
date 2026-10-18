@@ -50,8 +50,8 @@ async def execute_domain_run(
     domain: str,
     mode: str,
     seed: int = 42,
-    population_size: int = 8,
-    generations: int = 3,
+    population_size: int = 24,
+    generations: int = 12,
     root: Path | str = "runs",
     elite_count: int = 2,
     strategist_calls_per_generation: int = 3,
@@ -86,8 +86,10 @@ async def execute_domain_run(
         generations=generations,
         elite_count=elite_count,
         strategist_calls_per_generation=strategist_calls_per_generation,
-        max_model_calls=240,
-        max_evaluations=400,
+        max_model_calls=800,
+        max_evaluations=900,
+        max_wall_seconds=600,
+        finalist_count=6,
     )
     repository = RunRepository(root)
     result = await EvolutionController().evolve(
@@ -122,14 +124,17 @@ async def execute_domain_run(
 def _split_note(domain: str) -> str:
     if domain == "shopping":
         return (
-            "Train, validation, and test share one catalog. "
-            "Held-out means the test score is unread before champion.frozen. "
-            "Fitness is a subjective rubric and is not comparable to cloud fitness."
+            "Train, validation, and test are disjoint shopper profiles over one fixture catalog. "
+            "Fitness is the mean subjective score on that split. "
+            "The test shoppers are unread before champion.frozen. "
+            "Scores are not comparable to cloud fitness, and fixture rows are not purchasable."
         )
     if domain == "cloud":
         return (
-            "Train, validation, and test are disjoint workloads from one generator. "
-            "The pool is 6 heterogeneous machines and 36 jobs, a scaled stand-in for a larger fleet."
+            "Train, validation, and test are 18 disjoint workloads each, with the same "
+            "burst and job-mix design. Generation 0 is seeded with the four hand-written "
+            "DSL baselines. Champion selection uses validation only. "
+            "The pool is 6 machines and 36 jobs."
         )
     return "Train, validation, and test are disjoint same-distribution shifts."
 

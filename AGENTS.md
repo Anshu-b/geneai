@@ -40,9 +40,9 @@ without crowding the two primary domains.
 ```bash
 uv sync
 uv run pytest -q
-uv run python scripts/run_domain.py --domain toy --mode mock --seed 42 --population 12 --generations 5
-uv run python scripts/run_domain.py --domain cloud --mode mock --seed 42 --population 8 --generations 3
-uv run python scripts/run_domain.py --domain shopping --mode mock --seed 42 --population 8 --generations 3
+uv run python scripts/run_domain.py --domain toy --mode mock --seed 42
+uv run python scripts/run_domain.py --domain cloud --mode mock --seed 42
+uv run python scripts/run_domain.py --domain shopping --mode mock --seed 42
 uv run python scripts/smoke_veri.py
 uv run python scripts/smoke_creao.py
 uv run python scripts/run_domain.py --domain cloud --mode hybrid --seed 42 --population 8 --generations 3

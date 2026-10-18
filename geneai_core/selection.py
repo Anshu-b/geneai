@@ -55,6 +55,8 @@ def tournament_once(
             "novelty": round(novelty, 6),
             "family": family_of(adapter, ind.genome.payload),
             "species": species_of(adapter, ind.genome.payload),
+            "provider": ind.genome.provider,
+            "provider_role": ind.genome.metadata.get("provider_role"),
             "adjusted": None if bonus is None else round(bonus, 6),
         }
         rank = (
@@ -99,6 +101,7 @@ def diversity_aware_tournament_selection(
                     {
                         "participants": participants,
                         "winner_id": candidate.genome.id,
+                        "winner_provider": candidate.genome.provider,
                         "family": fam,
                         "species": species_of(adapter, candidate.genome.payload),
                         "rerolls": attempt,

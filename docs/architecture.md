@@ -26,7 +26,9 @@ strategist slots and Veri for bulk mutation.
 
 ## Loop
 
-Generation 0 seeds a population on the train split. Generations 1..N:
+Generation 0 inserts any hand-written baselines the adapter declares, labeled
+`provider=baseline` and `seeded_baseline=true`, then fills the rest from the
+model provider. Generations 1..N:
 
 1. Diversity-aware tournaments of 3, with a small novelty bonus and a family cap.
 2. Keep `elite_count` genomes unchanged (same id, same payload hash).
@@ -62,6 +64,9 @@ The export's `integrity_sha256` covers every field except itself.
 relabeled `recorded`. Provider calls carry `provider_mode` so a mock call
 cannot be shown as sponsor execution.
 
-Cloud workloads and the shopping catalog are scored by their adapters. The
-export schema is still 1.0. `one_shot_baseline` is either a skipped record or
-one frontier attempt. Quant is not implemented. The website is Phase 3.
+Cloud policies are a JSON score: weights, tie-breaks, and up to two per-job-class
+overrides. Shopping train, validation, and test are disjoint shoppers. Every
+genome event and the export record `provider` (`mock`, `veri`, `creao`, or
+`baseline`). The export schema is still 1.0. `one_shot_baseline` is either a
+skipped record or one frontier attempt. Quant is not implemented. The website
+is Phase 3.

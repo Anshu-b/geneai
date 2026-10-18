@@ -16,10 +16,24 @@ from typing import Any
 from geneai_core.domains.base import DomainAdapter
 from geneai_core.schemas import Evaluation, Genome, ObjectiveSpec
 
-POLICY_FAMILIES = ("round_robin", "shortest_job", "least_loaded", "weighted_queue")
-TRAIN_INDEXES = tuple(range(0, 6))
-VALIDATION_INDEXES = tuple(range(6, 9))
-TEST_INDEXES = tuple(range(9, 12))
+POLICY_FAMILIES = ("round_robin", "shortest_job", "least_loaded", "weighted_queue", "composed")
+SCORE_TERMS = (
+    "short_job",
+    "deadline_urgency",
+    "wait_time",
+    "free_cpu",
+    "cheap_machine",
+    "rotation",
+    "cpu_pressure",
+    "memory_pressure",
+)
+TIE_BREAKS = ("duration", "arrival", "job_id", "free_cpu", "machine_cost", "machine_id", "deadline")
+JOB_CLASSES = ("short", "long", "cpu_heavy", "memory_heavy")
+# 18 workloads so each split contains two copies of every burst x mix cell.
+WORKLOADS_PER_SPLIT = 18
+TRAIN_INDEXES = tuple(range(0, WORKLOADS_PER_SPLIT))
+VALIDATION_INDEXES = tuple(range(WORKLOADS_PER_SPLIT, 2 * WORKLOADS_PER_SPLIT))
+TEST_INDEXES = tuple(range(2 * WORKLOADS_PER_SPLIT, 3 * WORKLOADS_PER_SPLIT))
 SPLIT_INDEXES = {
     "train": TRAIN_INDEXES,
     "validation": VALIDATION_INDEXES,
@@ -59,8 +73,13 @@ class Placement:
 def workload(seed: int, index: int) -> list[Job]:
     """One workload. Index selects a disjoint draw and a burstiness pattern."""
 
-    rng = random.Random(f"cloud-workload-v1|{seed}|{index}")
-    burst = index % 3
+    rng = random.Random(f"cloud-workload-v2|{seed}|{index}")
+    # index % 9 is one of 3 burst shapes x 3 short-job mixes. A split of 18
+    # indexes contains each cell twice, so validation mirrors the test design.
+    cell = index % 9
+    burst = cell % 3
+    mix = cell // 3
+    short_probability = (0.40, 0.62, 0.80)[mix]
     count = 36
     jobs: list[Job] = []
     clock = 0.0
@@ -73,7 +92,7 @@ def workload(seed: int, index: int) -> list[Job]:
         else:
             gap = rng.uniform(0.02, 0.12) if jid < count // 2 else rng.uniform(0.6, 1.4)
         clock += gap
-        short = rng.random() < 0.62
+        short = rng.random() < short_probability
         duration = rng.uniform(2.0, 4.5) if short else rng.uniform(8.0, 14.0)
         cpu = rng.choice((2.0, 4.0, 4.0, 8.0))
         mem = rng.choice((4.0, 8.0, 8.0, 16.0))
@@ -111,16 +130,84 @@ def _free_cpu(machine: dict[str, Any], running: list[Placement]) -> float:
     return float(machine["cpu"]) - cpu
 
 
+_MIN_COST = min(float(machine["cost"]) for machine in MACHINES)
+_MAX_COST = max(float(machine["cost"]) for machine in MACHINES)
+
+
+def _zero_weights() -> dict[str, float]:
+    return {term: 0.0 for term in SCORE_TERMS}
+
+
+def _job_class_matches(job: Job, job_class: str) -> bool:
+    if job_class == "short":
+        return job.duration <= 5.0
+    if job_class == "long":
+        return job.duration >= 8.0
+    if job_class == "cpu_heavy":
+        return job.cpu >= 8.0
+    if job_class == "memory_heavy":
+        return job.mem >= 16.0
+    return False
+
+
 class _Policy:
+    """One scorer. Families are weight settings, not separate simulators."""
+
     def __init__(self, payload: dict[str, Any]) -> None:
-        self.family = str(payload["policy_family"])
-        rules = payload.get("rules") or {}
-        self.prefer_short = bool(rules.get("prefer_short_jobs"))
-        self.cpu_w = float(rules.get("cpu_pressure_weight"))
-        self.mem_w = float(rules.get("memory_pressure_weight"))
-        self.deadline_w = float(rules.get("deadline_urgency_weight"))
-        self.max_queue = int(rules.get("max_queue_depth"))
+        rules = payload["rules"]
+        self.max_queue = int(rules["max_queue_depth"])
+        self.weights = {term: float(rules["score_weights"][term]) for term in SCORE_TERMS}
+        self.tie_break = list(rules["tie_break"])
+        self.overrides = list(rules.get("class_overrides") or [])
         self.cursor = 0
+
+    def _weights_for(self, job: Job) -> dict[str, float]:
+        for override in self.overrides:
+            if _job_class_matches(job, str(override["job_class"])):
+                return {term: float(override["score_weights"][term]) for term in SCORE_TERMS}
+        return self.weights
+
+    def _features(
+        self,
+        job: Job,
+        machine: dict[str, Any],
+        running: list[Placement],
+        now: float,
+    ) -> dict[str, float]:
+        cpu_used, mem_used = _used(running, str(machine["id"]))
+        index = next(i for i, item in enumerate(MACHINES) if item["id"] == machine["id"])
+        offset = (index - self.cursor) % len(MACHINES)
+        span = _MAX_COST - _MIN_COST
+        cheap = 1.0 if span <= 1e-9 else (_MAX_COST - float(machine["cost"])) / span
+        return {
+            "short_job": 1.0 / job.duration,
+            "deadline_urgency": min(4.0, 1.0 / max(0.5, job.deadline - now)),
+            "wait_time": min(1.0, max(0.0, now - job.arrival) / 10.0),
+            "free_cpu": _free_cpu(machine, running) / float(machine["cpu"]),
+            "cheap_machine": cheap,
+            "rotation": (len(MACHINES) - offset) / len(MACHINES),
+            "cpu_pressure": (cpu_used + job.cpu) / float(machine["cpu"]),
+            "memory_pressure": (mem_used + job.mem) / float(machine["mem"]),
+        }
+
+    def _tie_key(self, job: Job, machine: dict[str, Any], running: list[Placement]) -> tuple[Any, ...]:
+        values: list[Any] = []
+        for key in self.tie_break:
+            if key == "duration":
+                values.append(job.duration)
+            elif key == "arrival":
+                values.append(job.arrival)
+            elif key == "job_id":
+                values.append(job.jid)
+            elif key == "free_cpu":
+                values.append(-_free_cpu(machine, running))
+            elif key == "machine_cost":
+                values.append(float(machine["cost"]))
+            elif key == "machine_id":
+                values.append(str(machine["id"]))
+            elif key == "deadline":
+                values.append(job.deadline)
+        return tuple(values)
 
     def choose(
         self,
@@ -129,76 +216,23 @@ class _Policy:
         now: float,
     ) -> tuple[Job, dict[str, Any]] | None:
         visible = queue[: self.max_queue]
-        if not visible:
-            return None
-        if self.family == "round_robin":
-            return self._round_robin(visible, running)
-        if self.family == "shortest_job":
-            ordered = sorted(visible, key=lambda job: (job.duration, job.arrival, job.jid))
-            return self._first_fit(ordered, running)
-        if self.family == "least_loaded":
-            return self._least_loaded(visible, running)
-        return self._weighted(visible, running, now)
-
-    def _round_robin(self, jobs: list[Job], running: list[Placement]) -> tuple[Job, dict[str, Any]] | None:
-        count = len(MACHINES)
-        for step in range(count):
-            machine = MACHINES[(self.cursor + step) % count]
-            for job in jobs:
-                if _fits(machine, running, job):
-                    self.cursor = (self.cursor + step + 1) % count
-                    return job, machine
-        return None
-
-    def _first_fit(self, jobs: list[Job], running: list[Placement]) -> tuple[Job, dict[str, Any]] | None:
-        """Shortest job first, placed on the cheapest machine that can hold it."""
-
-        for job in jobs:
-            fitting = [machine for machine in MACHINES if _fits(machine, running, job)]
-            if not fitting:
-                continue
-            machine = min(fitting, key=lambda item: (float(item["cost"]), str(item["id"])))
-            return job, machine
-        return None
-
-    def _least_loaded(self, jobs: list[Job], running: list[Placement]) -> tuple[Job, dict[str, Any]] | None:
-        machines = sorted(MACHINES, key=lambda item: (-_free_cpu(item, running), str(item["id"])))
-        oldest = sorted(jobs, key=lambda job: (job.arrival, job.jid))
-        for machine in machines:
-            for job in oldest:
-                if _fits(machine, running, job):
-                    return job, machine
-        return None
-
-    def _weighted(
-        self,
-        jobs: list[Job],
-        running: list[Placement],
-        now: float,
-    ) -> tuple[Job, dict[str, Any]] | None:
-        best: tuple[float, Job, dict[str, Any]] | None = None
-        for job in jobs:
-            urgency = 1.0 / max(0.5, job.deadline - now)
-            short_bonus = (1.0 / job.duration) if self.prefer_short else 0.0
+        best: tuple[float, tuple[Any, ...], Job, dict[str, Any]] | None = None
+        for job in visible:
+            weights = self._weights_for(job)
             for machine in MACHINES:
                 if not _fits(machine, running, job):
                     continue
-                cpu_used, mem_used = _used(running, str(machine["id"]))
-                cpu_pressure = (cpu_used + job.cpu) / float(machine["cpu"])
-                mem_pressure = (mem_used + job.mem) / float(machine["mem"])
-                score = (
-                    short_bonus
-                    + self.deadline_w * urgency
-                    - self.cpu_w * cpu_pressure
-                    - self.mem_w * mem_pressure
-                )
-                if best is None or score > best[0] + 1e-12:
-                    best = (score, job, machine)
-                elif best is not None and abs(score - best[0]) <= 1e-12 and job.jid < best[1].jid:
-                    best = (score, job, machine)
+                features = self._features(job, machine, running, now)
+                score = sum(weights[term] * features[term] for term in SCORE_TERMS)
+                tie = self._tie_key(job, machine, running)
+                if best is None or score > best[0] + 1e-12 or (abs(score - best[0]) <= 1e-12 and tie < best[1]):
+                    best = (score, tie, job, machine)
         if best is None:
             return None
-        return best[1], best[2]
+        _score, _tie, job, machine = best
+        index = next(i for i, item in enumerate(MACHINES) if item["id"] == machine["id"])
+        self.cursor = (index + 1) % len(MACHINES)
+        return job, machine
 
 
 def simulate(payload: dict[str, Any], jobs: list[Job]) -> dict[str, float]:
@@ -291,78 +325,150 @@ def reference_completion(seed: int, index: int) -> float:
     return float(round_robin_metrics(seed, index)["mean_completion"])
 
 
-def baseline_payload(name: str) -> dict[str, Any]:
-    """Hand-written policies. shortest_job and deadline_weighted are the strong pair."""
+def _weight_vector(**values: float) -> dict[str, float]:
+    weights = _zero_weights()
+    for key, value in values.items():
+        if key not in weights:
+            raise KeyError(key)
+        weights[key] = value
+    return weights
 
-    rules = {
-        "prefer_short_jobs": False,
-        "cpu_pressure_weight": 0.2,
-        "memory_pressure_weight": 0.2,
-        "deadline_urgency_weight": 0.2,
-        "max_queue_depth": 12,
+
+def _rules(
+    weights: dict[str, float],
+    tie_break: list[str],
+    *,
+    depth: int = 36,
+    overrides: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    return {
+        "max_queue_depth": depth,
+        "score_weights": weights,
+        "tie_break": tie_break,
+        "class_overrides": overrides or [],
     }
+
+
+def baseline_payload(name: str) -> dict[str, Any]:
+    """The four hand policies written in the score DSL, not as Python branches."""
+
     if name == "round_robin":
         family = "round_robin"
+        rules = _rules(
+            _weight_vector(rotation=1.0, wait_time=0.1),
+            ["arrival", "job_id", "machine_id"],
+        )
     elif name == "shortest_job":
         family = "shortest_job"
-        rules["prefer_short_jobs"] = True
+        rules = _rules(
+            _weight_vector(short_job=1.0, cheap_machine=0.05),
+            ["duration", "machine_cost", "arrival", "job_id"],
+        )
     elif name == "least_loaded":
         family = "least_loaded"
+        rules = _rules(
+            _weight_vector(free_cpu=1.0, wait_time=0.05),
+            ["arrival", "job_id", "machine_id"],
+        )
     elif name == "deadline_weighted":
         family = "weighted_queue"
-        rules = {
-            "prefer_short_jobs": True,
-            "cpu_pressure_weight": 0.35,
-            "memory_pressure_weight": 0.15,
-            "deadline_urgency_weight": 0.85,
-            "max_queue_depth": 16,
-        }
+        rules = _rules(
+            _weight_vector(short_job=0.5, deadline_urgency=0.85, cpu_pressure=-0.35, memory_pressure=-0.15),
+            ["deadline", "job_id", "machine_id"],
+        )
     else:
         raise KeyError(name)
-    return {"policy_family": family, "rules": rules, "description": f"baseline {name}"}
+    return {
+        "policy_family": family,
+        "rules": rules,
+        "description": f"seeded baseline {name}",
+    }
 
 
 BASELINE_NAMES = ("round_robin", "shortest_job", "least_loaded", "deadline_weighted")
 
 
+def _weight_map_ok(weights: Any, label: str) -> str | None:
+    if not isinstance(weights, dict):
+        return f"{label} must be an object"
+    extra = set(weights) - set(SCORE_TERMS)
+    if extra:
+        return f"unknown {label} keys: {sorted(extra)}"
+    for term in SCORE_TERMS:
+        if term not in weights:
+            return f"{label}.{term} is required"
+        value = weights[term]
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return f"{label}.{term} must be a number"
+        if not -1.0 <= float(value) <= 1.0:
+            return f"{label}.{term} must be inside [-1, 1]"
+    return None
+
+
 def _rules_ok(rules: Any) -> str | None:
     if not isinstance(rules, dict):
         return "rules must be an object"
-    required = (
-        "prefer_short_jobs",
-        "cpu_pressure_weight",
-        "memory_pressure_weight",
-        "deadline_urgency_weight",
-        "max_queue_depth",
-    )
-    extra = set(rules) - set(required)
+    allowed = {"max_queue_depth", "score_weights", "tie_break", "class_overrides"}
+    extra = set(rules) - allowed
     if extra:
         return f"unknown rule keys: {sorted(extra)}"
-    for key in required:
+    for key in allowed:
         if key not in rules:
             return f"rules.{key} is required"
-    if not isinstance(rules["prefer_short_jobs"], bool):
-        return "prefer_short_jobs must be a boolean"
-    for key in ("cpu_pressure_weight", "memory_pressure_weight", "deadline_urgency_weight"):
-        value = rules[key]
-        if isinstance(value, bool) or not isinstance(value, (int, float)):
-            return f"{key} must be a number"
-        if not 0.0 <= float(value) <= 1.0:
-            return f"{key} must be inside [0, 1]"
     depth = rules["max_queue_depth"]
-    if isinstance(depth, bool) or not isinstance(depth, int) or not 1 <= depth <= 28:
-        return "max_queue_depth must be an integer from 1 to 28"
+    if isinstance(depth, bool) or not isinstance(depth, int) or not 1 <= depth <= 36:
+        return "max_queue_depth must be an integer from 1 to 36"
+    problem = _weight_map_ok(rules["score_weights"], "score_weights")
+    if problem:
+        return problem
+    tie = rules["tie_break"]
+    if not isinstance(tie, list) or not 3 <= len(tie) <= 4:
+        return "tie_break must list 3 or 4 keys"
+    if len(set(tie)) != len(tie):
+        return "tie_break keys must be unique"
+    for key in tie:
+        if key not in TIE_BREAKS:
+            return f"unknown tie_break key {key}"
+    overrides = rules["class_overrides"]
+    if not isinstance(overrides, list) or len(overrides) > 2:
+        return "class_overrides must be a list of at most 2"
+    seen: set[str] = set()
+    for override in overrides:
+        if not isinstance(override, dict):
+            return "each class override must be an object"
+        if set(override) != {"job_class", "score_weights"}:
+            return "class override keys must be job_class and score_weights"
+        job_class = override["job_class"]
+        if job_class not in JOB_CLASSES:
+            return f"unknown job_class {job_class}"
+        if job_class in seen:
+            return f"duplicate class override {job_class}"
+        seen.add(job_class)
+        problem = _weight_map_ok(override["score_weights"], f"class_overrides.{job_class}")
+        if problem:
+            return problem
     return None
 
 
 class CloudSchedulingAdapter(DomainAdapter):
     name = "cloud_scheduling"
-    evaluator_version = "cloud-scheduler-v1"
+    evaluator_version = "cloud-scheduler-v2"
 
     def __init__(self, seed: int = 42) -> None:
         self._seed = seed
 
+    def _weights_schema(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "additionalProperties": False,
+            "required": list(SCORE_TERMS),
+            "properties": {
+                term: {"type": "number", "minimum": -1, "maximum": 1} for term in SCORE_TERMS
+            },
+        }
+
     def genome_schema(self) -> dict[str, Any]:
+        weights = self._weights_schema()
         return {
             "type": "object",
             "additionalProperties": False,
@@ -372,19 +478,36 @@ class CloudSchedulingAdapter(DomainAdapter):
                 "rules": {
                     "type": "object",
                     "additionalProperties": False,
-                    "required": [
-                        "prefer_short_jobs",
-                        "cpu_pressure_weight",
-                        "memory_pressure_weight",
-                        "deadline_urgency_weight",
-                        "max_queue_depth",
-                    ],
+                    "required": ["max_queue_depth", "score_weights", "tie_break", "class_overrides"],
                     "properties": {
-                        "prefer_short_jobs": {"type": "boolean"},
-                        "cpu_pressure_weight": {"type": "number", "minimum": 0, "maximum": 1},
-                        "memory_pressure_weight": {"type": "number", "minimum": 0, "maximum": 1},
-                        "deadline_urgency_weight": {"type": "number", "minimum": 0, "maximum": 1},
-                        "max_queue_depth": {"type": "integer", "minimum": 1, "maximum": 28},
+                        "max_queue_depth": {"type": "integer", "minimum": 1, "maximum": 36},
+                        "score_weights": weights,
+                        "tie_break": {
+                            "type": "array",
+                            "minItems": 3,
+                            "maxItems": 4,
+                            "uniqueItems": True,
+                            "items": {"type": "string", "enum": list(TIE_BREAKS)},
+                        },
+                        "class_overrides": {
+                            "type": "array",
+                            "minItems": 0,
+                            "maxItems": 2,
+                            "items": {
+                                "anyOf": [
+                                    {
+                                        "type": "object",
+                                        "additionalProperties": False,
+                                        "required": ["job_class", "score_weights"],
+                                        "properties": {
+                                            "job_class": {"const": job_class},
+                                            "score_weights": weights,
+                                        },
+                                    }
+                                    for job_class in JOB_CLASSES
+                                ]
+                            },
+                        },
                     },
                 },
                 "description": {"type": "string"},
@@ -406,7 +529,26 @@ class CloudSchedulingAdapter(DomainAdapter):
         }
 
     def family_of(self, payload: dict[str, Any]) -> str:
-        return str(payload.get("policy_family") or "default")
+        rules = payload.get("rules") if isinstance(payload.get("rules"), dict) else {}
+        weights = rules.get("score_weights") if isinstance(rules.get("score_weights"), dict) else {}
+        overrides = rules.get("class_overrides") if isinstance(rules.get("class_overrides"), list) else []
+        if weights:
+            dominant = max(SCORE_TERMS, key=lambda term: (abs(float(weights.get(term) or 0.0)), term))
+        else:
+            dominant = str(payload.get("policy_family") or "default")
+        if overrides:
+            return f"composed:{dominant}"
+        return str(dominant)
+
+    def seeded_baselines(self) -> list[dict[str, Any]]:
+        return [
+            {
+                "name": name,
+                "payload": baseline_payload(name),
+                "hypothesis": f"seeded baseline {name} written in the scheduling DSL",
+            }
+            for name in BASELINE_NAMES
+        ]
 
     def validate(self, payload: dict[str, Any], objective: ObjectiveSpec) -> None:
         del objective
@@ -426,22 +568,24 @@ class CloudSchedulingAdapter(DomainAdapter):
     def seed_instructions(self, objective: ObjectiveSpec) -> str:
         return (
             "Propose one scheduling policy as JSON with keys payload and hypothesis. "
-            "payload.policy_family is round_robin, shortest_job, least_loaded, or weighted_queue. "
-            "payload.rules weights are numbers in [0, 1]. max_queue_depth is an integer from 1 to 28. "
+            "Behavior comes from rules.score_weights, rules.tie_break, and up to two "
+            "rules.class_overrides. Weights are numbers in [-1, 1]. "
+            "A class override replaces the weight vector for short, long, cpu_heavy, or memory_heavy jobs. "
+            "policy_family is a label: round_robin, shortest_job, least_loaded, weighted_queue, or composed. "
             "Do not emit Python. The simulator rejects any assignment that would exceed CPU or memory.\n"
             f"Objective: {objective.prompt}"
         )
 
     def mutate_instructions(self, parent: Genome, feedback: Evaluation) -> str:
         return (
-            "Change one rule or the policy family. Stay inside the schema. "
+            "Change one weight, the tie break, or a class override. Stay inside the schema. "
             "Return JSON with keys payload and hypothesis.\n"
             f"Parent: {parent.payload}\nFeedback: {feedback.feedback}"
         )
 
     def crossover_instructions(self, a: Genome, b: Genome) -> str:
         return (
-            "Combine the two policies. Inherit one family and mix the numeric weights. "
+            "Combine the two policies. Average weights and keep at most two class overrides. "
             "Return JSON with keys payload and hypothesis.\n"
             f"Parent A: {a.payload}\nParent B: {b.payload}"
         )
@@ -536,5 +680,5 @@ def cloud_objective() -> ObjectiveSpec:
             "Reduce mean completion time and SLA misses relative to round robin."
         ),
         constraints={"machines": len(MACHINES), "capacity_violations": 0},
-        evaluation_version="cloud-scheduler-v1",
+        evaluation_version="cloud-scheduler-v2",
     )

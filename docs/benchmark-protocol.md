@@ -5,8 +5,9 @@ Two arms, same adapter, same schema, same held-out test split.
 Arm A, frontier one-shot: one `FrontierProvider.propose` call. No repair loop.
 Invalid output stays invalid. The record is `one_shot_baseline` on the export.
 
-Arm B, GeneAI: the unchanged controller. The champion is frozen on train and
-validation, then evaluated once on test.
+Arm B, GeneAI: the unchanged controller. Finalists are ranked on train, scored
+on validation, and the validation winner is frozen. Test is evaluated once
+after that. Cloud generation 0 includes the four hand-written DSL baselines.
 
 The comparison label is `single attempt vs evolutionary search`.
 `compute_matched` is always false. GeneAI scores more candidates, so a higher
