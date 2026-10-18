@@ -96,7 +96,7 @@
       1
     ],
     "length": 308.518754,
-    "time_ms": 157
+    "time_ms": 156
   },
   "methods": [
     {
@@ -122,7 +122,7 @@
       ],
       "length": 308.518754,
       "gap_pct": 0,
-      "time_ms": 157,
+      "time_ms": 156,
       "llm_calls": 0,
       "valid": true,
       "invalid_reason": null,
@@ -130,7 +130,7 @@
         {
           "iter": 1,
           "best_length": 308.518754,
-          "elapsed_ms": 157
+          "elapsed_ms": 156
         }
       ]
     },
@@ -225,7 +225,7 @@
         {
           "gen": 12,
           "best_length": 452.930108,
-          "elapsed_ms": 2
+          "elapsed_ms": 3
         },
         {
           "gen": 13,
@@ -245,7 +245,7 @@
         {
           "gen": 16,
           "best_length": 386.557272,
-          "elapsed_ms": 3
+          "elapsed_ms": 4
         },
         {
           "gen": 17,
@@ -265,7 +265,7 @@
         {
           "gen": 20,
           "best_length": 386.557272,
-          "elapsed_ms": 4
+          "elapsed_ms": 5
         },
         {
           "gen": 21,
@@ -280,12 +280,12 @@
         {
           "gen": 23,
           "best_length": 386.557272,
-          "elapsed_ms": 5
+          "elapsed_ms": 6
         },
         {
           "gen": 24,
           "best_length": 386.557272,
-          "elapsed_ms": 5
+          "elapsed_ms": 6
         },
         {
           "gen": 25,
@@ -295,32 +295,32 @@
         {
           "gen": 26,
           "best_length": 386.557272,
-          "elapsed_ms": 6
+          "elapsed_ms": 7
         },
         {
           "gen": 27,
           "best_length": 386.557272,
-          "elapsed_ms": 6
+          "elapsed_ms": 7
         },
         {
           "gen": 28,
           "best_length": 386.557272,
-          "elapsed_ms": 6
+          "elapsed_ms": 7
         },
         {
           "gen": 29,
           "best_length": 370.686142,
-          "elapsed_ms": 7
+          "elapsed_ms": 8
         },
         {
           "gen": 30,
           "best_length": 370.686142,
-          "elapsed_ms": 7
+          "elapsed_ms": 8
         },
         {
           "gen": 31,
           "best_length": 370.686142,
-          "elapsed_ms": 7
+          "elapsed_ms": 8
         },
         {
           "gen": 32,
@@ -330,17 +330,17 @@
         {
           "gen": 33,
           "best_length": 331.302769,
-          "elapsed_ms": 8
+          "elapsed_ms": 9
         },
         {
           "gen": 34,
           "best_length": 331.302769,
-          "elapsed_ms": 8
+          "elapsed_ms": 9
         },
         {
           "gen": 35,
           "best_length": 311.427617,
-          "elapsed_ms": 8
+          "elapsed_ms": 9
         },
         {
           "gen": 36,
@@ -350,7 +350,7 @@
         {
           "gen": 37,
           "best_length": 311.427617,
-          "elapsed_ms": 9
+          "elapsed_ms": 10
         },
         {
           "gen": 38,
@@ -376,31 +376,31 @@
       "tour": [
         0,
         8,
-        4,
         2,
+        4,
         3,
         10,
         12,
         9,
         11,
         7,
-        5,
         13,
-        6,
         14,
+        6,
+        5,
         1
       ],
-      "length": 316.436591,
-      "gap_pct": 2.5664,
-      "time_ms": 35112,
+      "length": 310.266496,
+      "gap_pct": 0.5665,
+      "time_ms": 23540,
       "llm_calls": 1,
       "valid": true,
       "invalid_reason": null,
       "convergence": [
         {
           "iter": 1,
-          "best_length": 316.436591,
-          "elapsed_ms": 35112
+          "best_length": 310.266496,
+          "elapsed_ms": 23540
         }
       ]
     },
@@ -409,139 +409,146 @@
       "label": "GeneAI (Veri + CREAO)",
       "provider": "veri+creao",
       "tour": [
-        11,
-        9,
-        12,
-        10,
-        3,
-        4,
-        2,
-        8,
-        0,
-        1,
-        6,
-        14,
-        13,
         5,
+        13,
+        14,
+        6,
+        1,
+        0,
+        8,
+        2,
+        4,
+        3,
+        10,
+        12,
+        9,
+        11,
         7
       ],
       "length": 308.518754,
       "gap_pct": 0.0,
-      "time_ms": 143419,
-      "llm_calls": 128,
+      "time_ms": 30865,
+      "llm_calls": 208,
       "valid": true,
       "invalid_reason": null,
       "convergence": [
         {
           "gen": 0,
-          "best_length": 308.518754,
-          "elapsed_ms": 143366
+          "best_length": 449.887356,
+          "elapsed_ms": 86
         },
         {
           "gen": 1,
-          "best_length": 308.518754,
-          "elapsed_ms": 13674
+          "best_length": 417.714622,
+          "elapsed_ms": 8506
         },
         {
           "gen": 2,
-          "best_length": 308.518754,
-          "elapsed_ms": 20500
+          "best_length": 394.227406,
+          "elapsed_ms": 9049
         },
         {
           "gen": 3,
-          "best_length": 308.518754,
-          "elapsed_ms": 27325
+          "best_length": 347.052106,
+          "elapsed_ms": 8566
         },
         {
           "gen": 4,
-          "best_length": 308.518754,
-          "elapsed_ms": 34151
+          "best_length": 320.922658,
+          "elapsed_ms": 7852
         },
         {
           "gen": 5,
           "best_length": 308.518754,
-          "elapsed_ms": 40977
+          "elapsed_ms": 2386
         },
         {
           "gen": 6,
           "best_length": 308.518754,
-          "elapsed_ms": 47803
+          "elapsed_ms": 2386
         },
         {
           "gen": 7,
           "best_length": 308.518754,
-          "elapsed_ms": 54629
+          "elapsed_ms": 2385
         },
         {
           "gen": 8,
           "best_length": 308.518754,
-          "elapsed_ms": 61456
+          "elapsed_ms": 2385
         },
         {
           "gen": 9,
           "best_length": 308.518754,
-          "elapsed_ms": 68283
+          "elapsed_ms": 2385
         },
         {
           "gen": 10,
           "best_length": 308.518754,
-          "elapsed_ms": 75109
+          "elapsed_ms": 2385
         },
         {
           "gen": 11,
           "best_length": 308.518754,
-          "elapsed_ms": 81935
+          "elapsed_ms": 2385
         },
         {
           "gen": 12,
           "best_length": 308.518754,
-          "elapsed_ms": 88760
+          "elapsed_ms": 2385
         },
         {
           "gen": 13,
           "best_length": 308.518754,
-          "elapsed_ms": 95585
+          "elapsed_ms": 2385
         },
         {
           "gen": 14,
           "best_length": 308.518754,
-          "elapsed_ms": 102411
+          "elapsed_ms": 1595
         },
         {
           "gen": 15,
           "best_length": 308.518754,
-          "elapsed_ms": 109237
+          "elapsed_ms": 2385
         },
         {
           "gen": 16,
           "best_length": 308.518754,
-          "elapsed_ms": 116062
+          "elapsed_ms": 24847
         },
         {
           "gen": 17,
           "best_length": 308.518754,
-          "elapsed_ms": 122889
+          "elapsed_ms": 2385
         },
         {
           "gen": 18,
           "best_length": 308.518754,
-          "elapsed_ms": 129715
+          "elapsed_ms": 2029
         },
         {
           "gen": 19,
           "best_length": 308.518754,
-          "elapsed_ms": 136541
+          "elapsed_ms": 2137
         },
         {
           "gen": 20,
           "best_length": 308.518754,
-          "elapsed_ms": 143365
+          "elapsed_ms": 2249
         }
       ],
       "provenance_counts": {
-        "llm:veri": 0,
+        "llm:veri": 8,
         "llm:creao": 0,
-        "algorithmic": 2
+        "algorithmic": 464
+      },
+      "behavior_origin": {
+        "id": "g0114",
+        "provider": "random",
+        "operator": "mutation",
+        "provenance": "algorithmic",
+        "generation": 5
       }
     }
   ],
@@ -555,26 +562,38 @@
           "held_karp": {
             "length": 383.835771,
             "gap_pct": 0,
-            "time_ms": 136,
+            "time_ms": 146,
             "valid": true
           },
           "classic_ga": {
             "length": 418.474417,
             "gap_pct": 9.0243,
-            "time_ms": 10,
+            "time_ms": 13,
             "valid": true
           },
           "llm_one_shot": {
-            "length": 383.835771,
-            "gap_pct": 0.0,
-            "time_ms": 28867,
+            "length": 401.203111,
+            "gap_pct": 4.5247,
+            "time_ms": 28039,
             "valid": true
           },
           "geneai": {
-            "length": 383.835771,
-            "gap_pct": 0.0,
-            "time_ms": 54106,
-            "valid": true
+            "length": 392.458899,
+            "gap_pct": 2.2466,
+            "time_ms": 7532,
+            "valid": true,
+            "provenance_counts": {
+              "llm:veri": 8,
+              "llm:creao": 0,
+              "algorithmic": 100
+            },
+            "behavior_origin": {
+              "id": "g0072",
+              "provider": "algorithmic",
+              "operator": "mutation",
+              "provenance": "algorithmic",
+              "generation": 6
+            }
           }
         }
       },
@@ -585,7 +604,7 @@
           "held_karp": {
             "length": 332.925297,
             "gap_pct": 0,
-            "time_ms": 147,
+            "time_ms": 131,
             "valid": true
           },
           "classic_ga": {
@@ -597,14 +616,26 @@
           "llm_one_shot": {
             "length": 335.269812,
             "gap_pct": 0.7042,
-            "time_ms": 22890,
+            "time_ms": 22818,
             "valid": true
           },
           "geneai": {
             "length": 332.925297,
             "gap_pct": 0.0,
-            "time_ms": 54122,
-            "valid": true
+            "time_ms": 7929,
+            "valid": true,
+            "provenance_counts": {
+              "llm:veri": 7,
+              "llm:creao": 0,
+              "algorithmic": 100
+            },
+            "behavior_origin": {
+              "id": "g0090",
+              "provider": "random",
+              "operator": "mutation",
+              "provenance": "algorithmic",
+              "generation": 8
+            }
           }
         }
       },
@@ -615,26 +646,38 @@
           "held_karp": {
             "length": 357.75645,
             "gap_pct": 0,
-            "time_ms": 168,
+            "time_ms": 194,
             "valid": true
           },
           "classic_ga": {
             "length": 409.091909,
             "gap_pct": 14.3493,
-            "time_ms": 13,
+            "time_ms": 11,
             "valid": true
           },
           "llm_one_shot": {
-            "length": 375.818353,
-            "gap_pct": 5.0487,
-            "time_ms": 27636,
+            "length": 367.281566,
+            "gap_pct": 2.6625,
+            "time_ms": 26740,
             "valid": true
           },
           "geneai": {
-            "length": 357.75645,
-            "gap_pct": 0.0,
-            "time_ms": 54112,
-            "valid": true
+            "length": 361.552849,
+            "gap_pct": 1.0612,
+            "time_ms": 7600,
+            "valid": true,
+            "provenance_counts": {
+              "llm:veri": 8,
+              "llm:creao": 0,
+              "algorithmic": 100
+            },
+            "behavior_origin": {
+              "id": "g0053",
+              "provider": "algorithmic",
+              "operator": "crossover",
+              "provenance": "algorithmic",
+              "generation": 4
+            }
           }
         }
       },
@@ -645,26 +688,38 @@
           "held_karp": {
             "length": 336.699987,
             "gap_pct": 0,
-            "time_ms": 139,
+            "time_ms": 131,
             "valid": true
           },
           "classic_ga": {
             "length": 384.395854,
             "gap_pct": 14.1657,
-            "time_ms": 11,
+            "time_ms": 10,
             "valid": true
           },
           "llm_one_shot": {
-            "length": 336.97839,
-            "gap_pct": 0.0827,
-            "time_ms": 28481,
+            "length": 343.576717,
+            "gap_pct": 2.0424,
+            "time_ms": 25697,
             "valid": true
           },
           "geneai": {
-            "length": 340.23379,
-            "gap_pct": 1.0495,
-            "time_ms": 54124,
-            "valid": true
+            "length": 336.97839,
+            "gap_pct": 0.0827,
+            "time_ms": 8753,
+            "valid": true,
+            "provenance_counts": {
+              "llm:veri": 8,
+              "llm:creao": 0,
+              "algorithmic": 100
+            },
+            "behavior_origin": {
+              "id": "g0091",
+              "provider": "random",
+              "operator": "mutation",
+              "provenance": "algorithmic",
+              "generation": 8
+            }
           }
         }
       },
@@ -675,26 +730,38 @@
           "held_karp": {
             "length": 340.761473,
             "gap_pct": 0,
-            "time_ms": 135,
+            "time_ms": 134,
             "valid": true
           },
           "classic_ga": {
             "length": 390.593116,
             "gap_pct": 14.6236,
-            "time_ms": 10,
+            "time_ms": 9,
             "valid": true
           },
           "llm_one_shot": {
             "length": 340.761473,
             "gap_pct": 0.0,
-            "time_ms": 18682,
+            "time_ms": 9069,
             "valid": true
           },
           "geneai": {
-            "length": 371.879851,
-            "gap_pct": 9.132,
-            "time_ms": 54106,
-            "valid": true
+            "length": 340.761473,
+            "gap_pct": 0.0,
+            "time_ms": 7894,
+            "valid": true,
+            "provenance_counts": {
+              "llm:veri": 4,
+              "llm:creao": 0,
+              "algorithmic": 100
+            },
+            "behavior_origin": {
+              "id": "g0057",
+              "provider": "random",
+              "operator": "mutation",
+              "provenance": "algorithmic",
+              "generation": 5
+            }
           }
         }
       }
@@ -703,7 +770,7 @@
       "held_karp": {
         "mean_gap_pct": 0.0,
         "optimal_hits": 5,
-        "mean_time_ms": 145,
+        "mean_time_ms": 147,
         "valid_count": 5
       },
       "classic_ga": {
@@ -713,18 +780,18 @@
         "valid_count": 5
       },
       "llm_one_shot": {
-        "mean_gap_pct": 1.1671,
-        "optimal_hits": 2,
-        "mean_time_ms": 25311,
+        "mean_gap_pct": 1.9868,
+        "optimal_hits": 1,
+        "mean_time_ms": 22473,
         "valid_count": 5
       },
       "geneai": {
-        "mean_gap_pct": 2.0363,
-        "optimal_hits": 3,
-        "mean_time_ms": 54114,
+        "mean_gap_pct": 0.6781,
+        "optimal_hits": 2,
+        "mean_time_ms": 7942,
         "valid_count": 5
       }
     }
   },
-  "notes": "Fifteen Euclidean cities in [0, 100], drawn from random.Random(seed) and rounded to 4 decimals. The showcase instance is seed 1500. Held-out seeds are [1501, 1502, 1503, 1504, 1505]. The traditional method is Held-Karp dynamic programming. optimum is that same search, not a second run, and there is no nearest-neighbor arm. classic_ga is a seeded permutation GA with population 24, 40 generations, order crossover, and swap mutation. It does not call a model. llm_one_shot is one frontier call with the coordinates. An illegal tour stays illegal. geneai is the shared evolution controller. Mock uses the mock providers. Hybrid uses Veri for most proposals and CREAO for the strategist slots. GeneAI uses LLM-guided operators plus 2-opt local search. The showcase run is 20 generations inside about 150s. Each held-out map is 8 generations inside about 60s. A slow provider is cancelled at the generation slice and the population is filled with algorithmic children. A TSP genome is a permutation. Swap and 2-opt are the mutations. OX and ERX are the crossovers. GeneAI repairs an invalid city list and runs 2-opt before scoring. The one-shot arm does not. Dedup hashes the canonical cycle (city 0 first, then the lexicographically smaller direction). Train, validation, and test all score the same instance. Fitness is negative tour length. time_ms is wall clock."
+  "notes": "Fifteen Euclidean cities in [0, 100], drawn from random.Random(seed) and rounded to 4 decimals. The showcase instance is seed 1500. Held-out seeds are [1501, 1502, 1503, 1504, 1505]. The traditional method is Held-Karp dynamic programming. optimum is that same search, not a second run, and there is no nearest-neighbor arm. classic_ga is a seeded permutation GA with population 24, 40 generations, order crossover, and swap mutation. It does not call a model. llm_one_shot is one frontier call with the coordinates. An illegal tour stays illegal. geneai is the shared evolution controller. Mock uses the mock providers. Hybrid uses Veri for most proposals and CREAO for the strategist slots. GeneAI uses LLM-guided operators plus 2-opt local search. The showcase run is 20 generations inside about 150s. Each held-out map is 8 generations inside about 60s. Hybrid showcase population is 24 and held-out population is 12. LLM proposals are a permutation or a short edit (reverse a segment, move a city, OX, or ERX). Each model call gets about 20s. A call that is still running is harvested on a later generation, and the population stays at the configured size. A TSP genome is a permutation. Swap and 2-opt are the mutations. OX and ERX are the crossovers. GeneAI repairs an invalid city list and runs a few 2-opt moves before scoring. The one-shot arm does not. Dedup hashes the canonical cycle (city 0 first, then the lexicographically smaller direction). Train, validation, and test all score the same instance. Fitness is negative tour length. time_ms is wall clock."
 }

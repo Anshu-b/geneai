@@ -30,6 +30,8 @@ export interface TspMethod {
   convergence: TspPoint[];
   /** GeneAI only: genomes added during the run, by source, e.g. {"llm:veri": 0, "llm:creao": 0, "algorithmic": 2}. */
   provenance_counts?: Record<string, number> | null;
+  /** GeneAI only: the genome that first produced the best tour. */
+  behavior_origin?: { id?: string; provider?: string; operator?: string; provenance?: string; generation?: number } | null;
 }
 
 export interface TspOptimum {
@@ -116,6 +118,7 @@ function parseMethod(value: unknown): TspMethod {
     invalid_reason: typeof row.invalid_reason === "string" ? row.invalid_reason : null,
     convergence,
     provenance_counts: parseCounts(row.provenance_counts),
+    behavior_origin: asRecord(row.behavior_origin) as TspMethod["behavior_origin"],
   };
 }
 
@@ -282,7 +285,13 @@ export function provenanceLine(file: TspFile): string | null {
   if (!counts) return null;
   const name = (key: string) => (key === "llm:veri" ? "Veri" : key === "llm:creao" ? "CREAO" : key === "algorithmic" ? "algorithmic operators (OX, ERX, swap, 2-opt)" : key);
   const bits = Object.entries(counts).map(([key, count]) => `${count} from ${name(key)}`);
-  return `Genomes GeneAI added on this map, by source: ${bits.join(", ")}.`;
+  const origin = gene?.behavior_origin;
+  let found = "";
+  if (origin && (origin.provenance || origin.provider)) {
+    const source = origin.provenance === "algorithmic" ? "an algorithmic" : `a ${name(origin.provenance || origin.provider || "")}`;
+    found = ` The best tour first appeared as ${source} ${origin.operator || "child"}${origin.id ? ` (${origin.id})` : ""} in generation ${origin.generation ?? 0}.`;
+  }
+  return `Genomes GeneAI added on this map, by source: ${bits.join(", ")}.${found}`;
 }
 
 export const TSP_COLOR: Record<TspMethodKey, string> = {
