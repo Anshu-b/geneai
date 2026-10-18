@@ -1,84 +1,84 @@
 {
-  "case_id": "s11",
-  "case_note": "Not cherry-picked. For each held-out test case, margin is the champion fitness minus the best hand-written baseline on that same case (an infeasible score counts as missing). The case shown is the median margin. An even count uses the lower of the two central margins, then the smaller case id. Selected shopper s11 (margin -0.009412).",
+  "case_id": "s10",
+  "case_note": "Not cherry-picked. For each held-out test case, margin is the champion fitness minus the best hand-written baseline on that same case (an infeasible score counts as missing). The case shown is the median margin. An even count uses the lower of the two central margins, then the smaller case id. Selected shopper s10 (margin -0.074808).",
   "shopping": {
     "shopper": {
-      "id": "s11",
-      "style": "bright",
-      "budget_usd": 340,
+      "id": "s10",
+      "style": "neutral",
+      "budget_usd": 260,
       "apparel_size": "M",
       "shoe_size": 9,
       "occasions": [
-        "dinner",
         "gym"
       ],
       "likes": [
-        "bright colors",
-        "athletic pieces"
+        "neutral colors",
+        "relaxed and tailored pieces"
       ],
       "dislikes": [
-        "muted neutrals"
+        "neon",
+        "athletic brights"
       ],
-      "notes": "Shopper s11 wears apparel size M and shoe size 9. Budget $340. Palette bright. Occasions: dinner, gym."
+      "notes": "Shopper s10 wears apparel size M and shoe size 9. Budget $260. Palette neutral. Occasions: gym."
     },
     "outfits": [
       {
         "key": "champion",
         "label": "GeneAI champion",
-        "provider": "veri",
-        "genome_id": "g0015",
+        "provider": "random",
+        "genome_id": "g0023",
         "feasible": true,
         "infeasible_reason": null,
         "items": [
           {
-            "id": "bu_001",
-            "name": "Repper Short-Sleeve Shirt",
+            "id": "bu_009",
+            "name": "Soft Knit Overshirt",
             "role": "top",
-            "price_usd": 58.0,
-            "url": "https://shop.lululemon.com/p/repper-short-sleeve-shirt/hhbz0zj40k?fp=1&color=74110",
-            "image_url": "https://images.lululemon.com/is/image/lululemon/LM3FYYS_074110_2?wid=1280&op_usm=0.5,2,10,0&fmt=jpeg&qlt=75,1&fit=constrain,0&op_sharpen=0&resMode=sharp2&iccEmbed=0&printRes=72",
+            "price_usd": 128.0,
+            "url": "https://shop.lululemon.com/p/soft-knit-overshirt/lpi05lfqeo?fp=1&color=74110",
+            "image_url": "https://images.lululemon.com/is/image/lululemon/LM3FD7S_074110_2?wid=1280&op_usm=0.5,2,10,0&fmt=jpeg&qlt=75,1&fit=constrain,0&op_sharpen=0&resMode=sharp2&iccEmbed=0&printRes=72",
             "source": "recorded"
           },
           {
-            "id": "bu_030",
-            "name": "Men's Steady State SuperLoft Short 8\"",
+            "id": "bu_034",
+            "name": "Soft Jersey Short 5\"",
             "role": "bottom",
             "price_usd": 68.0,
-            "url": "https://shop.lululemon.com/p/mens-steady-state-superloft-short-8/pdi2s1jkd8?fp=1&color=76950",
-            "image_url": "https://images.lululemon.com/is/image/lululemon/LM7C97S_076950_2?wid=1280&op_usm=0.5,2,10,0&fmt=jpeg&qlt=75,1&fit=constrain,0&op_sharpen=0&resMode=sharp2&iccEmbed=0&printRes=72",
+            "url": "https://shop.lululemon.com/p/soft-jersey-short-5/wke6bm8shp?fp=1&color=76994",
+            "image_url": "https://images.lululemon.com/is/image/lululemon/LM7BI2S_076994_2?wid=1280&op_usm=0.5,2,10,0&fmt=jpeg&qlt=75,1&fit=constrain,0&op_sharpen=0&resMode=sharp2&iccEmbed=0&printRes=72",
             "source": "recorded"
           },
           {
-            "id": "bu_019",
-            "name": "Men's lululemon Puff Puff Shoe",
+            "id": "bu_016",
+            "name": "Men's Restfeel Slide",
             "role": "shoes",
-            "price_usd": 128.0,
-            "url": "https://shop.lululemon.com/p/m-lululemon-puff-puff-shoe/b7060r39kx?fp=1&color=80902",
-            "image_url": "https://images.lululemon.com/is/image/lululemon/LM9BAVS_080902_2?wid=1280&op_usm=0.5,2,10,0&fmt=jpeg&qlt=75,1&fit=constrain,0&op_sharpen=0&resMode=sharp2&iccEmbed=0&printRes=72",
+            "price_usd": 58.0,
+            "url": "https://shop.lululemon.com/p/m-restfeel-slide/bxugxqf16z?fp=1&color=79321",
+            "image_url": "https://images.lululemon.com/is/image/lululemon/LM9BBFS_079321_2?wid=1280&op_usm=0.5,2,10,0&fmt=jpeg&qlt=75,1&fit=constrain,0&op_sharpen=0&resMode=sharp2&iccEmbed=0&printRes=72",
             "source": "recorded"
           }
         ],
         "total_usd": 254.0,
-        "score": 0.375294,
+        "score": 0.352308,
         "why": [
-          "Style match 0.00: 0/3 items share bright tags ['athletic', 'bright']",
-          "Occasion fit 0.00: 0/3 items match ['dinner', 'gym']",
-          "Bright colors: 3/3 items (component 1.00)",
+          "Style match 0.67: 3/3 items share neutral tags ['neutral', 'relaxed']",
+          "Occasion fit 0.00: 0/3 items match ['gym']",
+          "Neutral colors: 0/3 items (component 0.00)",
           "Availability confidence 1.00",
-          "Under budget by $86.00 (spend $254.00 of $340.00, efficiency 0.25)"
+          "Under budget by $6.00 (spend $254.00 of $260.00, efficiency 0.02)"
         ],
         "aggregate": {
-          "score": 0.314312,
+          "score": 0.528201,
           "n_feasible": 3,
           "n_shoppers": 3,
           "mean_total_usd": 254.0,
           "mean_budget_usd": 300.0
         },
         "behavior_origin": {
-          "id": "g0015",
-          "provider": "veri",
+          "id": "g0023",
+          "provider": "random",
           "operator": "mutation",
-          "generation": 1
+          "generation": 2
         }
       },
       {
@@ -87,7 +87,7 @@
         "provider": "openai",
         "genome_id": null,
         "feasible": false,
-        "infeasible_reason": "over budget 432.00 > 340.00",
+        "infeasible_reason": "over budget 482.00 > 260.00",
         "items": [
           {
             "id": "bu_001",
@@ -99,12 +99,12 @@
             "source": "recorded"
           },
           {
-            "id": "bu_031",
-            "name": "Zeroed In Linerless Short 7\"",
+            "id": "bu_034",
+            "name": "Soft Jersey Short 5\"",
             "role": "bottom",
             "price_usd": 68.0,
-            "url": "https://shop.lululemon.com/p/zeroed-in-linerless-short-7/fczp31es6b?fp=1&color=77548",
-            "image_url": "https://images.lululemon.com/is/image/lululemon/LM7BU2S_077548_2?wid=1280&op_usm=0.5,2,10,0&fmt=jpeg&qlt=75,1&fit=constrain,0&op_sharpen=0&resMode=sharp2&iccEmbed=0&printRes=72",
+            "url": "https://shop.lululemon.com/p/soft-jersey-short-5/wke6bm8shp?fp=1&color=76994",
+            "image_url": "https://images.lululemon.com/is/image/lululemon/LM7BI2S_076994_2?wid=1280&op_usm=0.5,2,10,0&fmt=jpeg&qlt=75,1&fit=constrain,0&op_sharpen=0&resMode=sharp2&iccEmbed=0&printRes=72",
             "source": "recorded"
           },
           {
@@ -117,19 +117,19 @@
             "source": "recorded"
           },
           {
-            "id": "bu_021",
-            "name": "Cruiser Backpack 26L Updated",
+            "id": "bu_020",
+            "name": "3-in-1 Gym Duffle Bag Large 35L",
             "role": "accessory",
-            "price_usd": 148.0,
-            "url": "https://shop.lululemon.com/p/cruiser-backpack-26l-updated/vcr7u7nuet?fp=1&color=77307",
-            "image_url": "https://images.lululemon.com/is/image/lululemon/LM9BA7S_077307_2?wid=1280&op_usm=0.5,2,10,0&fmt=jpeg&qlt=75,1&fit=constrain,0&op_sharpen=0&resMode=sharp2&iccEmbed=0&printRes=72",
+            "price_usd": 198.0,
+            "url": "https://shop.lululemon.com/p/3-in-1-gym-duffle-bag-large-35l/cc0bzvgp2g?fp=1&color=77428",
+            "image_url": "https://images.lululemon.com/is/image/lululemon/LU9DAPS_077428_2?wid=1280&op_usm=0.5,2,10,0&fmt=jpeg&qlt=75,1&fit=constrain,0&op_sharpen=0&resMode=sharp2&iccEmbed=0&printRes=72",
             "source": "recorded"
           }
         ],
-        "total_usd": 432.0,
+        "total_usd": 482.0,
         "score": null,
         "why": [
-          "over budget 432.00 > 340.00"
+          "over budget 482.00 > 260.00"
         ],
         "attempted_output": {
           "family": "campus_uniform",
@@ -141,8 +141,8 @@
               "size": "M"
             },
             {
-              "color_id": "Rocket Red",
-              "product_id": "bu_031",
+              "color_id": "Cypress Forest",
+              "product_id": "bu_034",
               "role": "bottom",
               "size": "M"
             },
@@ -153,37 +153,37 @@
               "size": "9"
             },
             {
-              "color_id": "Nomad",
-              "product_id": "bu_021",
+              "color_id": "Feather Grey",
+              "product_id": "bu_020",
               "role": "accessory",
               "size": "One Size"
             }
           ],
-          "styling_notes": "A balanced campus-ready outfit with one clean top, one versatile bottom, coordinated size-9 shoes, and a single accessory for polish without overcomplicating the look."
+          "styling_notes": "A clean campus-ready combination with a versatile top, balanced bottom, simple shoes, and one understated accessory for a complete but not overdone look."
         },
         "aggregate": {
           "score": null,
           "n_feasible": 0,
           "n_shoppers": 3,
-          "mean_total_usd": 432.0,
+          "mean_total_usd": 482.0,
           "mean_budget_usd": 300.0
         }
       },
       {
         "key": "best_baseline",
-        "label": "Hand-written gym outfit",
+        "label": "Hand-written neutral outfit",
         "provider": "baseline",
-        "genome_id": "g0002",
+        "genome_id": "g0001",
         "feasible": true,
         "infeasible_reason": null,
         "items": [
           {
-            "id": "bu_000",
-            "name": "Zeroed In Short-Sleeve Shirt",
+            "id": "bu_003",
+            "name": "Soft Jersey Short-Sleeve Shirt",
             "role": "top",
             "price_usd": 58.0,
-            "url": "https://shop.lululemon.com/p/zeroed-in-short-sleeve-shirt/pyof0tbg9l?fp=1&color=77548",
-            "image_url": "https://images.lululemon.com/is/image/lululemon/LM3GFNS_077548_2?wid=1280&op_usm=0.5,2,10,0&fmt=jpeg&qlt=75,1&fit=constrain,0&op_sharpen=0&resMode=sharp2&iccEmbed=0&printRes=72",
+            "url": "https://shop.lululemon.com/p/soft-jersey-short-sleeve-shirt/zhn4p5ranv?fp=1&color=80640",
+            "image_url": "https://images.lululemon.com/is/image/lululemon/LM3ES3S_080640_2?wid=1280&op_usm=0.5,2,10,0&fmt=jpeg&qlt=75,1&fit=constrain,0&op_sharpen=0&resMode=sharp2&iccEmbed=0&printRes=72",
             "source": "recorded"
           },
           {
@@ -215,23 +215,23 @@
           }
         ],
         "total_usd": 222.0,
-        "score": 0.384706,
+        "score": 0.427115,
         "why": [
-          "Style match 0.00: 0/4 items share bright tags ['athletic', 'bright']",
-          "Occasion fit 0.00: 0/4 items match ['dinner', 'gym']",
-          "Bright colors: 4/4 items (component 1.00)",
+          "Style match 0.88: 4/4 items share neutral tags ['neutral', 'relaxed']",
+          "Occasion fit 0.00: 0/4 items match ['gym']",
+          "Neutral colors: 0/4 items (component 0.00)",
           "Availability confidence 1.00",
-          "Under budget by $118.00 (spend $222.00 of $340.00, efficiency 0.35)"
+          "Under budget by $38.00 (spend $222.00 of $260.00, efficiency 0.15)"
         ],
         "aggregate": {
-          "score": 0.30844,
+          "score": 0.504274,
           "n_feasible": 3,
           "n_shoppers": 3,
           "mean_total_usd": 222.0,
           "mean_budget_usd": 300.0
         },
         "behavior_origin": {
-          "id": "g0002",
+          "id": "g0001",
           "provider": "baseline",
           "operator": "seed",
           "generation": 0
@@ -241,7 +241,7 @@
   },
   "schema": "geneai-showcase-v1",
   "domain": "shopping",
-  "run_id": "run_08d7760a6220",
-  "export_integrity_sha256": "dbcf3c9b05b8d560ae5aef20d58069be8e8775414b1f03a5af594f3128f9204d",
+  "run_id": "run_745ec75b0bc7",
+  "export_integrity_sha256": "dc5eb057024c012294a1abaaa629ca646ebd4d9bae6c4ba6bfbc85cf77b6ccce",
   "split": "test"
 }

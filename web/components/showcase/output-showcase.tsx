@@ -15,6 +15,7 @@ import {
   type ShowcaseFile,
   type ShowcaseLoad,
 } from "@/lib/showcase";
+import { cloudPolicySummary, outfitSummary, plainWhy, SHOPPING_WEIGHTS, shopperRequest, type Mark } from "@/lib/plain";
 
 const JOB_COLOR: Record<string, string> = {
   interactive: "var(--job-interactive)",
@@ -113,12 +114,15 @@ function PolicyDetail({ policy }: { policy: CloudPolicy }) {
   return (
     <div>
       {credit ? <p className="text-sm text-ivory" data-testid="behavior-origin">{credit}</p> : null}
+      {cloudPolicySummary(policy) ? (
+        <p className="mt-2 text-base leading-relaxed text-ivory" data-testid="policy-summary">{cloudPolicySummary(policy)}</p>
+      ) : null}
       {policy.description ? <p className="mt-2 text-sm text-dim">{plainDescription(policy)}</p> : null}
       {!policy.feasible && policy.infeasible_reason ? (
         <p className="mt-2 text-sm text-danger">{policy.infeasible_reason}</p>
       ) : null}
       {policy.rules_plain && policy.rules_plain.length > 0 ? (
-        <ul className="mt-3 space-y-1 text-sm text-ivory">
+        <ul className="mt-3 space-y-1 text-sm text-dim" aria-label="Exact rules">
           {policy.rules_plain.map((rule) => (
             <li key={rule} className="flex gap-2"><span className="text-teal">·</span><span>{rule}</span></li>
           ))}
@@ -175,11 +179,28 @@ function Gantt({ cloud, policy, span }: { cloud: NonNullable<ShowcaseFile["cloud
 function ShoppingShowcase({ file }: { file: ShowcaseFile }) {
   const shopping = file.shopping!;
   const outfits = shopping.outfits.filter((outfit) => !isManualBaseline(outfit.key, outfit.provider));
+  const shopper = shopping.shopper;
   return (
-    <div className="mt-4 grid gap-4 lg:grid-cols-2">
-      {outfits.map((outfit) => (
-        <Outfit key={outfit.key} outfit={outfit} budget={shopping.shopper.budget_usd} />
-      ))}
+    <div className="mt-4">
+      <article className="glass rounded-3xl p-5" data-testid="shopper-request">
+        <p className="kicker">The request</p>
+        <p className="mt-2 font-serif text-2xl leading-snug text-ivory">{shopperRequest(shopper)}</p>
+        <ul className="mt-3 flex flex-wrap gap-2 text-xs text-dim">
+          <li className="rounded-full border border-line px-3 py-1">Budget ${shopper.budget_usd}</li>
+          {shopper.style ? <li className="rounded-full border border-line px-3 py-1">Palette: {shopper.style}</li> : null}
+          {(shopper.occasions ?? []).map((occasion) => <li key={occasion} className="rounded-full border border-line px-3 py-1">Occasion: {occasion}</li>)}
+          {shopper.apparel_size ? <li className="rounded-full border border-line px-3 py-1">Size {shopper.apparel_size}</li> : null}
+          {shopper.shoe_size != null ? <li className="rounded-full border border-line px-3 py-1">Shoe {shopper.shoe_size}</li> : null}
+          {(shopper.likes ?? []).map((like) => <li key={like} className="rounded-full border border-teal/40 px-3 py-1 text-teal">Likes {like}</li>)}
+          {(shopper.dislikes ?? []).map((dislike) => <li key={dislike} className="rounded-full border border-danger/40 px-3 py-1 text-danger">Dislikes {dislike}</li>)}
+        </ul>
+      </article>
+      <div className="mt-4 grid gap-4 lg:grid-cols-2">
+        {outfits.map((outfit) => (
+          <Outfit key={outfit.key} outfit={outfit} budget={shopper.budget_usd} />
+        ))}
+      </div>
+      <p className="mt-3 text-sm text-dim" data-testid="score-weights">{SHOPPING_WEIGHTS}</p>
     </div>
   );
 }
@@ -205,8 +226,11 @@ function Outfit({ outfit, budget }: { outfit: OutfitCard; budget: number }) {
         {outfit.provider || "provider"}{outfit.genome_id ? ` · ${outfit.genome_id}` : ""}
       </p>
       {credit ? <p className="mt-2 text-sm text-ivory" data-testid="behavior-origin">{credit}</p> : null}
-      <p className={`mt-3 text-sm ${outfit.feasible ? "text-ivory" : "text-danger"}`}>{budgetLine(outfit.total_usd, budget)}</p>
-      {!outfit.feasible && outfit.infeasible_reason ? <p className="mt-2 text-sm leading-relaxed text-danger">{outfit.infeasible_reason}</p> : null}
+      <p className="mt-3 text-base leading-relaxed text-ivory" data-testid="outfit-summary">{outfitSummary(outfit, budget)}</p>
+      <p className={`mt-2 text-sm ${outfit.feasible ? "text-dim" : "text-danger"}`}>{budgetLine(outfit.total_usd, budget)}</p>
+      {!outfit.feasible && outfit.infeasible_reason && !(outfit.why ?? []).includes(outfit.infeasible_reason) ? (
+        <p className="mt-2 text-sm leading-relaxed text-danger">{plainWhy([outfit.infeasible_reason])[0].text}</p>
+      ) : null}
       <ul className="mt-4 space-y-3">
         {outfit.items.map((item) => (
           <li key={item.id} className="flex gap-3">
@@ -229,13 +253,16 @@ function Outfit({ outfit, budget }: { outfit: OutfitCard; budget: number }) {
         ))}
       </ul>
       {outfit.why && outfit.why.length > 0 ? (
-        <ul className="mt-4 space-y-1 text-sm text-dim">
-          {outfit.why.map((reason) => (
-            <li key={reason}>{reason}</li>
+        <ul className="mt-4 space-y-1.5 text-sm" data-testid="plain-why">
+          {plainWhy(outfit.why).map((line) => (
+            <li key={`${line.label}-${line.text}`} className="flex gap-2">
+              <MarkIcon mark={line.mark} />
+              <span><span className="font-medium text-ivory">{line.label}:</span> <span className="text-dim">{line.text}</span></span>
+            </li>
           ))}
         </ul>
       ) : null}
-      {outfit.score != null ? <p className="mt-3 font-mono text-[10px] text-faint">score {outfit.score} · secondary to the outfit above</p> : null}
+      {outfit.score != null ? <p className="mt-3 text-sm text-ivory" data-testid="outfit-score">Score {outfit.score.toFixed(2)} out of 1</p> : null}
     </article>
   );
 }
@@ -343,4 +370,10 @@ function providerName(provider: string): string {
   if (key === "veri") return "Veri (Qwen2.5-7B)";
   if (key === "baseline") return "A hand-written baseline";
   return provider;
+}
+
+function MarkIcon({ mark }: { mark: Mark }) {
+  if (mark === "yes") return <span className="w-4 shrink-0 text-teal" aria-label="yes">✓</span>;
+  if (mark === "partial") return <span className="w-4 shrink-0 text-amber" aria-label="partly">◐</span>;
+  return <span className="w-4 shrink-0 text-danger" aria-label="no">✗</span>;
 }

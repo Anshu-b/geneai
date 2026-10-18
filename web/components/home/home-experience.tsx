@@ -20,6 +20,25 @@ const STAGES = [
   { id: "elites", title: "Elites", copy: "The fittest survive as elites, copied forward with the same id. Immigration is a newcomer with no parents." },
 ];
 
+/** Verified against the live Veri deployment (bfe84d51e141), the CREAO provider config, and run exports. */
+const MODELS = [
+  {
+    role: "Bulk mutation · Veri.studio",
+    name: "Qwen/Qwen2.5-7B-Instruct",
+    detail: "Deployment geneai-qwen7b, served with vLLM on 1× NVIDIA L4 (24 GB) on AWS, 8 concurrent requests.",
+  },
+  {
+    role: "Strategist · CREAO",
+    name: "CREAO agent (agent.creao.ai)",
+    detail: "Called as an app-scoped CREAO agent. CREAO does not report which model it runs underneath, so we do not name one.",
+  },
+  {
+    role: "One-shot comparison · OpenAI",
+    name: "gpt-5.5 (gpt-5.5-2026-04-23)",
+    detail: "One Responses API call per run, reasoning effort low. The recorded cloud run predates that setting and used the API default.",
+  },
+];
+
 const rise = {
   hidden: { opacity: 0, y: 28 },
   show: { opacity: 1, y: 0, transition: { duration: 0.7, ease: [0.22, 1, 0.36, 1] as const } },
@@ -200,6 +219,19 @@ export function HomeExperience() {
               <p className="mt-3 text-sm leading-relaxed text-dim">One request, scored on the same test. That is a single attempt against the search. It is not compute-matched, and it is not a parent in the lineage.</p>
               <div className="mt-6 h-3 w-3 rounded-full bg-amber" aria-hidden />
             </article>
+          </div>
+          <div className="glass mt-12 rounded-3xl p-6" data-testid="models-in-build">
+            <p className="kicker">Models in this build</p>
+            <dl className="mt-4 grid gap-5 md:grid-cols-3">
+              {MODELS.map((model) => (
+                <div key={model.role}>
+                  <dt className="font-mono text-[10px] uppercase tracking-[0.16em] text-faint">{model.role}</dt>
+                  <dd className="mt-1 font-serif text-2xl text-ivory">{model.name}</dd>
+                  <dd className="mt-1 text-sm leading-relaxed text-dim">{model.detail}</dd>
+                </div>
+              ))}
+            </dl>
+            <p className="mt-4 text-xs text-faint">From the Veri deployment record, the CREAO app config, and the model id the OpenAI API returned in the recorded runs.</p>
           </div>
         </motion.section>
 

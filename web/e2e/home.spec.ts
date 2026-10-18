@@ -108,3 +108,19 @@ test("cloud scoreboard marks a winner on every row", async ({ page }) => {
   await expect(page.getByTestId("score-all_fitness")).toHaveAttribute("data-winner", "gene");
   await expect(page.getByTestId("gantt-legend").first()).toContainText("Late");
 });
+
+test("home names the exact models and the demo pages explain policies in plain words", async ({ page }) => {
+  await page.goto("/");
+  const models = page.getByTestId("models-in-build");
+  await models.scrollIntoViewIfNeeded();
+  await expect(models).toContainText("Qwen/Qwen2.5-7B-Instruct");
+  await expect(models).toContainText("L4");
+  await expect(models).toContainText("CREAO agent (agent.creao.ai)");
+  await expect(models).toContainText("gpt-5.5");
+  await page.goto("/cloud");
+  await expect(page.getByTestId("policy-summary").first()).toContainText("looks at the next");
+  await page.goto("/shopping");
+  await expect(page.getByTestId("shopper-request")).toContainText("wants a");
+  await expect(page.getByTestId("plain-why").first()).toContainText("Style:");
+  await expect(page.getByTestId("plain-why").first()).not.toContainText("[");
+});
