@@ -304,7 +304,12 @@ def _empty_metrics(violations: float) -> dict[str, float]:
     }
 
 
-def simulate(payload: dict[str, Any], jobs: list[Job]) -> dict[str, float]:
+def simulate(
+    payload: dict[str, Any],
+    jobs: list[Job],
+    trace: list[dict[str, Any]] | None = None,
+) -> dict[str, float]:
+    """Run one workload. ``trace`` only records placements; it does not affect metrics."""
     policy = _Policy(payload)
     pending = sorted(jobs, key=lambda job: (job.arrival, job.jid))
     queue: list[Job] = []
@@ -345,14 +350,28 @@ def simulate(payload: dict[str, Any], jobs: list[Job]) -> dict[str, float]:
                 violations += 1
                 queue.remove(job)
                 continue
+            end = now + job.duration
             running.append(
                 Placement(
                     machine_id=str(machine["id"]),
                     job=job,
                     start=now,
-                    end=round(now + job.duration, 4),
+                    end=round(end, 4),
                 )
             )
+            if trace is not None:
+                trace.append(
+                    {
+                        "job_id": f"j{job.jid:02d}",
+                        "machine_id": str(machine["id"]),
+                        "start_min": now,
+                        "end_min": end,
+                        "wait_min": now - job.arrival,
+                        "deadline_min": job.deadline,
+                        "missed_deadline": end > job.deadline + 1e-9,
+                        "hard": job.hard,
+                    }
+                )
             after = _used(running, str(machine["id"]))
             if after[0] > float(machine["cpu"]) + 1e-6 or after[1] > float(machine["mem"]) + 1e-6:
                 violations += 1
@@ -388,6 +407,34 @@ def simulate(payload: dict[str, Any], jobs: list[Job]) -> dict[str, float]:
 _ROUND_ROBIN: dict[tuple[int, int], dict[str, float]] = {}
 
 
+def _ratios(metrics: dict[str, float], reference: dict[str, float]) -> dict[str, float]:
+    """Same ratios the split fitness averages. Linear, so the mean matches the mean fitness."""
+
+    completion_ratio = metrics["mean_completion"] / max(reference["mean_completion"], 1e-9)
+    ref_tardiness = reference["hard_tardiness"]
+    if ref_tardiness < 1e-3:
+        hard_ratio = metrics["hard_tardiness"] / max(metrics["mean_hard_duration"], 1e-6)
+    else:
+        hard_ratio = metrics["hard_tardiness"] / ref_tardiness
+    energy_ratio = metrics["energy"] / max(reference["energy"], 1e-9)
+    return {
+        "completion_ratio": completion_ratio,
+        "hard_ratio": hard_ratio,
+        "energy_ratio": energy_ratio,
+        "sla_miss_rate": metrics["sla_miss_rate"],
+    }
+
+
+def workload_fitness(metrics: dict[str, float], reference: dict[str, float]) -> float:
+    ratios = _ratios(metrics, reference)
+    return -(
+        ratios["completion_ratio"]
+        + 0.25 * ratios["sla_miss_rate"]
+        + 0.50 * ratios["hard_ratio"]
+        + 0.15 * ratios["energy_ratio"]
+    )
+
+
 def round_robin_metrics(seed: int, index: int) -> dict[str, float]:
     key = (seed, index)
     cached = _ROUND_ROBIN.get(key)
@@ -395,6 +442,64 @@ def round_robin_metrics(seed: int, index: int) -> dict[str, float]:
         cached = simulate(baseline_payload("round_robin"), workload(seed, index))
         _ROUND_ROBIN[key] = cached
     return cached
+
+
+_TERM_PLAIN = {
+    "short_job": "short jobs",
+    "deadline_urgency": "jobs close to their deadline",
+    "wait_time": "jobs that have already waited",
+    "free_cpu": "machines with free CPU",
+    "energy_frugal": "lower-power machines",
+    "rotation": "the next machine in rotation",
+    "cpu_pressure": "packing onto already busy CPUs",
+    "memory_pressure": "packing onto already busy memory",
+    "class_affinity": "the machine class that matches the job",
+    "hard_deadline": "jobs with a hard deadline",
+}
+
+
+def rules_plain(payload: dict[str, Any]) -> list[str]:
+    """Plain English from the genome fields. No model call."""
+
+    rules = payload.get("rules") if isinstance(payload.get("rules"), dict) else {}
+    lines: list[str] = []
+    depth = rules.get("max_queue_depth")
+    if isinstance(depth, int | float) and not isinstance(depth, bool):
+        lines.append(f"Consider the first {int(depth)} waiting jobs.")
+    weights = rules.get("score_weights") if isinstance(rules.get("score_weights"), dict) else {}
+    ranked = sorted(
+        ((str(term), float(value)) for term, value in weights.items() if isinstance(value, int | float) and not isinstance(value, bool)),
+        key=lambda item: (-abs(item[1]), item[0]),
+    )
+    for term, value in ranked:
+        if abs(value) < 0.05:
+            continue
+        direction = "Prefer" if value > 0 else "Avoid"
+        subject = _TERM_PLAIN.get(term, term.replace("_", " "))
+        lines.append(f"{direction} {subject} (weight {value:.2f}).")
+    ties = [str(key) for key in rules.get("tie_break") or []]
+    if ties:
+        lines.append("Break ties by " + ", then ".join(ties) + ".")
+    overrides = rules.get("class_overrides") if isinstance(rules.get("class_overrides"), list) else []
+    for override in overrides:
+        if not isinstance(override, dict):
+            continue
+        job_class = str(override.get("job_class") or "job")
+        override_weights = override.get("score_weights") if isinstance(override.get("score_weights"), dict) else {}
+        numeric = {
+            str(term): float(value)
+            for term, value in override_weights.items()
+            if isinstance(value, int | float) and not isinstance(value, bool)
+        }
+        if not numeric:
+            lines.append(f"For {job_class} jobs, use a separate weight vector.")
+            continue
+        top = max(numeric, key=lambda term: (abs(numeric[term]), term))
+        subject = _TERM_PLAIN.get(top, top.replace("_", " "))
+        lines.append(f"For {job_class} jobs, weight {subject} at {numeric[top]:.2f} instead of the default.")
+    if not lines:
+        lines.append("No scheduling rules were set.")
+    return lines
 
 
 def _weight_vector(**values: float) -> dict[str, float]:
@@ -948,19 +1053,16 @@ class CloudSchedulingAdapter(DomainAdapter):
             if metrics["violations"] > 0 or metrics["completed"] < len(jobs):
                 return self._infeasible(genome, split, "capacity violation or unfinished jobs", started)
             reference = round_robin_metrics(self._seed, index)
+            ratios = _ratios(metrics, reference)
             totals["mean_completion"] += metrics["mean_completion"]
             totals["sla_miss_rate"] += metrics["sla_miss_rate"]
             totals["hard_tardiness"] += metrics["hard_tardiness"]
             totals["energy"] += metrics["energy"]
             totals["gpu_foreign_work"] += metrics["gpu_foreign_work"]
             totals["highmem_foreign_work"] += metrics["highmem_foreign_work"]
-            totals["completion_ratio"] += metrics["mean_completion"] / max(reference["mean_completion"], 1e-9)
-            ref_tardiness = reference["hard_tardiness"]
-            if ref_tardiness < 1e-3:
-                totals["hard_ratio"] += metrics["hard_tardiness"] / max(metrics["mean_hard_duration"], 1e-6)
-            else:
-                totals["hard_ratio"] += metrics["hard_tardiness"] / ref_tardiness
-            totals["energy_ratio"] += metrics["energy"] / max(reference["energy"], 1e-9)
+            totals["completion_ratio"] += ratios["completion_ratio"]
+            totals["hard_ratio"] += ratios["hard_ratio"]
+            totals["energy_ratio"] += ratios["energy_ratio"]
         count = float(len(indexes))
         mean_completion = totals["mean_completion"] / count
         sla = totals["sla_miss_rate"] / count

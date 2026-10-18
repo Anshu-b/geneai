@@ -278,6 +278,53 @@ def _score_outfit(
     return fitness, metrics, []
 
 
+def outfit_why(
+    records: list[tuple[dict[str, Any], str, str]],
+    *,
+    budget: float,
+    palette: str,
+    occasions: list[str],
+    metrics: dict[str, float],
+    violations: list[str],
+) -> list[str]:
+    """Bullets from the same components ``_score_outfit`` uses. Not a second rubric."""
+
+    if violations:
+        return [str(item) for item in violations]
+    count = len(records)
+    if palette == "neutral":
+        color_hits = sum(1 for _item, color, _size in records if color in NEUTRAL)
+        color_line = f"Neutral colors: {color_hits}/{count} items"
+    elif palette == "bright":
+        color_hits = sum(1 for _item, color, _size in records if color not in NEUTRAL)
+        color_line = f"Bright colors: {color_hits}/{count} items"
+    else:
+        color_line = f"Color compatibility {metrics.get('color_compatibility', 0):.2f}"
+    wanted_style = {"neutral", "relaxed"} if palette == "neutral" else {"bright", "athletic"}
+    style_hits = 0
+    for item, _color, _size in records:
+        tags = set(item.get("style") or [])
+        if tags & wanted_style:
+            style_hits += 1
+    occasion_hits = 0
+    wanted = set(occasions)
+    for item, _color, _size in records:
+        if set(item.get("occasions") or []) & wanted:
+            occasion_hits += 1
+    spend = float(metrics.get("spend") or 0.0)
+    under = budget - spend
+    budget_line = (
+        f"Under budget by ${under:.2f}" if under >= -1e-9 else f"Over budget by ${-under:.2f}"
+    )
+    return [
+        f"Style match {metrics.get('style_match', 0):.2f}: {style_hits}/{count} items share {palette} tags {sorted(wanted_style)}",
+        f"Occasion fit {metrics.get('occasion_fit', 0):.2f}: {occasion_hits}/{count} items match {list(occasions)}",
+        f"{color_line} (component {metrics.get('color_compatibility', 0):.2f})",
+        f"Availability confidence {metrics.get('availability_confidence', 0):.2f}",
+        f"{budget_line} (spend ${spend:.2f} of ${budget:.2f}, efficiency {metrics.get('budget_efficiency', 0):.2f})",
+    ]
+
+
 class ShoppingAdapter(DomainAdapter):
     name = "shopping"
     evaluator_version = "shopping-outfit-v3"

@@ -39,8 +39,29 @@ def sha256_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+# Prose labels do not change a schedule or an outfit. Hashing them let a no-op
+# copy (same rules or items, new description or family name) pass dedup.
+_PROSE_FIELDS = frozenset({"description", "styling_notes", "hypothesis", "policy_family"})
+
+
+def behavior_payload(payload: dict[str, Any]) -> Any:
+    """Cloud hashes rules, shopping hashes items. Other domains keep their fields."""
+
+    normalized = normalize_payload(payload)
+    if not isinstance(normalized, dict):
+        return normalized
+    if "rules" in normalized or "items" in normalized:
+        view: dict[str, Any] = {}
+        if "rules" in normalized:
+            view["rules"] = normalized["rules"]
+        if "items" in normalized:
+            view["items"] = normalized["items"]
+        return view
+    return {key: value for key, value in normalized.items() if key not in _PROSE_FIELDS}
+
+
 def content_hash(payload: dict[str, Any]) -> str:
-    return sha256_text(canonical_json(normalize_payload(payload)))
+    return sha256_text(canonical_json(behavior_payload(payload)))
 
 
 def family_of(adapter: DomainAdapter, payload: dict[str, Any]) -> str:
