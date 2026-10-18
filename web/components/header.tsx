@@ -9,7 +9,7 @@ const LINKS = [
   { href: "/", label: "Evolution Lab" },
   { href: "/cloud", label: "Cloud" },
   { href: "/shopping", label: "Shopping" },
-  { href: "/quant", label: "Quant" },
+  { href: "/liquid", label: "Liquid" },
   { href: "/ask", label: "Ask GeneAI" },
   { href: "/about", label: "About" },
 ];

@@ -44,9 +44,13 @@ test("shopping shows the agentic outfits and hides the manual baseline", async (
   await expect(page.getByRole("link", { name: /product/i })).toHaveCount(0);
 });
 
-test("quant is a placeholder and ask stays disabled without an API", async ({ page }) => {
+test("quant redirects to liquid and ask stays disabled without an API", async ({ page }) => {
   await page.goto("/quant");
-  await expect(page.getByTestId("quant-placeholder")).toHaveText("Coming soon");
+  await expect(page).toHaveURL(/\/liquid$/);
+  await expect(page.getByTestId("liquid-page")).toBeVisible();
+  await expect(page.getByTestId("liquid-mode")).toHaveText("Saved run replay");
+  await expect(page.getByTestId("liquid-disclaimer")).toContainText("Not financial advice");
+  await expect(page.getByTestId("liquid-scoreboard")).toBeVisible();
   await page.goto("/ask");
   await expect(page.getByTestId("ask-composer")).toBeVisible();
   await expect(page.getByRole("button", { name: "Launch micro run" })).toBeDisabled();

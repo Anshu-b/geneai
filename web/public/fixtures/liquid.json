@@ -1,0 +1,1445 @@
+{
+  "schema": "geneai-liquid-v1",
+  "mode": "saved_run_replay",
+  "run": {
+    "id": "run_c5852d92b93b",
+    "mode": "hybrid",
+    "recorded_at": "2026-10-18T17:36:34Z",
+    "stop_reason": "generation_limit",
+    "generations_completed": 5,
+    "population_size": 12,
+    "wall_seconds": 321.206086,
+    "model_calls": 60,
+    "evaluations": 69,
+    "git_sha": "2a7c3ffa420553d6fd1025aef0e87285df9ff122",
+    "evaluator_version": "liquid-model-v1",
+    "champion_id": "g0015",
+    "champion_selected_on": "validation"
+  },
+  "scenario": {
+    "scenario_id": "liquid-laptop-v1",
+    "currency": "USD",
+    "purchase_cents": 300000,
+    "horizon_days": 90,
+    "checking": {
+      "balance_cents": 50000,
+      "minimum_cents": 0
+    },
+    "savings": {
+      "balance_cents": 800000,
+      "minimum_cents": 500000,
+      "apy": 0.04
+    },
+    "lots": [
+      {
+        "lot_id": "nvda-1",
+        "symbol": "NVDA",
+        "market_value_cents": 500000,
+        "basis_cents": 200000,
+        "holding_period": "long",
+        "sellable": false
+      },
+      {
+        "lot_id": "aapl-1",
+        "symbol": "AAPL",
+        "market_value_cents": 400000,
+        "basis_cents": 350000,
+        "holding_period": "long",
+        "sellable": true
+      },
+      {
+        "lot_id": "msft-1",
+        "symbol": "MSFT",
+        "market_value_cents": 600000,
+        "basis_cents": 630000,
+        "holding_period": "long",
+        "sellable": true
+      },
+      {
+        "lot_id": "etf-1",
+        "symbol": "ETF",
+        "market_value_cents": 500000,
+        "basis_cents": 400000,
+        "holding_period": "long",
+        "sellable": true
+      }
+    ],
+    "credit": {
+      "approved": true,
+      "maximum_draw_cents": 300000,
+      "apr": 0.09,
+      "fee_cents": 0
+    },
+    "assumptions": {
+      "long_term_gain_rate": 0.2,
+      "short_term_gain_rate": 0.3,
+      "loss_tax_benefit_mode": "none",
+      "trade_fee_cents": 0
+    },
+    "constraints": {
+      "allow_borrowing": true,
+      "max_modeled_borrow_cents": 300000,
+      "protect": [
+        "NVDA"
+      ]
+    }
+  },
+  "variants": {
+    "train": [
+      {
+        "scenario_id": "liquid-laptop-v1:base",
+        "note": "the default $3,000 laptop"
+      },
+      {
+        "scenario_id": "liquid-laptop-v1:msft-gain",
+        "note": "MSFT has recovered to a gain (basis $4,500)"
+      },
+      {
+        "scenario_id": "liquid-laptop-v1:big-purchase",
+        "note": "a $5,000 purchase"
+      }
+    ],
+    "validation": [
+      {
+        "scenario_id": "liquid-laptop-v1:thin-savings",
+        "note": "savings is only $6,500, MSFT is at a gain (basis $5,200), $3,500 purchase"
+      },
+      {
+        "scenario_id": "liquid-laptop-v1:rate-up",
+        "note": "credit APR is 12% and the market is down 10%"
+      }
+    ],
+    "test": [
+      {
+        "scenario_id": "liquid-laptop-v1:all-gains",
+        "note": "every lot is at a gain (MSFT basis $5,000)"
+      },
+      {
+        "scenario_id": "liquid-laptop-v1:low-cash",
+        "note": "checking has $100 and the market is down 15%"
+      }
+    ]
+  },
+  "model": {
+    "lambda": 1.0,
+    "emergency_cents": 200000,
+    "emergency_shortfall_rate": 0.05,
+    "collateral_fail_penalty_cents": 10000,
+    "max_ltv_after_drop": 0.5,
+    "cost_formula": "tax on realized gains (20% long-term, losses earn no rebate) + savings interest foregone (4% APY x 90/365) + borrowing interest (APR x 90/365) + fees",
+    "risk_formula": "5% of any shortfall below $2,000 of cash above the savings floor + extra interest if APR rises 5 points + $100 if a loan exceeds 50% loan-to-value after a 30% market drop",
+    "fitness_formula": "fitness = -(modeled cost + lambda x risk penalty), lambda = 1. Mean over a split's scenario variants."
+  },
+  "candidates": [
+    {
+      "key": "geneai",
+      "label": "GeneAI champion",
+      "provider": "veri+creao (hybrid run)",
+      "valid": true,
+      "policy": {
+        "borrow_cap_fraction_of_purchase": 0.25,
+        "description": "Sell eligible lots first, lowest estimated tax first, then cash, with some borrowing, then savings and checking, borrow last.",
+        "lot_selection": "min_tax_first",
+        "max_source_fraction": {
+          "credit": 0.25
+        },
+        "risk_weight": 0.6,
+        "source_priority": [
+          "aapl-1",
+          "msft-1",
+          "etf-1",
+          "checking",
+          "savings",
+          "credit",
+          "nvda-1"
+        ],
+        "target_cash_buffer_cents": 50000
+      },
+      "summary": "Draw from MSFT, then AAPL, then the ETF, then checking. Keep an extra $500 in savings above the $5,000 emergency floor. Sell the lowest-tax lots first. Borrow at most 25% of the price and only as a last resort. NVDA is protected and never sold.",
+      "base": {
+        "scenario_id": "liquid-laptop-v1",
+        "feasible": true,
+        "constraint_violations": [],
+        "allocation_cents": {
+          "msft-1": 300000
+        },
+        "order": [
+          "msft-1",
+          "aapl-1",
+          "etf-1",
+          "checking",
+          "savings",
+          "nvda-1",
+          "credit"
+        ],
+        "repairs": [],
+        "costs_cents": {
+          "estimated_tax": 0,
+          "foregone_savings_interest": 0,
+          "borrowing_interest": 0,
+          "fees": 0
+        },
+        "total_cost_cents": 0,
+        "realized_gain_cents": 0,
+        "realized_loss_cents": 15000,
+        "loss_tax_benefit_cents": 0,
+        "sales": [
+          {
+            "lot_id": "msft-1",
+            "symbol": "MSFT",
+            "proceeds_cents": 300000,
+            "basis_cents": 315000,
+            "gain_cents": -15000,
+            "tax_cents": 0
+          }
+        ],
+        "stress": {
+          "rate_shock": {
+            "label": "Credit APR +5 points",
+            "passed": true,
+            "extra_interest_cents": 0
+          },
+          "market_drop": {
+            "label": "Market falls 30%",
+            "passed": true,
+            "portfolio_after_drop_cents": 1190000,
+            "loan_to_value_after_drop": null
+          },
+          "emergency": {
+            "label": "$2,000 emergency after purchase",
+            "passed": true,
+            "cash_above_reserve_cents": 350000,
+            "shortfall_cents": 0
+          },
+          "post_purchase": {
+            "checking_cents": 50000,
+            "savings_cents": 800000
+          }
+        },
+        "risk_breakdown_cents": {
+          "emergency_shortfall": 0,
+          "rate_shock_interest": 0,
+          "collateral_breach": 0
+        },
+        "risk_penalty_cents": 0,
+        "stress_passes": 3,
+        "fitness": -0.0,
+        "lambda": 1.0,
+        "assumptions_version": "liquid-model-v1"
+      },
+      "splits": {
+        "train": {
+          "feasible": true,
+          "fitness": -25.0,
+          "metrics": {
+            "mean_cost_usd": 25.0,
+            "mean_risk_usd": 0.0,
+            "stress_passes": 9.0,
+            "stress_checks": 9.0,
+            "scenarios": 3.0
+          },
+          "violations": []
+        },
+        "validation": {
+          "feasible": true,
+          "fitness": -43.75,
+          "metrics": {
+            "mean_cost_usd": 43.75,
+            "mean_risk_usd": 0.0,
+            "stress_passes": 6.0,
+            "stress_checks": 6.0,
+            "scenarios": 2.0
+          },
+          "violations": []
+        },
+        "test": {
+          "feasible": true,
+          "fitness": -50.0,
+          "metrics": {
+            "mean_cost_usd": 50.0,
+            "mean_risk_usd": 0.0,
+            "stress_passes": 6.0,
+            "stress_checks": 6.0,
+            "scenarios": 2.0
+          },
+          "violations": []
+        }
+      },
+      "variants": {
+        "train": [
+          {
+            "scenario_id": "liquid-laptop-v1:base",
+            "note": "the default $3,000 laptop",
+            "feasible": true,
+            "allocation_cents": {
+              "msft-1": 300000
+            },
+            "total_cost_cents": 0,
+            "risk_penalty_cents": 0,
+            "stress_passes": 3,
+            "fitness": -0.0
+          },
+          {
+            "scenario_id": "liquid-laptop-v1:msft-gain",
+            "note": "MSFT has recovered to a gain (basis $4,500)",
+            "feasible": true,
+            "allocation_cents": {
+              "aapl-1": 300000
+            },
+            "total_cost_cents": 7500,
+            "risk_penalty_cents": 0,
+            "stress_passes": 3,
+            "fitness": -75.0
+          },
+          {
+            "scenario_id": "liquid-laptop-v1:big-purchase",
+            "note": "a $5,000 purchase",
+            "feasible": true,
+            "allocation_cents": {
+              "msft-1": 500000
+            },
+            "total_cost_cents": 0,
+            "risk_penalty_cents": 0,
+            "stress_passes": 3,
+            "fitness": -0.0
+          }
+        ],
+        "validation": [
+          {
+            "scenario_id": "liquid-laptop-v1:thin-savings",
+            "note": "savings is only $6,500, MSFT is at a gain (basis $5,200), $3,500 purchase",
+            "feasible": true,
+            "allocation_cents": {
+              "aapl-1": 350000
+            },
+            "total_cost_cents": 8750,
+            "risk_penalty_cents": 0,
+            "stress_passes": 3,
+            "fitness": -87.5
+          },
+          {
+            "scenario_id": "liquid-laptop-v1:rate-up",
+            "note": "credit APR is 12% and the market is down 10%",
+            "feasible": true,
+            "allocation_cents": {
+              "msft-1": 300000
+            },
+            "total_cost_cents": 0,
+            "risk_penalty_cents": 0,
+            "stress_passes": 3,
+            "fitness": -0.0
+          }
+        ],
+        "test": [
+          {
+            "scenario_id": "liquid-laptop-v1:all-gains",
+            "note": "every lot is at a gain (MSFT basis $5,000)",
+            "feasible": true,
+            "allocation_cents": {
+              "aapl-1": 400000
+            },
+            "total_cost_cents": 10000,
+            "risk_penalty_cents": 0,
+            "stress_passes": 3,
+            "fitness": -100.0
+          },
+          {
+            "scenario_id": "liquid-laptop-v1:low-cash",
+            "note": "checking has $100 and the market is down 15%",
+            "feasible": true,
+            "allocation_cents": {
+              "aapl-1": 300000
+            },
+            "total_cost_cents": 0,
+            "risk_penalty_cents": 0,
+            "stress_passes": 3,
+            "fitness": -0.0
+          }
+        ]
+      }
+    },
+    {
+      "key": "one_shot",
+      "label": "GPT-5.5 one-shot",
+      "provider": "OpenAI \u00b7 gpt-5.5-2026-04-23",
+      "valid": true,
+      "policy": {
+        "borrow_cap_fraction_of_purchase": 0.25,
+        "description": "Use free cash and loss lots first, preserve savings floor, avoid protected NVDA, and leave credit last.",
+        "lot_selection": "min_tax_first",
+        "max_source_fraction": {
+          "credit": 0.25,
+          "nvda-1": 0
+        },
+        "risk_weight": 0.7,
+        "source_priority": [
+          "checking",
+          "msft-1",
+          "savings",
+          "aapl-1",
+          "etf-1",
+          "nvda-1",
+          "credit"
+        ],
+        "target_cash_buffer_cents": 0
+      },
+      "summary": "Draw from checking, then MSFT, then savings, then AAPL. Savings may go down to the $5,000 emergency floor, never below. Sell the lowest-tax lots first. Borrow at most 25% of the price and only as a last resort. NVDA is protected and never sold.",
+      "base": {
+        "scenario_id": "liquid-laptop-v1",
+        "feasible": true,
+        "constraint_violations": [],
+        "allocation_cents": {
+          "checking": 50000,
+          "msft-1": 250000
+        },
+        "order": [
+          "checking",
+          "msft-1",
+          "savings",
+          "aapl-1",
+          "etf-1",
+          "nvda-1",
+          "credit"
+        ],
+        "repairs": [],
+        "costs_cents": {
+          "estimated_tax": 0,
+          "foregone_savings_interest": 0,
+          "borrowing_interest": 0,
+          "fees": 0
+        },
+        "total_cost_cents": 0,
+        "realized_gain_cents": 0,
+        "realized_loss_cents": 12500,
+        "loss_tax_benefit_cents": 0,
+        "sales": [
+          {
+            "lot_id": "msft-1",
+            "symbol": "MSFT",
+            "proceeds_cents": 250000,
+            "basis_cents": 262500,
+            "gain_cents": -12500,
+            "tax_cents": 0
+          }
+        ],
+        "stress": {
+          "rate_shock": {
+            "label": "Credit APR +5 points",
+            "passed": true,
+            "extra_interest_cents": 0
+          },
+          "market_drop": {
+            "label": "Market falls 30%",
+            "passed": true,
+            "portfolio_after_drop_cents": 1225000,
+            "loan_to_value_after_drop": null
+          },
+          "emergency": {
+            "label": "$2,000 emergency after purchase",
+            "passed": true,
+            "cash_above_reserve_cents": 300000,
+            "shortfall_cents": 0
+          },
+          "post_purchase": {
+            "checking_cents": 0,
+            "savings_cents": 800000
+          }
+        },
+        "risk_breakdown_cents": {
+          "emergency_shortfall": 0,
+          "rate_shock_interest": 0,
+          "collateral_breach": 0
+        },
+        "risk_penalty_cents": 0,
+        "stress_passes": 3,
+        "fitness": -0.0,
+        "lambda": 1.0,
+        "assumptions_version": "liquid-model-v1"
+      },
+      "splits": {
+        "train": {
+          "feasible": true,
+          "fitness": -20.8333,
+          "metrics": {
+            "mean_cost_usd": 20.8333,
+            "mean_risk_usd": 0.0,
+            "stress_passes": 9.0,
+            "stress_checks": 9.0,
+            "scenarios": 3.0
+          },
+          "violations": []
+        },
+        "validation": {
+          "feasible": true,
+          "fitness": -50.0,
+          "metrics": {
+            "mean_cost_usd": 37.5,
+            "mean_risk_usd": 12.5,
+            "stress_passes": 5.0,
+            "stress_checks": 6.0,
+            "scenarios": 2.0
+          },
+          "violations": []
+        },
+        "test": {
+          "feasible": true,
+          "fitness": -43.75,
+          "metrics": {
+            "mean_cost_usd": 43.75,
+            "mean_risk_usd": 0.0,
+            "stress_passes": 6.0,
+            "stress_checks": 6.0,
+            "scenarios": 2.0
+          },
+          "violations": []
+        }
+      },
+      "variants": {
+        "train": [
+          {
+            "scenario_id": "liquid-laptop-v1:base",
+            "note": "the default $3,000 laptop",
+            "feasible": true,
+            "allocation_cents": {
+              "checking": 50000,
+              "msft-1": 250000
+            },
+            "total_cost_cents": 0,
+            "risk_penalty_cents": 0,
+            "stress_passes": 3,
+            "fitness": -0.0
+          },
+          {
+            "scenario_id": "liquid-laptop-v1:msft-gain",
+            "note": "MSFT has recovered to a gain (basis $4,500)",
+            "feasible": true,
+            "allocation_cents": {
+              "checking": 50000,
+              "aapl-1": 250000
+            },
+            "total_cost_cents": 6250,
+            "risk_penalty_cents": 0,
+            "stress_passes": 3,
+            "fitness": -62.5
+          },
+          {
+            "scenario_id": "liquid-laptop-v1:big-purchase",
+            "note": "a $5,000 purchase",
+            "feasible": true,
+            "allocation_cents": {
+              "checking": 50000,
+              "msft-1": 450000
+            },
+            "total_cost_cents": 0,
+            "risk_penalty_cents": 0,
+            "stress_passes": 3,
+            "fitness": -0.0
+          }
+        ],
+        "validation": [
+          {
+            "scenario_id": "liquid-laptop-v1:thin-savings",
+            "note": "savings is only $6,500, MSFT is at a gain (basis $5,200), $3,500 purchase",
+            "feasible": true,
+            "allocation_cents": {
+              "checking": 50000,
+              "aapl-1": 300000
+            },
+            "total_cost_cents": 7500,
+            "risk_penalty_cents": 2500,
+            "stress_passes": 2,
+            "fitness": -100.0
+          },
+          {
+            "scenario_id": "liquid-laptop-v1:rate-up",
+            "note": "credit APR is 12% and the market is down 10%",
+            "feasible": true,
+            "allocation_cents": {
+              "checking": 50000,
+              "msft-1": 250000
+            },
+            "total_cost_cents": 0,
+            "risk_penalty_cents": 0,
+            "stress_passes": 3,
+            "fitness": -0.0
+          }
+        ],
+        "test": [
+          {
+            "scenario_id": "liquid-laptop-v1:all-gains",
+            "note": "every lot is at a gain (MSFT basis $5,000)",
+            "feasible": true,
+            "allocation_cents": {
+              "checking": 50000,
+              "aapl-1": 350000
+            },
+            "total_cost_cents": 8750,
+            "risk_penalty_cents": 0,
+            "stress_passes": 3,
+            "fitness": -87.5
+          },
+          {
+            "scenario_id": "liquid-laptop-v1:low-cash",
+            "note": "checking has $100 and the market is down 15%",
+            "feasible": true,
+            "allocation_cents": {
+              "checking": 10000,
+              "aapl-1": 290000
+            },
+            "total_cost_cents": 0,
+            "risk_penalty_cents": 0,
+            "stress_passes": 3,
+            "fitness": -0.0
+          }
+        ]
+      },
+      "oneshot_meta": {
+        "status": "completed",
+        "model": "gpt-5.5-2026-04-23",
+        "latency_ms": 13761,
+        "cost_usd": null,
+        "prompt_tokens": 1167,
+        "completion_tokens": 983,
+        "comparison_label": "single attempt vs evolutionary search",
+        "compute_matched": false
+      },
+      "normalized_note": "Evaluated exactly as returned. Not repaired."
+    },
+    {
+      "key": "cash_savings_first",
+      "label": "Cash/savings first",
+      "provider": "handwritten rule",
+      "valid": true,
+      "policy": {
+        "source_priority": [
+          "checking",
+          "savings",
+          "etf-1",
+          "aapl-1",
+          "msft-1",
+          "credit",
+          "nvda-1"
+        ],
+        "max_source_fraction": {},
+        "target_cash_buffer_cents": 0,
+        "borrow_cap_fraction_of_purchase": 1.0,
+        "lot_selection": "as_listed",
+        "risk_weight": 0.5,
+        "description": "Spend checking, then savings down to the $5,000 floor, then sell lots in a fixed order, borrow last."
+      },
+      "summary": "Draw from checking, then savings, then the ETF, then AAPL. Savings may go down to the $5,000 emergency floor, never below. Sell lots in the listed order. Borrow at most 100% of the price and only as a last resort. NVDA is protected and never sold.",
+      "base": {
+        "scenario_id": "liquid-laptop-v1",
+        "feasible": true,
+        "constraint_violations": [],
+        "allocation_cents": {
+          "checking": 50000,
+          "savings": 250000
+        },
+        "order": [
+          "checking",
+          "savings",
+          "etf-1",
+          "aapl-1",
+          "msft-1",
+          "nvda-1",
+          "credit"
+        ],
+        "repairs": [],
+        "costs_cents": {
+          "estimated_tax": 0,
+          "foregone_savings_interest": 2466,
+          "borrowing_interest": 0,
+          "fees": 0
+        },
+        "total_cost_cents": 2466,
+        "realized_gain_cents": 0,
+        "realized_loss_cents": 0,
+        "loss_tax_benefit_cents": 0,
+        "sales": [],
+        "stress": {
+          "rate_shock": {
+            "label": "Credit APR +5 points",
+            "passed": true,
+            "extra_interest_cents": 0
+          },
+          "market_drop": {
+            "label": "Market falls 30%",
+            "passed": true,
+            "portfolio_after_drop_cents": 1400000,
+            "loan_to_value_after_drop": null
+          },
+          "emergency": {
+            "label": "$2,000 emergency after purchase",
+            "passed": false,
+            "cash_above_reserve_cents": 50000,
+            "shortfall_cents": 150000
+          },
+          "post_purchase": {
+            "checking_cents": 0,
+            "savings_cents": 550000
+          }
+        },
+        "risk_breakdown_cents": {
+          "emergency_shortfall": 7500,
+          "rate_shock_interest": 0,
+          "collateral_breach": 0
+        },
+        "risk_penalty_cents": 7500,
+        "stress_passes": 2,
+        "fitness": -99.66,
+        "lambda": 1.0,
+        "assumptions_version": "liquid-model-v1"
+      },
+      "splits": {
+        "train": {
+          "feasible": true,
+          "fitness": -129.6367,
+          "metrics": {
+            "mean_cost_usd": 46.3033,
+            "mean_risk_usd": 83.3333,
+            "stress_passes": 6.0,
+            "stress_checks": 9.0,
+            "scenarios": 3.0
+          },
+          "violations": []
+        },
+        "validation": {
+          "feasible": true,
+          "fitness": -137.225,
+          "metrics": {
+            "mean_cost_usd": 49.725,
+            "mean_risk_usd": 87.5,
+            "stress_passes": 4.0,
+            "stress_checks": 6.0,
+            "scenarios": 2.0
+          },
+          "violations": []
+        },
+        "test": {
+          "feasible": true,
+          "fitness": -136.595,
+          "metrics": {
+            "mean_cost_usd": 39.095,
+            "mean_risk_usd": 97.5,
+            "stress_passes": 4.0,
+            "stress_checks": 6.0,
+            "scenarios": 2.0
+          },
+          "violations": []
+        }
+      },
+      "variants": {
+        "train": [
+          {
+            "scenario_id": "liquid-laptop-v1:base",
+            "note": "the default $3,000 laptop",
+            "feasible": true,
+            "allocation_cents": {
+              "checking": 50000,
+              "savings": 250000
+            },
+            "total_cost_cents": 2466,
+            "risk_penalty_cents": 7500,
+            "stress_passes": 2,
+            "fitness": -99.66
+          },
+          {
+            "scenario_id": "liquid-laptop-v1:msft-gain",
+            "note": "MSFT has recovered to a gain (basis $4,500)",
+            "feasible": true,
+            "allocation_cents": {
+              "checking": 50000,
+              "savings": 250000
+            },
+            "total_cost_cents": 2466,
+            "risk_penalty_cents": 7500,
+            "stress_passes": 2,
+            "fitness": -99.66
+          },
+          {
+            "scenario_id": "liquid-laptop-v1:big-purchase",
+            "note": "a $5,000 purchase",
+            "feasible": true,
+            "allocation_cents": {
+              "checking": 50000,
+              "savings": 300000,
+              "etf-1": 150000
+            },
+            "total_cost_cents": 8959,
+            "risk_penalty_cents": 10000,
+            "stress_passes": 2,
+            "fitness": -189.59
+          }
+        ],
+        "validation": [
+          {
+            "scenario_id": "liquid-laptop-v1:thin-savings",
+            "note": "savings is only $6,500, MSFT is at a gain (basis $5,200), $3,500 purchase",
+            "feasible": true,
+            "allocation_cents": {
+              "checking": 50000,
+              "savings": 150000,
+              "etf-1": 150000
+            },
+            "total_cost_cents": 7479,
+            "risk_penalty_cents": 10000,
+            "stress_passes": 2,
+            "fitness": -174.79
+          },
+          {
+            "scenario_id": "liquid-laptop-v1:rate-up",
+            "note": "credit APR is 12% and the market is down 10%",
+            "feasible": true,
+            "allocation_cents": {
+              "checking": 50000,
+              "savings": 250000
+            },
+            "total_cost_cents": 2466,
+            "risk_penalty_cents": 7500,
+            "stress_passes": 2,
+            "fitness": -99.66
+          }
+        ],
+        "test": [
+          {
+            "scenario_id": "liquid-laptop-v1:all-gains",
+            "note": "every lot is at a gain (MSFT basis $5,000)",
+            "feasible": true,
+            "allocation_cents": {
+              "checking": 50000,
+              "savings": 300000,
+              "etf-1": 50000
+            },
+            "total_cost_cents": 4959,
+            "risk_penalty_cents": 10000,
+            "stress_passes": 2,
+            "fitness": -149.59
+          },
+          {
+            "scenario_id": "liquid-laptop-v1:low-cash",
+            "note": "checking has $100 and the market is down 15%",
+            "feasible": true,
+            "allocation_cents": {
+              "checking": 10000,
+              "savings": 290000
+            },
+            "total_cost_cents": 2860,
+            "risk_penalty_cents": 9500,
+            "stress_passes": 2,
+            "fitness": -123.6
+          }
+        ]
+      }
+    },
+    {
+      "key": "tax_aware_sell_first",
+      "label": "Tax-aware sell first",
+      "provider": "handwritten rule",
+      "valid": true,
+      "policy": {
+        "source_priority": [
+          "aapl-1",
+          "msft-1",
+          "etf-1",
+          "checking",
+          "savings",
+          "credit",
+          "nvda-1"
+        ],
+        "max_source_fraction": {},
+        "target_cash_buffer_cents": 0,
+        "borrow_cap_fraction_of_purchase": 1.0,
+        "lot_selection": "min_tax_first",
+        "risk_weight": 0.5,
+        "description": "Sell eligible lots first, lowest estimated tax first, then cash, borrow last."
+      },
+      "summary": "Draw from MSFT, then AAPL, then the ETF, then checking. Savings may go down to the $5,000 emergency floor, never below. Sell the lowest-tax lots first. Borrow at most 100% of the price and only as a last resort. NVDA is protected and never sold.",
+      "base": {
+        "scenario_id": "liquid-laptop-v1",
+        "feasible": true,
+        "constraint_violations": [],
+        "allocation_cents": {
+          "msft-1": 300000
+        },
+        "order": [
+          "msft-1",
+          "aapl-1",
+          "etf-1",
+          "checking",
+          "savings",
+          "nvda-1",
+          "credit"
+        ],
+        "repairs": [],
+        "costs_cents": {
+          "estimated_tax": 0,
+          "foregone_savings_interest": 0,
+          "borrowing_interest": 0,
+          "fees": 0
+        },
+        "total_cost_cents": 0,
+        "realized_gain_cents": 0,
+        "realized_loss_cents": 15000,
+        "loss_tax_benefit_cents": 0,
+        "sales": [
+          {
+            "lot_id": "msft-1",
+            "symbol": "MSFT",
+            "proceeds_cents": 300000,
+            "basis_cents": 315000,
+            "gain_cents": -15000,
+            "tax_cents": 0
+          }
+        ],
+        "stress": {
+          "rate_shock": {
+            "label": "Credit APR +5 points",
+            "passed": true,
+            "extra_interest_cents": 0
+          },
+          "market_drop": {
+            "label": "Market falls 30%",
+            "passed": true,
+            "portfolio_after_drop_cents": 1190000,
+            "loan_to_value_after_drop": null
+          },
+          "emergency": {
+            "label": "$2,000 emergency after purchase",
+            "passed": true,
+            "cash_above_reserve_cents": 350000,
+            "shortfall_cents": 0
+          },
+          "post_purchase": {
+            "checking_cents": 50000,
+            "savings_cents": 800000
+          }
+        },
+        "risk_breakdown_cents": {
+          "emergency_shortfall": 0,
+          "rate_shock_interest": 0,
+          "collateral_breach": 0
+        },
+        "risk_penalty_cents": 0,
+        "stress_passes": 3,
+        "fitness": -0.0,
+        "lambda": 1.0,
+        "assumptions_version": "liquid-model-v1"
+      },
+      "splits": {
+        "train": {
+          "feasible": true,
+          "fitness": -25.0,
+          "metrics": {
+            "mean_cost_usd": 25.0,
+            "mean_risk_usd": 0.0,
+            "stress_passes": 9.0,
+            "stress_checks": 9.0,
+            "scenarios": 3.0
+          },
+          "violations": []
+        },
+        "validation": {
+          "feasible": true,
+          "fitness": -43.75,
+          "metrics": {
+            "mean_cost_usd": 43.75,
+            "mean_risk_usd": 0.0,
+            "stress_passes": 6.0,
+            "stress_checks": 6.0,
+            "scenarios": 2.0
+          },
+          "violations": []
+        },
+        "test": {
+          "feasible": true,
+          "fitness": -50.0,
+          "metrics": {
+            "mean_cost_usd": 50.0,
+            "mean_risk_usd": 0.0,
+            "stress_passes": 6.0,
+            "stress_checks": 6.0,
+            "scenarios": 2.0
+          },
+          "violations": []
+        }
+      },
+      "variants": {
+        "train": [
+          {
+            "scenario_id": "liquid-laptop-v1:base",
+            "note": "the default $3,000 laptop",
+            "feasible": true,
+            "allocation_cents": {
+              "msft-1": 300000
+            },
+            "total_cost_cents": 0,
+            "risk_penalty_cents": 0,
+            "stress_passes": 3,
+            "fitness": -0.0
+          },
+          {
+            "scenario_id": "liquid-laptop-v1:msft-gain",
+            "note": "MSFT has recovered to a gain (basis $4,500)",
+            "feasible": true,
+            "allocation_cents": {
+              "aapl-1": 300000
+            },
+            "total_cost_cents": 7500,
+            "risk_penalty_cents": 0,
+            "stress_passes": 3,
+            "fitness": -75.0
+          },
+          {
+            "scenario_id": "liquid-laptop-v1:big-purchase",
+            "note": "a $5,000 purchase",
+            "feasible": true,
+            "allocation_cents": {
+              "msft-1": 500000
+            },
+            "total_cost_cents": 0,
+            "risk_penalty_cents": 0,
+            "stress_passes": 3,
+            "fitness": -0.0
+          }
+        ],
+        "validation": [
+          {
+            "scenario_id": "liquid-laptop-v1:thin-savings",
+            "note": "savings is only $6,500, MSFT is at a gain (basis $5,200), $3,500 purchase",
+            "feasible": true,
+            "allocation_cents": {
+              "aapl-1": 350000
+            },
+            "total_cost_cents": 8750,
+            "risk_penalty_cents": 0,
+            "stress_passes": 3,
+            "fitness": -87.5
+          },
+          {
+            "scenario_id": "liquid-laptop-v1:rate-up",
+            "note": "credit APR is 12% and the market is down 10%",
+            "feasible": true,
+            "allocation_cents": {
+              "msft-1": 300000
+            },
+            "total_cost_cents": 0,
+            "risk_penalty_cents": 0,
+            "stress_passes": 3,
+            "fitness": -0.0
+          }
+        ],
+        "test": [
+          {
+            "scenario_id": "liquid-laptop-v1:all-gains",
+            "note": "every lot is at a gain (MSFT basis $5,000)",
+            "feasible": true,
+            "allocation_cents": {
+              "aapl-1": 400000
+            },
+            "total_cost_cents": 10000,
+            "risk_penalty_cents": 0,
+            "stress_passes": 3,
+            "fitness": -100.0
+          },
+          {
+            "scenario_id": "liquid-laptop-v1:low-cash",
+            "note": "checking has $100 and the market is down 15%",
+            "feasible": true,
+            "allocation_cents": {
+              "aapl-1": 300000
+            },
+            "total_cost_cents": 0,
+            "risk_penalty_cents": 0,
+            "stress_passes": 3,
+            "fitness": -0.0
+          }
+        ]
+      }
+    },
+    {
+      "key": "credit_first",
+      "label": "Credit first",
+      "provider": "handwritten rule",
+      "valid": true,
+      "policy": {
+        "source_priority": [
+          "credit",
+          "checking",
+          "savings",
+          "aapl-1",
+          "msft-1",
+          "etf-1",
+          "nvda-1"
+        ],
+        "max_source_fraction": {},
+        "target_cash_buffer_cents": 0,
+        "borrow_cap_fraction_of_purchase": 1.0,
+        "lot_selection": "as_listed",
+        "risk_weight": 0.0,
+        "description": "Borrow on the credit line first, then cash, then lots."
+      },
+      "summary": "Draw from the credit line, then checking, then savings, then AAPL. Savings may go down to the $5,000 emergency floor, never below. Sell lots in the listed order. Borrow at most 100% of the price. NVDA is protected and never sold.",
+      "base": {
+        "scenario_id": "liquid-laptop-v1",
+        "feasible": true,
+        "constraint_violations": [],
+        "allocation_cents": {
+          "credit": 300000
+        },
+        "order": [
+          "credit",
+          "checking",
+          "savings",
+          "aapl-1",
+          "msft-1",
+          "etf-1",
+          "nvda-1"
+        ],
+        "repairs": [],
+        "costs_cents": {
+          "estimated_tax": 0,
+          "foregone_savings_interest": 0,
+          "borrowing_interest": 6658,
+          "fees": 0
+        },
+        "total_cost_cents": 6658,
+        "realized_gain_cents": 0,
+        "realized_loss_cents": 0,
+        "loss_tax_benefit_cents": 0,
+        "sales": [],
+        "stress": {
+          "rate_shock": {
+            "label": "Credit APR +5 points",
+            "passed": false,
+            "extra_interest_cents": 3698
+          },
+          "market_drop": {
+            "label": "Market falls 30%",
+            "passed": true,
+            "portfolio_after_drop_cents": 1400000,
+            "loan_to_value_after_drop": 0.2143
+          },
+          "emergency": {
+            "label": "$2,000 emergency after purchase",
+            "passed": true,
+            "cash_above_reserve_cents": 350000,
+            "shortfall_cents": 0
+          },
+          "post_purchase": {
+            "checking_cents": 50000,
+            "savings_cents": 800000
+          }
+        },
+        "risk_breakdown_cents": {
+          "emergency_shortfall": 0,
+          "rate_shock_interest": 3698,
+          "collateral_breach": 0
+        },
+        "risk_penalty_cents": 3698,
+        "stress_passes": 2,
+        "fitness": -103.56,
+        "lambda": 1.0,
+        "assumptions_version": "liquid-model-v1"
+      },
+      "splits": {
+        "train": {
+          "feasible": true,
+          "fitness": -116.8233,
+          "metrics": {
+            "mean_cost_usd": 71.51,
+            "mean_risk_usd": 45.3133,
+            "stress_passes": 5.0,
+            "stress_checks": 9.0,
+            "scenarios": 3.0
+          },
+          "violations": []
+        },
+        "validation": {
+          "feasible": true,
+          "fitness": -127.155,
+          "metrics": {
+            "mean_cost_usd": 77.675,
+            "mean_risk_usd": 49.48,
+            "stress_passes": 3.0,
+            "stress_checks": 6.0,
+            "scenarios": 2.0
+          },
+          "violations": []
+        },
+        "test": {
+          "feasible": true,
+          "fitness": -106.025,
+          "metrics": {
+            "mean_cost_usd": 69.045,
+            "mean_risk_usd": 36.98,
+            "stress_passes": 4.0,
+            "stress_checks": 6.0,
+            "scenarios": 2.0
+          },
+          "violations": []
+        }
+      },
+      "variants": {
+        "train": [
+          {
+            "scenario_id": "liquid-laptop-v1:base",
+            "note": "the default $3,000 laptop",
+            "feasible": true,
+            "allocation_cents": {
+              "credit": 300000
+            },
+            "total_cost_cents": 6658,
+            "risk_penalty_cents": 3698,
+            "stress_passes": 2,
+            "fitness": -103.56
+          },
+          {
+            "scenario_id": "liquid-laptop-v1:msft-gain",
+            "note": "MSFT has recovered to a gain (basis $4,500)",
+            "feasible": true,
+            "allocation_cents": {
+              "credit": 300000
+            },
+            "total_cost_cents": 6658,
+            "risk_penalty_cents": 3698,
+            "stress_passes": 2,
+            "fitness": -103.56
+          },
+          {
+            "scenario_id": "liquid-laptop-v1:big-purchase",
+            "note": "a $5,000 purchase",
+            "feasible": true,
+            "allocation_cents": {
+              "checking": 50000,
+              "savings": 150000,
+              "credit": 300000
+            },
+            "total_cost_cents": 8137,
+            "risk_penalty_cents": 6198,
+            "stress_passes": 1,
+            "fitness": -143.35
+          }
+        ],
+        "validation": [
+          {
+            "scenario_id": "liquid-laptop-v1:thin-savings",
+            "note": "savings is only $6,500, MSFT is at a gain (basis $5,200), $3,500 purchase",
+            "feasible": true,
+            "allocation_cents": {
+              "checking": 50000,
+              "credit": 300000
+            },
+            "total_cost_cents": 6658,
+            "risk_penalty_cents": 6198,
+            "stress_passes": 1,
+            "fitness": -128.56
+          },
+          {
+            "scenario_id": "liquid-laptop-v1:rate-up",
+            "note": "credit APR is 12% and the market is down 10%",
+            "feasible": true,
+            "allocation_cents": {
+              "credit": 300000
+            },
+            "total_cost_cents": 8877,
+            "risk_penalty_cents": 3698,
+            "stress_passes": 2,
+            "fitness": -125.75
+          }
+        ],
+        "test": [
+          {
+            "scenario_id": "liquid-laptop-v1:all-gains",
+            "note": "every lot is at a gain (MSFT basis $5,000)",
+            "feasible": true,
+            "allocation_cents": {
+              "checking": 50000,
+              "savings": 50000,
+              "credit": 300000
+            },
+            "total_cost_cents": 7151,
+            "risk_penalty_cents": 3698,
+            "stress_passes": 2,
+            "fitness": -108.49
+          },
+          {
+            "scenario_id": "liquid-laptop-v1:low-cash",
+            "note": "checking has $100 and the market is down 15%",
+            "feasible": true,
+            "allocation_cents": {
+              "credit": 300000
+            },
+            "total_cost_cents": 6658,
+            "risk_penalty_cents": 3698,
+            "stress_passes": 2,
+            "fitness": -103.56
+          }
+        ]
+      }
+    }
+  ],
+  "generations": [
+    {
+      "generation": 0,
+      "born": 12,
+      "by_provider": {
+        "baseline": 3,
+        "veri": 7,
+        "random": 2
+      },
+      "best_fitness": -25.0,
+      "best_id": "g0002",
+      "best_so_far": -25.0
+    },
+    {
+      "generation": 1,
+      "born": 10,
+      "by_provider": {
+        "random": 2,
+        "veri": 8
+      },
+      "best_fitness": -24.0267,
+      "best_id": "g0014",
+      "best_so_far": -24.0267
+    },
+    {
+      "generation": 2,
+      "born": 10,
+      "by_provider": {
+        "random": 2,
+        "veri": 8
+      },
+      "best_fitness": -24.0267,
+      "best_id": "g0023",
+      "best_so_far": -24.0267
+    },
+    {
+      "generation": 3,
+      "born": 10,
+      "by_provider": {
+        "random": 2,
+        "veri": 8
+      },
+      "best_fitness": -23.0667,
+      "best_id": "g0035",
+      "best_so_far": -23.0667
+    },
+    {
+      "generation": 4,
+      "born": 10,
+      "by_provider": {
+        "random": 2,
+        "veri": 7,
+        "creao": 1
+      },
+      "best_fitness": -23.0667,
+      "best_id": "g0044",
+      "best_so_far": -23.0667
+    },
+    {
+      "generation": 5,
+      "born": 10,
+      "by_provider": {
+        "random": 2,
+        "veri": 8
+      },
+      "best_fitness": -23.0667,
+      "best_id": "g0053",
+      "best_so_far": -23.0667
+    }
+  ],
+  "champion_lineage": [
+    {
+      "id": "g0002",
+      "generation": 0,
+      "operator": "seed",
+      "provider": "baseline",
+      "parent_ids": [],
+      "hypothesis": "baseline Tax-aware sell first",
+      "train_fitness": -25.0,
+      "baseline_name": "tax_aware_sell_first"
+    },
+    {
+      "id": "g0005",
+      "generation": 0,
+      "operator": "seed",
+      "provider": "veri",
+      "parent_ids": [],
+      "hypothesis": "seed candidate",
+      "train_fitness": -73.8967,
+      "baseline_name": null
+    },
+    {
+      "id": "g0015",
+      "generation": 1,
+      "operator": "crossover",
+      "provider": "veri",
+      "parent_ids": [
+        "g0002",
+        "g0005"
+      ],
+      "hypothesis": "crossover candidate",
+      "train_fitness": -25.0,
+      "baseline_name": null
+    }
+  ],
+  "provenance": {
+    "genomes_by_provider": {
+      "baseline": 3,
+      "veri": 46,
+      "random": 12,
+      "creao": 1
+    },
+    "run_provenance_counts": null,
+    "behavior_origin": {
+      "id": "g0015",
+      "provider": "veri",
+      "operator": "crossover",
+      "provenance": null,
+      "generation": 1
+    },
+    "champion_hypothesis": "crossover candidate",
+    "providers": [
+      {
+        "app_id": null,
+        "deployment_id": "bfe84d51e141",
+        "mode": "live",
+        "model": "geneai-qwen7b",
+        "name": "veri"
+      },
+      {
+        "app_id": "0ed64fee-5003-4d56-a83b-c5f369d7a39c",
+        "deployment_id": null,
+        "mode": "live",
+        "model": null,
+        "name": "creao"
+      }
+    ],
+    "event_counts": {
+      "run.created": 1,
+      "run.started": 1,
+      "generation.started": 6,
+      "genome.seeded": 15,
+      "genome.evaluated": 69,
+      "model.requested": 50,
+      "model.completed": 50,
+      "genome.rejected": 12,
+      "checkpoint.saved": 6,
+      "generation.completed": 6,
+      "budget.updated": 6,
+      "selection.elite": 5,
+      "selection.tournament": 60,
+      "genome.mutated": 31,
+      "agent.requested": 10,
+      "genome.crossed": 16,
+      "agent.failed": 9,
+      "selection.pruned": 50,
+      "selection.immigrant": 3,
+      "agent.completed": 1,
+      "champion.frozen": 1,
+      "champion.tested": 1,
+      "run.completed": 1
+    }
+  }
+}
