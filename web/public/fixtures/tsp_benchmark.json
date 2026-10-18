@@ -80,49 +80,51 @@
   "optimum": {
     "tour": [
       0,
-      8,
-      2,
-      4,
-      3,
-      10,
-      12,
-      9,
-      11,
-      7,
-      5,
-      13,
-      14,
+      1,
       6,
-      1
+      14,
+      13,
+      5,
+      7,
+      11,
+      9,
+      12,
+      10,
+      3,
+      4,
+      2,
+      8
     ],
     "length": 308.518754,
-    "time_ms": 156
+    "time_ms": 1690,
+    "nodes_explored": 460123,
+    "verified_with": "held_karp"
   },
   "methods": [
     {
-      "key": "held_karp",
-      "label": "Traditional: dynamic programming (Held-Karp)",
+      "key": "dfs_bnb",
+      "label": "Traditional: depth-first search (branch and bound)",
       "provider": "local",
       "tour": [
         0,
-        8,
-        2,
-        4,
-        3,
-        10,
-        12,
-        9,
-        11,
-        7,
-        5,
-        13,
-        14,
+        1,
         6,
-        1
+        14,
+        13,
+        5,
+        7,
+        11,
+        9,
+        12,
+        10,
+        3,
+        4,
+        2,
+        8
       ],
       "length": 308.518754,
       "gap_pct": 0,
-      "time_ms": 156,
+      "time_ms": 1690,
       "llm_calls": 0,
       "valid": true,
       "invalid_reason": null,
@@ -130,9 +132,10 @@
         {
           "iter": 1,
           "best_length": 308.518754,
-          "elapsed_ms": 156
+          "elapsed_ms": 1690
         }
-      ]
+      ],
+      "nodes_explored": 460123
     },
     {
       "key": "classic_ga",
@@ -559,11 +562,12 @@
         "seed": 1501,
         "optimum_length": 383.835771,
         "by_method": {
-          "held_karp": {
+          "dfs_bnb": {
             "length": 383.835771,
             "gap_pct": 0,
-            "time_ms": 146,
-            "valid": true
+            "time_ms": 1944,
+            "valid": true,
+            "nodes_explored": 508383
           },
           "classic_ga": {
             "length": 418.474417,
@@ -601,11 +605,12 @@
         "seed": 1502,
         "optimum_length": 332.925297,
         "by_method": {
-          "held_karp": {
+          "dfs_bnb": {
             "length": 332.925297,
             "gap_pct": 0,
-            "time_ms": 131,
-            "valid": true
+            "time_ms": 1382,
+            "valid": true,
+            "nodes_explored": 346473
           },
           "classic_ga": {
             "length": 388.26483,
@@ -643,11 +648,12 @@
         "seed": 1503,
         "optimum_length": 357.75645,
         "by_method": {
-          "held_karp": {
+          "dfs_bnb": {
             "length": 357.75645,
             "gap_pct": 0,
-            "time_ms": 194,
-            "valid": true
+            "time_ms": 7779,
+            "valid": true,
+            "nodes_explored": 2155287
           },
           "classic_ga": {
             "length": 409.091909,
@@ -685,11 +691,12 @@
         "seed": 1504,
         "optimum_length": 336.699987,
         "by_method": {
-          "held_karp": {
+          "dfs_bnb": {
             "length": 336.699987,
             "gap_pct": 0,
-            "time_ms": 131,
-            "valid": true
+            "time_ms": 28999,
+            "valid": true,
+            "nodes_explored": 9280763
           },
           "classic_ga": {
             "length": 384.395854,
@@ -727,11 +734,12 @@
         "seed": 1505,
         "optimum_length": 340.761473,
         "by_method": {
-          "held_karp": {
+          "dfs_bnb": {
             "length": 340.761473,
             "gap_pct": 0,
-            "time_ms": 134,
-            "valid": true
+            "time_ms": 152,
+            "valid": true,
+            "nodes_explored": 30630
           },
           "classic_ga": {
             "length": 390.593116,
@@ -767,10 +775,10 @@
       }
     ],
     "summary": {
-      "held_karp": {
+      "dfs_bnb": {
         "mean_gap_pct": 0.0,
         "optimal_hits": 5,
-        "mean_time_ms": 147,
+        "mean_time_ms": 8051,
         "valid_count": 5
       },
       "classic_ga": {
@@ -793,5 +801,5 @@
       }
     }
   },
-  "notes": "Fifteen Euclidean cities in [0, 100], drawn from random.Random(seed) and rounded to 4 decimals. The showcase instance is seed 1500. Held-out seeds are [1501, 1502, 1503, 1504, 1505]. The traditional method is Held-Karp dynamic programming. optimum is that same search, not a second run, and there is no nearest-neighbor arm. classic_ga is a seeded permutation GA with population 24, 40 generations, order crossover, and swap mutation. It does not call a model. llm_one_shot is one frontier call with the coordinates. An illegal tour stays illegal. geneai is the shared evolution controller. Mock uses the mock providers. Hybrid uses Veri for most proposals and CREAO for the strategist slots. GeneAI uses LLM-guided operators plus 2-opt local search. The showcase run is 20 generations inside about 150s. Each held-out map is 8 generations inside about 60s. Hybrid showcase population is 24 and held-out population is 12. LLM proposals are a permutation or a short edit (reverse a segment, move a city, OX, or ERX). Each model call gets about 20s. A call that is still running is harvested on a later generation, and the population stays at the configured size. A TSP genome is a permutation. Swap and 2-opt are the mutations. OX and ERX are the crossovers. GeneAI repairs an invalid city list and runs a few 2-opt moves before scoring. The one-shot arm does not. Dedup hashes the canonical cycle (city 0 first, then the lexicographically smaller direction). Train, validation, and test all score the same instance. Fitness is negative tour length. time_ms is wall clock."
+  "notes": "Fifteen Euclidean cities in [0, 100], drawn from random.Random(seed) and rounded to 4 decimals. The showcase instance is seed 1500. Held-out seeds are [1501, 1502, 1503, 1504, 1505]. The traditional method is depth-first search with branch-and-bound. optimum is that same search, not a second run, and there is no nearest-neighbor arm. The optimum length was verified against Held-Karp on every instance. classic_ga is a seeded permutation GA with population 24, 40 generations, order crossover, and swap mutation. It does not call a model. llm_one_shot is one frontier call with the coordinates. An illegal tour stays illegal. geneai is the shared evolution controller. Mock uses the mock providers. Hybrid uses Veri for most proposals and CREAO for the strategist slots. GeneAI uses LLM-guided operators plus 2-opt local search. The showcase run is 20 generations inside about 150s. Each held-out map is 8 generations inside about 60s. Hybrid showcase population is 24 and held-out population is 12. LLM proposals are a permutation or a short edit (reverse a segment, move a city, OX, or ERX). Each model call gets about 20s. A call that is still running is harvested on a later generation, and the population stays at the configured size. A TSP genome is a permutation. Swap and 2-opt are the mutations. OX and ERX are the crossovers. GeneAI repairs an invalid city list and runs a few 2-opt moves before scoring. The one-shot arm does not. Dedup hashes the canonical cycle (city 0 first, then the lexicographically smaller direction). Train, validation, and test all score the same instance. Fitness is negative tour length. time_ms is wall clock."
 }

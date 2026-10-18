@@ -40,8 +40,6 @@ test("home explains the engine and does not mount the lineage", async ({ page })
   await expect(agentic).toBeVisible();
   await page.getByTestId("loop-repair").click();
   await expect(page.getByTestId("stage-copy")).toContainText("one repair attempt");
-  await page.getByTestId("toy-step").click();
-  await expect(page.getByTestId("toy-landscape")).toBeVisible();
   await expect(page.getByRole("link", { name: "Cloud scheduling" })).toBeVisible();
   const cta = page.getByTestId("hero-cta");
   await expect(cta).toHaveAccessibleName("Open the cloud run");
@@ -49,20 +47,20 @@ test("home explains the engine and does not mount the lineage", async ({ page })
   expect(await contrastRatio(page, "hero-cta")).toBeGreaterThanOrEqual(4.5);
 });
 
-test("tsp showdown races Held-Karp against the other three methods", async ({ page }) => {
+test("tsp showdown races DFS branch-and-bound against the other three methods", async ({ page }) => {
   await page.goto("/");
   const heading = page.getByRole("heading", { name: "Traveling salesman, 15 cities" });
   await heading.scrollIntoViewIfNeeded();
   await expect(heading).toBeVisible();
   await expect(page.getByTestId("tsp-sample")).toHaveCount(0);
-  await expect(page.getByTestId("tsp-map-held_karp")).toBeVisible();
+  await expect(page.getByTestId("tsp-map-dfs_bnb")).toBeVisible();
   await expect(page.getByTestId("tsp-map-classic_ga")).toBeVisible();
   await expect(page.getByTestId("tsp-map-llm_one_shot")).toBeVisible();
   await expect(page.getByTestId("tsp-map-geneai")).toBeVisible();
   await expect(page.getByTestId("tsp-map-heuristic")).toHaveCount(0);
   await expect(page.getByTestId("tsp-ghost-classic_ga")).toBeVisible();
   await expect(page.getByTestId("tsp-ghost-geneai")).toBeVisible();
-  await expect(page.getByTestId("tsp-crown-held_karp")).toBeVisible();
+  await expect(page.getByTestId("tsp-crown-dfs_bnb")).toBeVisible();
   await expect(page.getByTestId("tsp-provenance")).toBeVisible();
   await expect(page.getByTestId("tsp-heldout")).toContainText("5 of 5");
   await page.getByTestId("tsp-race").click();
@@ -71,7 +69,7 @@ test("tsp showdown races Held-Karp against the other three methods", async ({ pa
   await expect(page.getByTestId("tsp-log")).toHaveCount(0);
   await expect(page.getByTestId("tsp-table").getByTestId("rank-legend")).toContainText("best in column");
   await expect(page.getByTestId("tsp-row-geneai")).toBeVisible();
-  await expect(page.getByTestId("tsp-row-held_karp").locator('[data-rank="best"]').first()).toBeVisible();
+  await expect(page.getByTestId("tsp-row-dfs_bnb").locator('[data-rank="best"]').first()).toBeVisible();
 });
 
 test.describe("light hero", () => {

@@ -24,6 +24,7 @@ from geneai_core.domains.tsp import (
     cities_for_seed,
     distance_matrix,
     edge_recombination,
+    dfs_bnb,
     held_karp,
     is_permutation,
     order_crossover,
@@ -58,6 +59,21 @@ def test_held_karp_matches_brute_force_and_is_a_cycle() -> None:
     assert is_permutation(tour, 8)
     assert length == pytest.approx(_brute_length(cities), rel=1e-9, abs=1e-6)
     assert tour_length(tour, distance_matrix(cities)) == pytest.approx(length)
+
+
+def test_dfs_bnb_matches_held_karp_on_showcase_and_held_out() -> None:
+    """Exact DFS equals Held-Karp on the 15-city showcase and five held-out maps."""
+
+    for seed in (SHOWCASE_SEED, *HELD_OUT_SEEDS):
+        cities = cities_for_seed(seed)
+        hk_tour, hk_length = held_karp(cities)
+        result = dfs_bnb(cities)
+        assert is_permutation(result["tour"], N_CITIES)
+        assert result["length"] == pytest.approx(hk_length, rel=1e-9, abs=1e-6)
+        assert tour_length(result["tour"], distance_matrix(cities)) == pytest.approx(result["length"])
+        assert result["nodes_explored"] > 0
+        assert result["time_ms"] >= 0
+        del hk_tour
 
 
 def test_canonical_tour_dedups_rotation_and_reversal() -> None:
@@ -138,11 +154,11 @@ def test_mock_benchmark_schema_and_hybrid_refuses_missing_keys(tmp_path: Path) -
     dist = distance_matrix(document["cities"])
     assert tour_length(optimum["tour"], dist) == pytest.approx(optimum["length"], abs=1e-6)
     keys = [row["key"] for row in document["methods"]]
-    assert keys == ["held_karp", "classic_ga", "llm_one_shot", "geneai"]
+    assert keys == ["dfs_bnb", "classic_ga", "llm_one_shot", "geneai"]
     assert "heuristic" not in keys
     by_key = {row["key"]: row for row in document["methods"]}
-    held = by_key["held_karp"]
-    assert held["label"] == "Traditional: dynamic programming (Held-Karp)"
+    held = by_key["dfs_bnb"]
+    assert held["label"] == "Traditional: depth-first search (branch and bound)"
     assert held["gap_pct"] == 0
     assert held["valid"] is True
     assert held["llm_calls"] == 0
@@ -175,17 +191,18 @@ def test_mock_benchmark_schema_and_hybrid_refuses_missing_keys(tmp_path: Path) -
     assert [row["seed"] for row in heldout["instances"]] == list(HELD_OUT_SEEDS)
     for instance in heldout["instances"]:
         assert set(instance["by_method"]) == set(keys)
-        assert instance["by_method"]["held_karp"]["gap_pct"] == 0
-        assert instance["by_method"]["held_karp"]["valid"] is True
+        assert instance["by_method"]["dfs_bnb"]["gap_pct"] == 0
+        assert instance["by_method"]["dfs_bnb"]["valid"] is True
         assert instance["by_method"]["llm_one_shot"]["valid"] is False
         assert instance["by_method"]["geneai"]["valid"] is True
         assert instance["by_method"]["classic_ga"]["valid"] is True
     summary = heldout["summary"]
-    assert summary["held_karp"]["optimal_hits"] == 5
-    assert summary["held_karp"]["mean_gap_pct"] == 0
+    assert summary["dfs_bnb"]["optimal_hits"] == 5
+    assert summary["dfs_bnb"]["mean_gap_pct"] == 0
     assert summary["llm_one_shot"]["valid_count"] == 0
     assert summary["llm_one_shot"]["mean_gap_pct"] is None
     assert summary["geneai"]["valid_count"] == 5
+    assert "branch-and-bound" in document["notes"]
     assert "Held-Karp" in document["notes"]
     assert "nearest" in document["notes"]
     assert "LLM-guided operators plus 2-opt local search" in document["notes"]

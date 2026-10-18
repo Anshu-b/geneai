@@ -6,7 +6,6 @@ import { useState } from "react";
 import { Header } from "@/components/header";
 import { LivingField } from "@/components/home/living-field";
 import { GeneBridge, GeneticAlgorithms, NaturalSelection } from "@/components/home/story";
-import { ToyLandscape } from "@/components/home/toy-landscape";
 import { TspShowdown } from "@/components/home/tsp-showdown";
 
 const STAGES = [
@@ -289,14 +288,6 @@ export function HomeExperience() {
               <p className="mt-2 font-serif text-3xl text-ivory">Quant</p>
               <p className="mt-2 text-sm text-dim">The plug is reserved. The adapter is not built.</p>
             </div>
-          </div>
-        </motion.section>
-
-        <motion.section className="pb-24 md:pb-32" initial={reduced ? false : "hidden"} whileInView="show" viewport={{ once: true, margin: "-12%" }} variants={rise}>
-          <p className="kicker">A sketch you can touch</p>
-          <h2 className="mt-3 font-serif text-4xl tracking-tight text-ivory md:text-6xl">Dots on a hill.</h2>
-          <div className="mt-8 max-w-3xl">
-            <ToyLandscape />
           </div>
         </motion.section>
 

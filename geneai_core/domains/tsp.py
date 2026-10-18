@@ -371,6 +371,107 @@ def held_karp(cities: list[dict[str, Any]]) -> tuple[list[int], float]:
     return tour, length
 
 
+def _nearest_neighbor_tour(dist: list[list[float]], start: int = 0) -> list[int]:
+    n = len(dist)
+    tour = [start]
+    used = {start}
+    while len(tour) < n:
+        last = tour[-1]
+        nxt = min((city for city in range(n) if city not in used), key=lambda city: dist[last][city])
+        tour.append(nxt)
+        used.add(nxt)
+    if start != 0:
+        index = tour.index(0)
+        tour = tour[index:] + tour[:index]
+    return tour
+
+
+def _dfs_remaining_lb(curr: int, mask: int, n: int, dist: list[list[float]]) -> float:
+    """Lower bound on the unfinished path: leave curr, then leave each unvisited city toward another unvisited city or 0."""
+
+    unvis = [city for city in range(n) if (mask & (1 << city)) == 0]
+    if not unvis:
+        return dist[curr][0]
+    bound = min(dist[curr][city] for city in unvis)
+    for city in unvis:
+        best = dist[city][0]
+        for other in unvis:
+            if other != city and dist[city][other] < best:
+                best = dist[city][other]
+        bound += best
+    return bound
+
+
+def dfs_bnb(cities: list[dict[str, Any]]) -> dict[str, Any]:
+    """Exact DFS branch-and-bound. City 0 is fixed; reversal symmetry is broken at the leaf.
+
+    Starts from a multi-start nearest-neighbor tour polished with full 2-opt, expands
+    children nearest-first, and prunes when partial length plus a path lower bound
+    cannot beat the incumbent. Returns the optimal tour, its length, wall time, and
+    the number of search nodes expanded.
+    """
+
+    n = len(cities)
+    if n < 2:
+        raise ValueError("DFS branch-and-bound needs at least 2 cities")
+    dist = distance_matrix(cities)
+    best_len = float("inf")
+    best_tour: list[int] | None = None
+    for start in range(n):
+        seed_tour = _nearest_neighbor_tour(dist, start)
+        polished, _ = two_opt_improve(seed_tour, dist, max_moves=None)
+        length = tour_length(polished, dist)
+        if length < best_len:
+            best_len = length
+            best_tour = polished
+    assert best_tour is not None
+    nodes = 0
+    order = [
+        [city for city in sorted(range(n), key=lambda other: dist[index][other]) if city != index]
+        for index in range(n)
+    ]
+
+    def search(curr: int, mask: int, partial: float, path: list[int]) -> None:
+        nonlocal best_len, best_tour, nodes
+        nodes += 1
+        if len(path) == n:
+            total = partial + dist[curr][0]
+            # Keep only one orientation of each cycle (first city after 0 < last city).
+            if path[1] > path[-1]:
+                return
+            if total + 1e-12 < best_len:
+                best_len = total
+                best_tour = path[:]
+            return
+        if partial + _dfs_remaining_lb(curr, mask, n, dist) >= best_len - 1e-12:
+            return
+        for nxt in order[curr]:
+            bit = 1 << nxt
+            if mask & bit:
+                continue
+            new_partial = partial + dist[curr][nxt]
+            if new_partial >= best_len - 1e-12:
+                continue
+            path.append(nxt)
+            search(nxt, mask | bit, new_partial, path)
+            path.pop()
+
+    started = time.perf_counter()
+    search(0, 1, 0.0, [0])
+    time_ms = int((time.perf_counter() - started) * 1000)
+    if best_tour is None or not is_permutation(best_tour, n):
+        raise RuntimeError("DFS branch-and-bound failed to produce a tour")
+    length = tour_length(best_tour, dist)
+    if not math.isclose(length, best_len, rel_tol=1e-9, abs_tol=1e-6):
+        raise RuntimeError(f"DFS length {length} does not match the search value {best_len}")
+    return {
+        "tour": best_tour,
+        "length": length,
+        "time_ms": time_ms,
+        "nodes_explored": nodes,
+    }
+
+
 def run_classic_ga(
     cities: list[dict[str, Any]],
     seed: int,

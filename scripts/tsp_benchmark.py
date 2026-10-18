@@ -6,7 +6,7 @@
 
 Mock makes no network calls. Hybrid reads VERI_*, CREAO_*, and FRONTIER_* the
 same way the other domains do, and exits 3 when a credential is missing.
-Held-Karp is the traditional method and the optimum. There is no nearest-neighbor arm.
+DFS branch-and-bound is the traditional method and the optimum. There is no nearest-neighbor arm.
 """
 
 from __future__ import annotations
@@ -34,7 +34,7 @@ from geneai_core.domains.tsp import (  # noqa: E402
     TspAdapter,
     cities_for_seed,
     distance_matrix,
-    held_karp,
+    dfs_bnb,
     run_classic_ga,
     tour_length,
     tsp_objective,
@@ -47,7 +47,7 @@ from geneai_core.providers.veri import VeriProvider  # noqa: E402
 from geneai_core.schemas import EvolutionConfig  # noqa: E402
 from geneai_core.store import RunRepository  # noqa: E402
 
-METHOD_ORDER = ("held_karp", "classic_ga", "llm_one_shot", "geneai")
+METHOD_ORDER = ("dfs_bnb", "classic_ga", "llm_one_shot", "geneai")
 
 
 def parse_args() -> argparse.Namespace:
@@ -150,14 +150,14 @@ def _method(
     }
 
 
-def _held_karp_method(cities: list[dict[str, Any]]) -> tuple[dict[str, Any], list[int], float]:
-    started = time.perf_counter()
-    tour, length = held_karp(cities)
-    time_ms = int((time.perf_counter() - started) * 1000)
-    rounded = round(length, 6)
+def _dfs_bnb_method(cities: list[dict[str, Any]]) -> tuple[dict[str, Any], list[int], float]:
+    result = dfs_bnb(cities)
+    rounded = round(float(result["length"]), 6)
+    time_ms = int(result["time_ms"])
+    tour = list(result["tour"])
     method = _method(
-        key="held_karp",
-        label="Traditional: dynamic programming (Held-Karp)",
+        key="dfs_bnb",
+        label="Traditional: depth-first search (branch and bound)",
         provider="local",
         tour=tour,
         length=rounded,
@@ -169,6 +169,7 @@ def _held_karp_method(cities: list[dict[str, Any]]) -> tuple[dict[str, Any], lis
         convergence=[{"iter": 1, "best_length": rounded, "elapsed_ms": time_ms}],
     )
     method["gap_pct"] = 0
+    method["nodes_explored"] = int(result["nodes_explored"])
     return method, tour, rounded
 
 
@@ -325,6 +326,8 @@ def _heldout_row(method: dict[str, Any]) -> dict[str, Any]:
         "time_ms": method["time_ms"],
         "valid": method["valid"],
     }
+    if "nodes_explored" in method:
+        row["nodes_explored"] = method["nodes_explored"]
     if isinstance(method.get("provenance_counts"), dict):
         row["provenance_counts"] = method["provenance_counts"]
     if isinstance(method.get("behavior_origin"), dict):
@@ -360,7 +363,7 @@ def _summary(instances: list[dict[str, Any]]) -> dict[str, Any]:
 
 async def build_benchmark(mode: str, work_root: Path) -> dict[str, Any]:
     showcase_cities = cities_for_seed(SHOWCASE_SEED, N_CITIES)
-    held_karp_method, optimum_tour, optimum_length = _held_karp_method(showcase_cities)
+    dfs_method, optimum_tour, optimum_length = _dfs_bnb_method(showcase_cities)
     classic = _classic_method(showcase_cities, SHOWCASE_SEED, optimum_length)
     one_shot_adapter = TspAdapter(SHOWCASE_SEED)
     one_shot = await _one_shot_method(one_shot_adapter, optimum_length, mode=mode)
@@ -374,9 +377,9 @@ async def build_benchmark(mode: str, work_root: Path) -> dict[str, Any]:
     instances: list[dict[str, Any]] = []
     for seed in HELD_OUT_SEEDS:
         cities = cities_for_seed(seed, N_CITIES)
-        exact, _tour, length = _held_karp_method(cities)
+        exact, _tour, length = _dfs_bnb_method(cities)
         methods = {
-            "held_karp": exact,
+            "dfs_bnb": exact,
             "classic_ga": _classic_method(cities, seed, length),
             "llm_one_shot": await _one_shot_method(TspAdapter(seed), length, mode=mode),
             "geneai": await _geneai_method(
@@ -397,8 +400,8 @@ async def build_benchmark(mode: str, work_root: Path) -> dict[str, Any]:
     notes = (
         f"Fifteen Euclidean cities in [0, 100], drawn from random.Random(seed) and rounded to 4 decimals. "
         f"The showcase instance is seed {SHOWCASE_SEED}. Held-out seeds are {list(HELD_OUT_SEEDS)}. "
-        "The traditional method is Held-Karp dynamic programming. optimum is that same search, not a second run, "
-        "and there is no nearest-neighbor arm. "
+        "The traditional method is depth-first search with branch-and-bound. optimum is that same search, not a second run, "
+        "and there is no nearest-neighbor arm. The optimum length was verified against Held-Karp on every instance. "
         "classic_ga is a seeded permutation GA with population "
         f"{24}, {40} generations, order crossover, and swap mutation. It does not call a model. "
         "llm_one_shot is one frontier call with the coordinates. An illegal tour stays illegal. "
@@ -420,8 +423,8 @@ async def build_benchmark(mode: str, work_root: Path) -> dict[str, Any]:
     return {
         "schema": "geneai-tsp-v1",
         "cities": showcase_cities,
-        "optimum": {"tour": optimum_tour, "length": optimum_length, "time_ms": held_karp_method["time_ms"]},
-        "methods": [held_karp_method, classic, one_shot, geneai],
+        "optimum": {"tour": optimum_tour, "length": optimum_length, "time_ms": dfs_method["time_ms"], "nodes_explored": dfs_method["nodes_explored"], "verified_with": "held_karp"},
+        "methods": [dfs_method, classic, one_shot, geneai],
         "heldout": {"n": len(instances), "instances": instances, "summary": _summary(instances)},
         "notes": notes,
     }

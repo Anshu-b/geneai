@@ -1,4 +1,4 @@
-export const TSP_KEYS = ["held_karp", "classic_ga", "llm_one_shot", "geneai"] as const;
+export const TSP_KEYS = ["dfs_bnb", "classic_ga", "llm_one_shot", "geneai"] as const;
 
 export type TspMethodKey = (typeof TSP_KEYS)[number];
 
@@ -97,7 +97,7 @@ function parsePoint(value: unknown, label: string): TspPoint {
 function parseMethod(value: unknown): TspMethod {
   const row = asRecord(value);
   if (!row || typeof row.key !== "string" || !KEY_SET.has(row.key)) {
-    throw new Error("A method key must be held_karp, classic_ga, llm_one_shot, or geneai.");
+    throw new Error("A method key must be dfs_bnb, classic_ga, llm_one_shot, or geneai.");
   }
   if (typeof row.label !== "string" || typeof row.provider !== "string") {
     throw new Error(`Method ${row.key} is missing a label or provider.`);
@@ -164,8 +164,8 @@ export function parseTsp(raw: unknown): TspFile {
       if (!ids.has(stop)) throw new Error(`${method.key} names an unknown city ${stop}.`);
     }
   }
-  const held = methods.find((method) => method.key === "held_karp")!;
-  if (held.length == null) throw new Error("Held-Karp must return a tour.");
+  const held = methods.find((method) => method.key === "dfs_bnb")!;
+  if (held.length == null) throw new Error("The traditional DFS solver must return a tour.");
   const optimum: TspOptimum = { tour: held.tour.slice(), length: held.length, time_ms: held.time_ms };
   const heldout = asRecord(data.heldout);
   if (!heldout || typeof heldout.n !== "number") throw new Error("TSP file is missing the held-out count.");
@@ -244,7 +244,7 @@ export function formatGap(value: number | null): string {
 export function tspVerdict(file: TspFile): string {
   const by = Object.fromEntries(file.methods.map((method) => [method.key, method])) as Record<TspMethodKey, TspMethod>;
   const parts = [
-    `Held-Karp proves a tour of ${formatLength(by.held_karp.length)} in ${formatDuration(by.held_karp.time_ms)}.`,
+    `Depth-first search proves a tour of ${formatLength(by.dfs_bnb.length)} in ${formatDuration(by.dfs_bnb.time_ms)}.`,
   ];
   if (hitsOptimum(by.geneai)) parts.push("GeneAI matches that tour.");
   else if (by.geneai.valid) parts.push(`GeneAI finishes ${formatGap(by.geneai.gap_pct)} above it.`);
@@ -260,7 +260,7 @@ export function tspVerdict(file: TspFile): string {
 export function heldoutLine(file: TspFile): string {
   const n = file.heldout.n;
   const name: Record<TspMethodKey, string> = {
-    held_karp: "Held-Karp",
+    dfs_bnb: "DFS branch-and-bound",
     classic_ga: "The classic genetic algorithm",
     llm_one_shot: "GPT-5.5",
     geneai: "GeneAI",
@@ -288,7 +288,7 @@ export function provenanceLine(file: TspFile): string | null {
 }
 
 export const TSP_COLOR: Record<TspMethodKey, string> = {
-  held_karp: "var(--amber)",
+  dfs_bnb: "var(--amber)",
   classic_ga: "var(--violet)",
   llm_one_shot: "var(--danger)",
   geneai: "var(--teal)",

@@ -58,7 +58,7 @@ export function TspShowdown() {
         ) : null}
       </div>
       <p className="mt-4 max-w-2xl text-base leading-relaxed text-dim">
-        Four methods draw the same cities. Held-Karp&apos;s route is the shortest possible. The other maps keep that route as a dashed ghost, and the clock is part of the result.
+        Four methods draw the same cities. The DFS branch-and-bound route is the shortest possible. The other maps keep that route as a dashed ghost, and the clock is part of the result.
       </p>
       {load.status === "loading" ? <p className="mt-8 text-sm text-dim">Reading the 15-city benchmark…</p> : null}
       {load.status === "missing" ? <p className="mt-8 text-sm text-dim">No traveling salesman benchmark yet.</p> : null}
@@ -151,7 +151,7 @@ function MapPanel({ file, method, elapsed, intro }: { file: TspFile; method: Tsp
   const done = elapsed == null || elapsed + 1e-6 >= method.time_ms;
   const draw = elapsed == null ? intro : Math.min(1, Math.max(0, elapsed / method.time_ms));
   const crowned = hitsOptimum(method) && done;
-  const ghost = method.key !== "held_karp";
+  const ghost = method.key !== "dfs_bnb";
   const color = method.valid ? TSP_COLOR[method.key] : "var(--danger)";
   return (
     <article className={`glass flex flex-col rounded-3xl p-3 ${method.valid ? "" : "border-danger/40"}`} data-testid={`tsp-map-${method.key}`}>
@@ -172,7 +172,7 @@ function MapPanel({ file, method, elapsed, intro }: { file: TspFile; method: Tsp
       {!method.valid && method.invalid_reason ? (
         <p className="mt-2 px-1 text-sm leading-relaxed text-danger" data-testid="tsp-invalid-reason">{method.invalid_reason}</p>
       ) : null}
-      {method.key === "held_karp" ? <p className="mt-2 px-1 text-sm leading-relaxed text-dim">Exact. The time beside the length is how long the proof took.</p> : null}
+      {method.key === "dfs_bnb" ? <p className="mt-2 px-1 text-sm leading-relaxed text-dim">Exact. The time beside the length is how long the proof took.</p> : null}
     </article>
   );
 }

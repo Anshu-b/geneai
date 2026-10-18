@@ -33,12 +33,12 @@ function walkLength(file: TspFile, tour: string[], close: boolean): number {
 }
 
 describe("tsp benchmark", () => {
-  it("parses the recorded file as four methods with Held-Karp as the optimum", () => {
+  it("parses the recorded file as four methods with DFS branch-and-bound as the optimum", () => {
     const file = load();
     expect(file.schema).toBe("geneai-tsp-v1");
     expect(file.cities).toHaveLength(15);
     expect(isSampleTsp(file)).toBe(false);
-    expect(file.methods.map((method) => method.key)).toEqual(["held_karp", "classic_ga", "llm_one_shot", "geneai"]);
+    expect(file.methods.map((method) => method.key)).toEqual(["dfs_bnb", "classic_ga", "llm_one_shot", "geneai"]);
     const held = file.methods[0];
     expect(held.gap_pct).toBe(0);
     expect(held.time_ms).toBeGreaterThan(0);
@@ -55,7 +55,7 @@ describe("tsp benchmark", () => {
       }
     }
     const verdict = tspVerdict(file);
-    expect(verdict).toContain("Held-Karp proves a tour");
+    expect(verdict).toContain("Depth-first search proves a tour");
     const gene = file.methods[3];
     if (gene.provenance_counts) {
       for (const count of Object.values(gene.provenance_counts)) expect(provenanceLine(file)).toContain(`${count} from`);
@@ -69,9 +69,9 @@ describe("tsp benchmark", () => {
     const file = parseTsp(raw);
     const n = file.heldout.n;
     expect(raw.heldout.instances).toHaveLength(n);
-    expect(file.heldout.summary.held_karp.optimal_hits).toBe(n);
+    expect(file.heldout.summary.dfs_bnb.optimal_hits).toBe(n);
     expect(heldoutLine(file)).toContain(`Across ${n} held-out maps`);
-    for (const key of ["held_karp", "classic_ga", "llm_one_shot", "geneai"] as const) {
+    for (const key of ["dfs_bnb", "classic_ga", "llm_one_shot", "geneai"] as const) {
       type Row = { gap_pct: number | null; valid: boolean };
       const rows: Row[] = raw.heldout.instances.map((instance: { by_method?: Record<string, Row>; methods?: Record<string, Row> }) => (instance.by_method ?? instance.methods)![key]);
       const valid = rows.filter((row) => row.valid && row.gap_pct != null);
