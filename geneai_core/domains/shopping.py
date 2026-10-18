@@ -9,6 +9,7 @@ not invent retailer links.
 from __future__ import annotations
 
 import json
+import logging
 import time
 from pathlib import Path
 from typing import Any
@@ -26,8 +27,14 @@ RECORDED_CATALOG_PATH = Path(__file__).resolve().parents[2] / "data" / "catalogs
 
 # Disjoint shoppers. Train is larger. Validation and test use the same menu of
 # palettes, occasions, and budgets, in a different mix, so a held-out score is
-# not a copy of the training objective. Size stays M. Budgets stay at or above
-# 260 so a mid-price outfit is legal everywhere; the soft score is what moves.
+# not a copy of the training objective. Apparel size stays M. Shoe size is the
+# same number on every profile so one genome can fit the split. Budgets stay
+# at or above 260 so a mid-price outfit is legal everywhere; the soft score is
+# what moves.
+APPAREL_ROLES = ("top", "bottom", "layer")
+REQUIRED_ROLES = ("top", "bottom", "shoes")
+DEFAULT_SHOE_SIZE = 9
+_LOG = logging.getLogger("geneai_core.shopping")
 _OCCASION_MENU = (
     ("campus", "dinner"),
     ("dinner",),
@@ -47,6 +54,7 @@ def _shopper(index: int) -> dict[str, Any]:
         "occasions": list(_OCCASION_MENU[index % len(_OCCASION_MENU)]),
         "budget": _BUDGET_MENU[index % len(_BUDGET_MENU)],
         "size": "M",
+        "shoe_size": DEFAULT_SHOE_SIZE,
     }
 
 
@@ -272,7 +280,7 @@ def _score_outfit(
 
 class ShoppingAdapter(DomainAdapter):
     name = "shopping"
-    evaluator_version = "shopping-outfit-v2"
+    evaluator_version = "shopping-outfit-v3"
 
     def __init__(self, catalog: dict[str, Any] | None = None, constraints: dict[str, Any] | None = None) -> None:
         self.catalog = catalog or load_catalog()
@@ -280,21 +288,34 @@ class ShoppingAdapter(DomainAdapter):
         self._objective_constraints = dict(constraints or {
             "budget": 300,
             "size": "M",
+            "shoe_size": DEFAULT_SHOE_SIZE,
             "palette": "neutral",
             "occasions": ["campus", "dinner"],
         })
 
-    def _item_branches(self) -> list[dict[str, Any]]:
-        """One schema branch per catalog row so product_id and role stay paired."""
+    def _catalog_roles(self) -> set[str]:
+        found: set[str] = set()
+        for product in self.catalog.get("products") or []:
+            role = str(product.get("role") or "")
+            if role in ROLES:
+                found.add(role)
+        return found
 
-        required_size = self._objective_constraints.get("size")
+    def _required_roles(self) -> list[str]:
+        present = self._catalog_roles()
+        return [role for role in REQUIRED_ROLES if role in present]
+
+    def _item_branches(self) -> list[dict[str, Any]]:
+        """One schema branch per catalog row. Shoes and accessories stay in the schema."""
+
+        apparel_size = self._objective_constraints.get("size")
+        shoe_size = self._objective_constraints.get("shoe_size")
         branches: list[dict[str, Any]] = []
         for product in self.catalog.get("products") or []:
-            sizes = [size for size in product.get("sizes") or [] if size in SIZES]
-            if required_size:
-                if required_size not in sizes:
-                    continue
-                sizes = [str(required_size)]
+            role = str(product.get("role") or "")
+            if role not in ROLES:
+                continue
+            sizes = _schema_sizes(product, apparel_size=apparel_size, shoe_size=shoe_size)
             if not sizes:
                 continue
             colors = ["catalog_default"]
@@ -325,8 +346,8 @@ class ShoppingAdapter(DomainAdapter):
                 "family": {"type": "string", "enum": list(FAMILIES)},
                 "items": {
                     "type": "array",
-                    "minItems": 2,
-                    "maxItems": 3,
+                    "minItems": self._min_items(),
+                    "maxItems": self._max_items(),
                     "items": {"anyOf": self._item_branches()},
                 },
                 "styling_notes": {"type": "string"},
@@ -347,16 +368,35 @@ class ShoppingAdapter(DomainAdapter):
 
         return {"train_hash": digest("train"), "validation_hash": digest("validation"), "test_hash": digest("test")}
 
+    def _min_items(self) -> int:
+        required = len(self._required_roles())
+        return required if required else 1
+
+    def _max_items(self) -> int:
+        present = self._catalog_roles()
+        count = len(self._required_roles())
+        if "layer" in present and "top" in present:
+            count += 1
+        if "accessory" in present:
+            count += 1
+        return max(count, self._min_items())
+
     def family_of(self, payload: dict[str, Any]) -> str:
         return str(payload.get("family") or "outfit")
 
     def prepare_payload(self, payload: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
-        """Correct an item role from the catalog instead of rejecting it."""
+        """Correct roles from the catalog and map an unknown family onto the enum."""
 
         notes: list[str] = []
         if not isinstance(payload, dict):
             return payload, notes
         body = dict(payload)
+        family = body.get("family")
+        if family not in FAMILIES:
+            mapped = _closest_family(family)
+            notes.append(f"family {family!r} normalized to {mapped}")
+            _LOG.info("family %r normalized to %s", family, mapped)
+            body["family"] = mapped
         items = body.get("items")
         if not isinstance(items, list):
             return body, notes
@@ -372,6 +412,15 @@ class ShoppingAdapter(DomainAdapter):
                     f"{row.get('product_id')} role {row.get('role')!r} corrected to {product['role']}"
                 )
                 row["role"] = product["role"]
+            if product is not None and product.get("role") == "accessory":
+                if str(row.get("size") or "").strip().lower() == "one size" and row.get("size") != "One Size":
+                    notes.append(f"{row.get('product_id')} size normalized to One Size")
+                    row["size"] = "One Size"
+            if product is not None and product.get("role") == "shoes" and _is_number(row.get("size")):
+                text = _size_text(row.get("size"))
+                if text != row.get("size"):
+                    notes.append(f"{row.get('product_id')} shoe size normalized to {text}")
+                    row["size"] = text
             corrected.append(row)
         body["items"] = corrected
         return body, notes
@@ -385,13 +434,14 @@ class ShoppingAdapter(DomainAdapter):
         if payload.get("family") not in FAMILIES:
             raise ValueError("family is not allowed")
         items = payload.get("items")
-        if not isinstance(items, list) or not 2 <= len(items) <= 3:
-            raise ValueError("items must contain 2 or 3 products")
+        if not isinstance(items, list) or not items:
+            raise ValueError("items must contain a product for each required role")
         notes = payload.get("styling_notes")
         if not isinstance(notes, str) or not notes.strip():
             raise ValueError("styling_notes must be a non-empty string")
         seen: set[str] = set()
-        roles: set[str] = set()
+        roles: list[str] = []
+        constraints = objective.constraints or {}
         for item in items:
             if not isinstance(item, dict):
                 raise ValueError("each item must be an object")
@@ -406,18 +456,22 @@ class ShoppingAdapter(DomainAdapter):
                 raise ValueError(f"{product_id} role must be {product['role']}")
             if item.get("role") in roles:
                 raise ValueError("duplicate role")
-            roles.add(item["role"])
-            if item.get("size") not in (product.get("sizes") or []):
-                raise ValueError(f"{product_id} does not offer size {item.get('size')}")
+            roles.append(str(item["role"]))
+            _check_item_size(item, product, constraints)
             color = item.get("color_id")
             if color != "catalog_default" and color not in (product.get("colors") or []):
                 raise ValueError(f"{product_id} does not offer color {color}")
-            required_size = (objective.constraints or {}).get("size")
-            if required_size and item.get("size") != required_size:
-                raise ValueError(f"size must be {required_size}")
+        problem = _completeness_problem(roles, self._catalog_roles())
+        if problem:
+            raise ValueError(problem)
 
     def seeded_baselines(self) -> list[dict[str, Any]]:
-        outfits = _hand_baselines(self.catalog)
+        outfits = _hand_baselines(
+            self.catalog,
+            budget=_baseline_budget(),
+            apparel_size=str(self._objective_constraints.get("size") or "M"),
+            shoe_size=self._objective_constraints.get("shoe_size", DEFAULT_SHOE_SIZE),
+        )
         return [
             {
                 "name": name,
@@ -427,37 +481,61 @@ class ShoppingAdapter(DomainAdapter):
             for name, payload in outfits
         ]
 
+    def baselines(self) -> dict[str, dict[str, Any]]:
+        return {spec["name"]: spec["payload"] for spec in self.seeded_baselines()}
+
     def oneshot_hint(self) -> str:
         return (
-            "Choose 2 or 3 items and use each role at most once. "
-            "One item per role. A repeated role is invalid and will be reported as invalid."
+            "Build one complete outfit: exactly one top, one bottom, and one pair of shoes "
+            "when the catalog has those roles. A layer is optional and only with a top. "
+            "At most one accessory. One item per role. Never repeat a role. "
+            "A repeated role is invalid and will be reported as invalid."
+        )
+
+    def _prompt_contract(self) -> str:
+        example = _example_child(self.catalog)
+        return (
+            f"Allowed family values: {', '.join(FAMILIES)}. "
+            "Use one of those strings exactly. "
+            "A valid outfit has exactly one top, one bottom, and one pair of shoes when the catalog "
+            "includes that role. A layer is optional and only together with a top. "
+            "At most one accessory. One item per role. Never repeat a role. "
+            "Tops, bottoms, and layers use the shopper apparel size. "
+            f"Shoes use numeric shoe size {self._objective_constraints.get('shoe_size', DEFAULT_SHOE_SIZE)}. "
+            "Accessories accept One Size. "
+            "Example child: "
+            + json.dumps({"genome": example, "rationale": "complete outfit"}, separators=(",", ":"))
         )
 
     def seed_instructions(self, objective: ObjectiveSpec) -> str:
         return (
             "Propose an outfit JSON object with keys payload and hypothesis. "
-            "payload.items has 2 or 3 catalog products. One item per role. "
-            "Never repeat a role. "
+            "One item per role. Never repeat a role. "
             "Use product_id values from the catalog only. "
             "color_id may be catalog_default. Do not invent product URLs. "
-            "hypothesis is one line.\n"
+            "hypothesis is one line. "
+            f"{self._prompt_contract()}\n"
             f"Catalog ids: {sorted(self._by_id)}\n"
             f"Objective: {objective.prompt}"
         )
 
     def mutate_instructions(self, parent: Genome, feedback: Evaluation) -> str:
+        move = _mutation_move(parent.payload)
         return (
-            "Swap one product, color, or size. Keep ids inside the catalog. "
+            f"{move} Keep ids inside the catalog. "
             "One item per role. role must match that product's catalog role. "
-            'Return JSON exactly as {"children":[{"genome":{"family":"...","items":[...],"styling_notes":"..."},"rationale":"one line"}]}.\n'
+            f"{self._prompt_contract()}\n"
+            'Return JSON exactly as {"children":[{"genome": <one payload object>, "rationale": "one line"}]}.\n'
             f"Parent: {parent.payload}\nFeedback: {feedback.feedback}"
         )
 
     def crossover_instructions(self, a: Genome, b: Genome) -> str:
         return (
             "Inherit items from both parents without repeating a role. "
+            "Keep a complete outfit: one top, one bottom, and one pair of shoes when those roles exist. "
             "One item per role. role must match that product's catalog role. "
-            'Return JSON exactly as {"children":[{"genome":{"family":"...","items":[...],"styling_notes":"..."},"rationale":"one line"}]}.\n'
+            f"{self._prompt_contract()}\n"
+            'Return JSON exactly as {"children":[{"genome": <one payload object>, "rationale": "one line"}]}.\n'
             f"Parent A: {a.payload}\nParent B: {b.payload}"
         )
 
@@ -584,91 +662,300 @@ def shopping_objective(*, palette: str = "neutral", budget: float = 300.0, occas
     return ObjectiveSpec(
         domain="shopping",
         prompt=(
-            "Build a 2-3 piece outfit from the catalog, size M, one item per role. "
+            "Build one complete outfit from the catalog. Apparel size is M. Shoe size is 9. "
+            "Include one top, one bottom, and one pair of shoes when the catalog has that role. "
+            "A layer is optional. At most one accessory. One item per role. "
             "Train, validation, and test are disjoint shopper profiles. "
             "Fitness on a split is the mean subjective score across that split's shoppers. "
             "Fixture rows have no product URL and are not purchasable."
         ),
-        constraints={"size": "M", "currency": "USD"},
-        evaluation_version="shopping-outfit-v2",
+        constraints={"size": "M", "shoe_size": DEFAULT_SHOE_SIZE, "currency": "USD"},
+        evaluation_version="shopping-outfit-v3",
     )
 
 
-def _hand_baselines(catalog: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
-    source = str(catalog.get("source") or "")
-    by_id = {str(item.get("product_id")): item for item in catalog.get("products") or []}
-    if source == "fixture" and {"fx_top_01", "fx_bottom_01", "fx_layer_01", "fx_top_03", "fx_bottom_03"} <= set(by_id):
-        return [("neutral_outfit", neutral_outfit()), ("gym_outfit", gym_outfit())]
+def _baseline_budget() -> float:
+    return min(float(shopper["budget"]) for split in SHOPPERS.values() for shopper in split)
+
+
+def _hand_baselines(
+    catalog: dict[str, Any],
+    *,
+    budget: float | None = None,
+    apparel_size: str = "M",
+    shoe_size: Any = DEFAULT_SHOE_SIZE,
+) -> list[tuple[str, dict[str, Any]]]:
+    """Cheapest complete outfit under the budget, one per style. Roles the catalog lacks are skipped."""
+
+    limit = _baseline_budget() if budget is None else float(budget)
     by_role: dict[str, list[dict[str, Any]]] = {}
+    present: set[str] = set()
     for product in catalog.get("products") or []:
         if isinstance(product, dict) and product.get("role") in ROLES:
-            by_role.setdefault(str(product["role"]), []).append(product)
+            role = str(product["role"])
+            by_role.setdefault(role, []).append(product)
+            present.add(role)
+    required = [role for role in REQUIRED_ROLES if role in present]
+    optional = [role for role in ("layer", "accessory") if role in present and not (role == "layer" and "top" not in present)]
     outfits: list[tuple[str, dict[str, Any]]] = []
-    present = [role for role in ROLES if by_role.get(role)]
-    plans = (
-        ("neutral_outfit", ("top", "bottom", "layer", "shoes", "accessory")),
-        ("gym_outfit", ("top", "bottom", "shoes", "accessory")),
-    )
-    for name, preferred in plans:
-        items = _items_for_roles(by_role, preferred, index=0 if name == "neutral_outfit" else 1)
-        if len(items) < 2:
-            items = _items_for_roles(by_role, present, index=0 if name == "neutral_outfit" else 1)
-        if len(items) >= 2:
-            family = "neutral_layers" if name == "neutral_outfit" else "bright_training"
-            outfits.append(
-                (
-                    name,
-                    {
-                        "family": family,
-                        "items": items[:3],
-                        "styling_notes": f"hand baseline {name} from catalog {catalog.get('catalog_id')}",
-                    },
-                )
+    plans = (("neutral_outfit", "neutral"), ("gym_outfit", "gym"))
+    for name, kind in plans:
+        items = _budget_items(
+            by_role,
+            required=required,
+            optional=optional,
+            kind=kind,
+            budget=limit,
+            apparel_size=apparel_size,
+            shoe_size=shoe_size,
+        )
+        if len(items) < len(required) or not items:
+            continue
+        family = "neutral_layers" if name == "neutral_outfit" else "bright_training"
+        outfits.append(
+            (
+                name,
+                {
+                    "family": family,
+                    "items": items,
+                    "styling_notes": f"hand baseline {name} from catalog {catalog.get('catalog_id')}",
+                },
             )
+        )
     return outfits
 
 
-def _item_from_product(product: dict[str, Any]) -> dict[str, Any]:
-    colors = list(product.get("colors") or [])
-    color = "catalog_default" if "catalog_default" in colors or not colors else str(colors[0])
-    sizes = list(product.get("sizes") or ["M"])
-    size = "M" if "M" in sizes else str(sizes[0])
-    return {"product_id": product["product_id"], "color_id": color, "size": size, "role": product["role"]}
+def _example_child(catalog: dict[str, Any]) -> dict[str, Any]:
+    outfits = _hand_baselines(catalog)
+    if outfits:
+        return outfits[0][1]
+    return {
+        "family": "neutral_layers",
+        "items": [],
+        "styling_notes": "complete outfit",
+    }
 
 
-def _items_for_roles(by_role: dict[str, list[dict[str, Any]]], roles: tuple[str, ...] | list[str], *, index: int) -> list[dict[str, Any]]:
+def _closest_family(value: Any) -> str:
+    text = str(value or "").strip().lower().replace("-", " ").replace("_", " ")
+    compact = text.replace(" ", "_")
+    if compact in FAMILIES:
+        return compact
+    if any(word in text for word in ("gym", "bright", "train", "sport", "athletic")):
+        return "bright_training"
+    if any(word in text for word in ("campus", "uniform", "school")):
+        return "campus_uniform"
+    return "neutral_layers"
+
+
+_MUTATION_MOVES = (
+    "Swap only the shoes for a different catalog shoe at the numeric shoe size.",
+    "Swap only the bottom for a different catalog bottom at the apparel size.",
+    "Swap only the top. Keep exactly one top. A layer is optional and only with that top.",
+    "Change one color_id to another color that product offers, or catalog_default.",
+    "Add one accessory if the outfit has none, or remove the accessory if it has one. Do not add a second accessory.",
+    "Add one layer if the outfit has a top and no layer, or remove the layer. Do not drop the top.",
+)
+
+
+def _mutation_move(payload: dict[str, Any]) -> str:
+    raw = json.dumps(payload, sort_keys=True, default=str)
+    import hashlib
+
+    digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()
+    return _MUTATION_MOVES[int(digest[:8], 16) % len(_MUTATION_MOVES)]
+
+
+def _is_number(value: Any) -> bool:
+    return not isinstance(value, bool) and isinstance(value, (int, float))
+
+
+def _size_text(value: Any) -> str:
+    if _is_number(value) and float(value).is_integer():
+        return str(int(value))
+    return str(value)
+
+
+def _numbers_match(offered: Any, required: Any) -> bool:
+    if _is_number(offered) or _is_number(required):
+        try:
+            return float(offered) == float(required)
+        except (TypeError, ValueError):
+            return False
+    return str(offered) == str(required)
+
+
+def _offered_sizes(product: dict[str, Any]) -> list[str]:
+    return [str(size) for size in product.get("sizes") or []]
+
+
+def _schema_sizes(product: dict[str, Any], *, apparel_size: Any, shoe_size: Any) -> list[str]:
+    role = str(product.get("role") or "")
+    raw = _offered_sizes(product)
+    if role in APPAREL_ROLES:
+        sizes = [size for size in raw if size in SIZES]
+        if apparel_size:
+            sizes = [size for size in sizes if size == str(apparel_size)]
+        return sizes
+    if role == "shoes":
+        if shoe_size is not None:
+            matched = [size for size in raw if _numbers_match(size, shoe_size)]
+            if matched:
+                return matched
+        return raw
+    sizes = list(raw)
+    if "One Size" not in sizes:
+        sizes.append("One Size")
+    return sizes
+
+
+def _size_for(product: dict[str, Any], *, apparel_size: str, shoe_size: Any) -> str | None:
+    role = str(product.get("role") or "")
+    sizes = _schema_sizes(product, apparel_size=apparel_size, shoe_size=shoe_size)
+    if role == "shoes" and not sizes:
+        sizes = _offered_sizes(product)
+    if not sizes:
+        return None
+    if role == "accessory" and "One Size" in sizes:
+        return "One Size"
+    return sizes[0]
+
+
+def _product_price(product: dict[str, Any]) -> float:
+    price = product.get("price")
+    if isinstance(price, bool) or not isinstance(price, (int, float)):
+        return 0.0
+    return float(price)
+
+
+def _style_prefers(product: dict[str, Any], kind: str) -> bool:
+    style = set(_style_tags(product))
+    occasions = set(_occasion_tags(product))
+    if kind == "neutral":
+        return bool(style & {"neutral", "relaxed", "tailored"}) or bool(occasions & {"campus", "dinner"})
+    return bool(style & {"bright", "athletic"}) or "gym" in occasions
+
+
+def _pick_product(
+    choices: list[dict[str, Any]],
+    *,
+    kind: str,
+    apparel_size: str,
+    shoe_size: Any,
+    spend: float,
+    budget: float,
+    required: bool,
+) -> dict[str, Any] | None:
+    sized = [product for product in choices if _size_for(product, apparel_size=apparel_size, shoe_size=shoe_size)]
+    if not sized:
+        return None
+    ranked = sorted(sized, key=lambda product: (_product_price(product), str(product.get("product_id"))))
+    preferred = [product for product in ranked if _style_prefers(product, kind)]
+    pool = preferred or ranked
+    for product in pool:
+        if spend + _product_price(product) <= budget + 1e-9:
+            return product
+    for product in ranked:
+        if spend + _product_price(product) <= budget + 1e-9:
+            return product
+    if required:
+        return ranked[0]
+    return None
+
+
+def _budget_items(
+    by_role: dict[str, list[dict[str, Any]]],
+    *,
+    required: list[str],
+    optional: list[str],
+    kind: str,
+    budget: float,
+    apparel_size: str,
+    shoe_size: Any,
+) -> list[dict[str, Any]]:
     items: list[dict[str, Any]] = []
-    used: set[str] = set()
-    for role in roles:
-        choices = by_role.get(role) or []
-        if not choices or role in used:
+    spend = 0.0
+    for role in list(required) + list(optional):
+        picked = _pick_product(
+            by_role.get(role) or [],
+            kind=kind,
+            apparel_size=apparel_size,
+            shoe_size=shoe_size,
+            spend=spend,
+            budget=budget,
+            required=role in required,
+        )
+        if picked is None:
             continue
-        product = choices[index % len(choices)]
-        items.append(_item_from_product(product))
-        used.add(role)
-        if len(items) == 3:
-            break
+        price = _product_price(picked)
+        if role not in required and spend + price > budget + 1e-9:
+            continue
+        size = _size_for(picked, apparel_size=apparel_size, shoe_size=shoe_size)
+        if size is None:
+            continue
+        items.append(_item_from_product(picked, size=size))
+        spend += price
     return items
 
 
+def _item_from_product(product: dict[str, Any], *, size: str | None = None) -> dict[str, Any]:
+    colors = list(product.get("colors") or [])
+    color = "catalog_default" if "catalog_default" in colors or not colors else str(colors[0])
+    chosen = size if size is not None else (_offered_sizes(product) or ["M"])[0]
+    return {"product_id": product["product_id"], "color_id": color, "size": chosen, "role": product["role"]}
+
+
+def _check_item_size(item: dict[str, Any], product: dict[str, Any], constraints: dict[str, Any]) -> None:
+    role = str(item.get("role") or product.get("role") or "")
+    size = item.get("size")
+    offered = _offered_sizes(product)
+    product_id = product.get("product_id")
+    if role == "accessory" and str(size) == "One Size":
+        return
+    if not any(_numbers_match(size, candidate) or str(size) == candidate for candidate in offered):
+        raise ValueError(f"{product_id} does not offer size {size}")
+    if role in APPAREL_ROLES:
+        required = constraints.get("size")
+        if required and str(size) != str(required):
+            raise ValueError(f"size must be {required}")
+        return
+    if role == "shoes" and constraints.get("shoe_size") is not None:
+        if not _numbers_match(size, constraints.get("shoe_size")):
+            raise ValueError(f"shoe size must be {constraints.get('shoe_size')}")
+
+
+def _completeness_problem(roles: list[str], catalog_roles: set[str]) -> str | None:
+    counts: dict[str, int] = {}
+    for role in roles:
+        counts[role] = counts.get(role, 0) + 1
+    if any(count > 1 for count in counts.values()):
+        return "duplicate role"
+    required = [role for role in REQUIRED_ROLES if role in catalog_roles]
+    for role in required:
+        if counts.get(role, 0) != 1:
+            return f"outfit must include exactly one {role}"
+    if counts.get("layer", 0) > 1:
+        return "at most one layer"
+    if counts.get("layer", 0) and "top" in catalog_roles and counts.get("top", 0) != 1:
+        return "a layer requires a top"
+    if counts.get("accessory", 0) > 1:
+        return "at most one accessory"
+    allowed = set(required)
+    if "layer" in catalog_roles:
+        allowed.add("layer")
+    if "accessory" in catalog_roles:
+        allowed.add("accessory")
+    extra = [role for role in counts if role not in allowed]
+    if extra:
+        return f"role not in catalog outfit: {extra[0]}"
+    return None
+
+
 def neutral_outfit() -> dict[str, Any]:
-    return {
-        "family": "neutral_layers",
-        "items": [
-            {"product_id": "fx_top_01", "color_id": "black", "size": "M", "role": "top"},
-            {"product_id": "fx_bottom_01", "color_id": "sage", "size": "M", "role": "bottom"},
-            {"product_id": "fx_layer_01", "color_id": "bone", "size": "M", "role": "layer"},
-        ],
-        "styling_notes": "neutral campus to dinner",
-    }
+    outfits = {name: payload for name, payload in _hand_baselines(load_catalog())}
+    return outfits["neutral_outfit"]
 
 
 def gym_outfit() -> dict[str, Any]:
-    return {
-        "family": "bright_training",
-        "items": [
-            {"product_id": "fx_top_03", "color_id": "neon", "size": "M", "role": "top"},
-            {"product_id": "fx_bottom_03", "color_id": "black", "size": "M", "role": "bottom"},
-        ],
-        "styling_notes": "bright gym set",
-    }
+    outfits = {name: payload for name, payload in _hand_baselines(load_catalog())}
+    return outfits["gym_outfit"]

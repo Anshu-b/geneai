@@ -244,7 +244,14 @@ async def test_browser_task_asks_for_roles_style_and_a_target_count() -> None:
             },
         )
 
-    client = BrowserUseClient(api_key="bu_test", client=httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+    def images(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b"\xff\xd8", headers={"content-type": "image/jpeg"})
+
+    client = BrowserUseClient(
+        api_key="bu_test",
+        client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+        image_client=httpx.AsyncClient(transport=httpx.MockTransport(images)),
+    )
     await client.collect_catalog(catalog_url="https://shop.example/c", query="tees")
     body = seen["body"]
     assert isinstance(body, dict)

@@ -48,7 +48,6 @@ from geneai_core.store import RunRepository
 # calls are not samples from the same narrow distribution.
 _SEED_BATCH = 2
 _VARIATION_BATCH = 2
-_LOCAL_SAMPLES = 20
 _SEED_TEMPERATURES = (0.4, 0.8, 1.1, 0.6)
 
 
@@ -120,6 +119,7 @@ class EvolutionController:
         repository.emit("run.started", {"domain": objective.domain, "mode": mode}, provenance)
         schema = wrapper_schema(adapter.genome_schema())
         seen_hashes: set[str] = set()
+        repaired_hashes: set[str] = set()
         counters = {"mutation": 0, "crossover": 0, "immigrant": 0, "seed": 0, "repair": 0}
         call_serial = 0
         strategist_used = 0
@@ -192,6 +192,9 @@ class EvolutionController:
                             "response_schema": adapter.genome_schema(),
                             "mutation_goal": instruction,
                             "prepare": adapter.prepare_payload,
+                            # CREAO waits at most 180s and never past the wall that is left.
+                            # A timeout is a skipped child, not a failed run.
+                            "timeout_s": min(180.0, float(wait_s)),
                         },
                         call_id=call_id,
                     )
@@ -498,8 +501,14 @@ class EvolutionController:
                 accepted.append(Individual(genome=genome, evaluation=evaluation))
             if accepted or invalid_payload is not None or invalid_body is None:
                 return accepted
-            # Schema failures get one repair. Duplicate hashes do not: a repair
-            # that "changes as little as possible" reproduces the same genome.
+            # Schema failures get one repair. A payload whose canonical hash was
+            # already accepted, or already sent to repair, is not repaired again.
+            canonical = normalize_payload(invalid_body)
+            repair_key = content_hash(canonical) if isinstance(canonical, dict) else None
+            if repair_key is not None and (repair_key in seen_hashes or repair_key in repaired_hashes):
+                return accepted
+            if repair_key is not None:
+                repaired_hashes.add(repair_key)
             repository.emit(
                 "genome.rejected",
                 {"reason_code": "repair_scheduled", "reason": "scheduling one repair", "operator": operation},
@@ -564,15 +573,6 @@ class EvolutionController:
                     continue
                 counters["seed"] += 1
                 population.append(Individual(genome=genome, evaluation=evaluation))
-            _seed_local_samples(
-                adapter=adapter,
-                config=config,
-                population=population,
-                budget=budget,
-                accept_payload=accept_payload,
-                evaluate_genome=evaluate_genome,
-                counters=counters,
-            )
             attempts = 0
             attempt_cap = config.population_size * 4
             temperature_index = 0
@@ -736,6 +736,14 @@ class EvolutionController:
                     evaluate_genome=evaluate_genome,
                     counters=counters,
                 )
+
+                elite_plans = _elite_variation_plans(
+                    elites=elites,
+                    population=population,
+                    adapter=adapter,
+                    objective=objective,
+                )
+                elite_cursor = 0
                 child_attempts = 0
                 attempt_limit = max(desired * 8, 8)
                 while (
@@ -750,6 +758,16 @@ class EvolutionController:
                         config.max_concurrent_model_calls,
                     )
                     plans: list[dict[str, Any]] = []
+                    while (
+                        len(plans) < room
+                        and elite_cursor < len(elite_plans)
+                        and budget.allows_model_call()
+                        and budget.allows_evaluation()
+                        and budget.remaining_seconds() >= generation_estimate
+                    ):
+                        child_attempts += 1
+                        plans.append(elite_plans[elite_cursor])
+                        elite_cursor += 1
                     while (
                         len(plans) < room
                         and budget.allows_model_call()
@@ -932,58 +950,6 @@ def _generation_estimate_seconds(model: Any, workflow: Any, config: EvolutionCon
     return max(model_wait, workflow_wait, 1.0)
 
 
-def _seed_local_samples(
-    *,
-    adapter: DomainAdapter,
-    config: EvolutionConfig,
-    population: list[Individual],
-    budget: Budget,
-    accept_payload: Any,
-    evaluate_genome: Any,
-    counters: dict[str, int],
-) -> None:
-    """Train-scored random seeds. Only a slice enters the population; all stay in the archive."""
-
-    rng = random.Random(config.seed + 23)
-    room = max(0, config.max_evaluations - budget.evaluations)
-    payloads = adapter.random_seed_payloads(rng, min(_LOCAL_SAMPLES, room))
-    held: list[Individual] = []
-    for index, raw in enumerate(payloads):
-        if not isinstance(raw, dict) or not budget.allows_evaluation():
-            break
-        proposal = Proposal(
-            payload=raw,
-            hypothesis="objective-biased random seed",
-            provider="random",
-            provider_run_id=f"random-local-{index}",
-            mode="random",
-            extra={"random_seed": True, "local_search": True},
-        )
-        genome, _reason = accept_payload(
-            proposal,
-            operator="seed",
-            origin="seed",
-            parent_ids=[],
-            generation=0,
-            role="random_seed",
-            provider_role="random",
-        )
-        if genome is None:
-            continue
-        evaluation = evaluate_genome(genome, "train")
-        if evaluation is None or not evaluation.feasible or evaluation.fitness is None:
-            continue
-        counters["seed"] += 1
-        held.append(Individual(genome=genome, evaluation=evaluation))
-    held.sort(key=lambda item: (-(item.evaluation.fitness or float("-inf")), item.genome.id))
-    keep = max(0, config.population_size - len(population)) // 2
-    for item in held:
-        if keep <= 0 or len(population) >= config.population_size:
-            break
-        population.append(item)
-        keep -= 1
-
-
 def _add_local_perturbations(
     *,
     adapter: DomainAdapter,
@@ -997,22 +963,28 @@ def _add_local_perturbations(
     evaluate_genome: Any,
     counters: dict[str, int],
 ) -> None:
+    """At most 20% of the open child slots. Provider and mode stay random."""
+
+    cap = int(desired * 0.2)
+    if cap <= 0:
+        return
+    added = 0
     for elite in elites:
-        if len(children) >= desired or not budget.allows_evaluation():
+        if added >= cap or len(children) >= desired or not budget.allows_evaluation():
             return
         variants = adapter.local_perturbations(elite.genome.payload, rng, 2)
         for index, raw in enumerate(variants):
-            if len(children) >= desired or not budget.allows_evaluation():
+            if added >= cap or len(children) >= desired or not budget.allows_evaluation():
                 return
             if not isinstance(raw, dict):
                 continue
             proposal = Proposal(
                 payload=raw,
-                hypothesis="local perturbation of an elite",
+                hypothesis="random local perturbation of an elite",
                 provider="random",
                 provider_run_id=f"random-perturb-{elite.genome.id}-{index}",
                 mode="random",
-                extra={"local_perturbation": True},
+                extra={"local_perturbation": True, "label": "random"},
             )
             genome, _reason = accept_payload(
                 proposal,
@@ -1030,6 +1002,7 @@ def _add_local_perturbations(
                 continue
             counters["mutation"] += 1
             children.append(Individual(genome=genome, evaluation=evaluation))
+            added += 1
 
 
 def _fill_random_seeds(
@@ -1056,11 +1029,11 @@ def _fill_random_seeds(
             continue
         proposal = Proposal(
             payload=raw,
-            hypothesis="deterministic random seed",
+            hypothesis="uniform random seed",
             provider="random",
             provider_run_id=f"random-{attempts}",
             mode="random",
-            extra={"random_seed": True},
+            extra={"random_seed": True, "label": "random"},
         )
         genome, _reason = accept_payload(
             proposal,
@@ -1141,6 +1114,63 @@ def _plan_variation(
         "provider_role": "bulk",
         "batch_size": _VARIATION_BATCH,
     }
+
+
+def _elite_variation_plans(
+    *,
+    elites: list[Individual],
+    population: list[Individual],
+    adapter: DomainAdapter,
+    objective: ObjectiveSpec,
+) -> list[dict[str, Any]]:
+    """Model mutations of every elite, then crossovers with baselines or other elites."""
+
+    del objective
+    plans: list[dict[str, Any]] = []
+    baselines = [
+        item
+        for item in population
+        if item.genome.provider == "baseline" or bool(item.genome.metadata.get("seeded_baseline"))
+    ]
+    for elite in elites:
+        plans.append(
+            {
+                "operation": "mutation",
+                "parents": [elite],
+                "context_parents": [elite.genome],
+                "human": adapter.mutate_instructions(elite.genome, elite.evaluation),
+                "role": None,
+                "channel": "model",
+                "provider_role": "bulk",
+                "batch_size": _VARIATION_BATCH,
+            }
+        )
+    for index, elite in enumerate(elites):
+        partner: Individual | None = None
+        for offset in range(len(baselines)):
+            candidate = baselines[(index + offset) % len(baselines)]
+            if candidate.genome.id != elite.genome.id:
+                partner = candidate
+                break
+        if partner is None and len(elites) > 1:
+            candidate = elites[(index + 1) % len(elites)]
+            if candidate.genome.id != elite.genome.id:
+                partner = candidate
+        if partner is None:
+            continue
+        plans.append(
+            {
+                "operation": "crossover",
+                "parents": [elite, partner],
+                "context_parents": [elite.genome, partner.genome],
+                "human": adapter.crossover_instructions(elite.genome, partner.genome),
+                "role": None,
+                "channel": "model",
+                "provider_role": "bulk",
+                "batch_size": _VARIATION_BATCH,
+            }
+        )
+    return plans
 
 
 def _mark_strategist(plans: list[dict[str, Any]], slots: int) -> None:

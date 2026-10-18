@@ -150,12 +150,17 @@ collection is cached at `data/catalogs/shopping_recorded.json` with
 and is not committed.
 
 The task forbids login, cart, and payment, and asks for 30 to 40 products
-covering tops, bottoms, shoes, and accessories. It suggests a multi-category
-retailer when the opened page is a single category. There is no default host.
-`BROWSER_USE_TIMEOUT_SECONDS` defaults to 420. On timeout the client POSTs
-`/api/v2/tasks/{task_id}/stop`. A product row is kept only when the run returns
-an `http` or `https` `product_url`. Rows without one are dropped. An empty
-collection fails. The fixture catalog is not substituted and then called live.
+covering tops, bottoms, shoes, and accessories. It stays on the given site,
+opens each product page, and copies `product_url` and `image_url` from that
+page. There is no default host.
+`BROWSER_USE_TIMEOUT_SECONDS` defaults to 420. On timeout the client PATCHes
+`/api/v2/tasks/{task_id}` with `{"action":"stop"}` and logs a stop failure.
+A product row is kept only when the run returns an `http` or `https`
+`product_url` and the image URL answers 200 with `Content-Type: image/*`.
+Rows that fail either check are dropped. Counts are `image_verified_count`
+and `image_dropped_count`. An empty collection fails. The fixture catalog is
+not substituted and then called live. `--catalog fixture` still loads the
+fixture and the split note keeps the fixture badge.
 `BROWSER_USE_API_KEY` plus `--catalog-url` are both required.
 
 The committed file `data/fixtures/shopping_catalog.json` has `source: fixture`,

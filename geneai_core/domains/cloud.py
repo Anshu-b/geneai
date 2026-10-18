@@ -488,13 +488,6 @@ def baseline_payload(name: str) -> dict[str, Any]:
 
 BASELINE_NAMES = ("round_robin", "shortest_job", "least_loaded", "deadline_weighted")
 _TIE_PAD = ("duration", "arrival", "job_id", "machine_id")
-_LOCAL_SAMPLE_BIAS = {
-    "short_job": 0.55,
-    "deadline_urgency": 0.45,
-    "class_affinity": 0.85,
-    "hard_deadline": 0.5,
-    "energy_frugal": 0.25,
-}
 
 
 def _clamp_unit(value: float) -> float:
@@ -639,44 +632,8 @@ def _tie_sample(rng: random.Random) -> list[str]:
     return keys[: rng.choice((3, 4))]
 
 
-def _biased_weights(rng: random.Random, bias: dict[str, float]) -> dict[str, float]:
-    weights = {term: 0.0 for term in SCORE_TERMS}
-    for term in SCORE_TERMS:
-        if rng.random() < 0.35:
-            weights[term] = round(rng.uniform(-0.2, 1.0), 3)
-    for key, value in bias.items():
-        weights[key] = round(max(-1.0, min(1.0, value + rng.uniform(-0.2, 0.2))), 3)
-    return weights
-
-
-def objective_local_payload(rng: random.Random) -> dict[str, Any]:
-    """One train-only sample biased toward the published objective, not the test split."""
-
-    bias = dict(_LOCAL_SAMPLE_BIAS)
-    overrides: list[dict[str, Any]] = []
-    classes = ["gpu", "batch", "high_mem", "sla"]
-    rng.shuffle(classes)
-    for job_class in classes[: rng.choice((1, 1, 2))]:
-        tilted = dict(bias)
-        if job_class == "gpu":
-            tilted.update(class_affinity=1.0, short_job=0.25, hard_deadline=0.6)
-        elif job_class == "batch":
-            tilted.update(energy_frugal=0.85, class_affinity=-0.3, short_job=0.7)
-        elif job_class == "high_mem":
-            tilted.update(class_affinity=0.9, hard_deadline=0.5)
-        overrides.append({"job_class": job_class, "score_weights": _biased_weights(rng, tilted)})
-    payload = {
-        "policy_family": "composed",
-        "rules": {
-            "max_queue_depth": rng.choice((18, 24, 36)),
-            "score_weights": _biased_weights(rng, bias),
-            "tie_break": _tie_sample(rng),
-            "class_overrides": overrides,
-        },
-        "description": "local objective sample",
-    }
-    normalized, _notes = normalize_cloud_payload(payload)
-    return normalized
+def _uniform_weights(rng: random.Random) -> dict[str, float]:
+    return {term: round(rng.uniform(-1.0, 1.0), 3) for term in SCORE_TERMS}
 
 
 def _nudge_weight(value: float, rng: random.Random) -> float:
@@ -710,7 +667,7 @@ def perturb_cloud_payload(payload: dict[str, Any], rng: random.Random) -> dict[s
         free = [name for name in JOB_CLASSES if name not in used]
         if free and len(rules["class_overrides"]) < 2:
             rules["class_overrides"].append(
-                {"job_class": rng.choice(free), "score_weights": _biased_weights(rng, _LOCAL_SAMPLE_BIAS)}
+                {"job_class": rng.choice(free), "score_weights": _uniform_weights(rng)}
             )
         elif rules["class_overrides"] and rng.random() < 0.5:
             rules["class_overrides"].pop(rng.randrange(len(rules["class_overrides"])))
@@ -895,9 +852,6 @@ class CloudSchedulingAdapter(DomainAdapter):
 
     def prepare_payload(self, payload: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
         return normalize_cloud_payload(payload)
-
-    def random_seed_payloads(self, rng: random.Random, count: int) -> list[dict[str, Any]]:
-        return [objective_local_payload(rng) for _ in range(max(0, count))]
 
     def local_perturbations(self, payload: dict[str, Any], rng: random.Random, count: int) -> list[dict[str, Any]]:
         found: list[dict[str, Any]] = []

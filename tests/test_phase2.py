@@ -315,13 +315,22 @@ async def test_browser_use_client_parses_v2_and_refuses_other_hosts(monkeypatch:
             },
         )
 
-    client = BrowserUseClient(api_key="bu_test", client=httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+    def images(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b"\xff\xd8", headers={"content-type": "image/jpeg"})
+
+    client = BrowserUseClient(
+        api_key="bu_test",
+        client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+        image_client=httpx.AsyncClient(transport=httpx.MockTransport(images)),
+    )
     catalog = await client.collect_catalog(catalog_url="https://shop.example/c", query="tees")
     assert catalog["browser_use_run_id"] == "task_1"
     assert catalog["source"] == "browser_use"
     assert len(catalog["products"]) == 1
     assert catalog["products"][0]["retailer"] == "Example Shop"
     assert catalog["products"][0]["image_url"] == "https://shop.example/i/1.jpg"
+    assert catalog["image_verified_count"] == 1
+    assert catalog["image_dropped_count"] == 0
     assert calls["n"] == 3
     recorded = write_recorded_catalog(catalog, tmp_path / "shopping_recorded.json")
     cached = load_catalog(recorded)

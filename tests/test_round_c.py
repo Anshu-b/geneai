@@ -292,6 +292,7 @@ def test_shopping_role_is_corrected_and_missing_bottoms_still_seed() -> None:
         "items": [
             {"product_id": "fx_top_01", "color_id": "black", "size": "M", "role": "shoes"},
             {"product_id": "fx_bottom_01", "color_id": "sage", "size": "M", "role": "top"},
+            {"product_id": "fx_shoes_01", "color_id": "black", "size": "9", "role": "shoes"},
         ],
         "styling_notes": "roles were wrong",
     }
@@ -334,8 +335,10 @@ async def test_browser_task_covers_categories_and_stops_on_timeout(monkeypatch: 
             body = json.loads(request.content)
             calls.append(("task", str(body["task"])))
             return httpx.Response(200, json={"id": "task_slow", "sessionId": "sess"})
-        if str(request.url).endswith("/stop"):
-            return httpx.Response(200, json={"id": "task_slow", "status": "stopped"})
+        if request.method == "PATCH":
+            body = json.loads(request.content)
+            assert body == {"action": "stop"}
+            return httpx.Response(500, json={"error": "stop failed"})
         if str(request.url).endswith("/status"):
             return httpx.Response(200, json={"id": "task_slow", "status": "running"})
         return httpx.Response(200, json={"id": "task_slow", "status": "running"})
@@ -351,8 +354,10 @@ async def test_browser_task_covers_categories_and_stops_on_timeout(monkeypatch: 
     assert caught.value.code == "TIMEOUT"
     task = next(text for method, text in calls if method == "task")
     assert "tops" in task and "bottoms" in task and "shoes" in task and "accessories" in task
-    assert "multi-category retailer" in task
-    assert any(url.endswith("/tasks/task_slow/stop") for _method, url in calls)
+    assert "department" not in task.lower()
+    assert "Stay on this site" in task
+    assert "product page" in task
+    assert any(method == "PATCH" and url.rstrip("/").endswith("/tasks/task_slow") for method, url in calls)
 
 
 @pytest.mark.asyncio
@@ -439,31 +444,10 @@ class _Down(MockModelProvider):
         raise ProviderError("veri down", code="timeout")
 
 
-@pytest.mark.asyncio
-async def test_local_cloud_search_beats_deadline_weighted_on_val_and_test(tmp_path: Path) -> None:
-    adapter = CloudSchedulingAdapter(seed=42)
-    repository = RunRepository(tmp_path)
-    result = await EvolutionController().evolve(
-        objective=cloud_objective(),
-        adapter=adapter,
-        config=EvolutionConfig(
-            seed=42,
-            population_size=8,
-            generations=2,
-            elite_count=2,
-            strategist_calls_per_generation=0,
-            max_model_calls=8,
-            max_evaluations=220,
-            max_wall_seconds=180,
-        ),
-        providers={"model": _Down(), "workflow": MockAgentProvider()},
-        mode="mock",
-        repository=repository,
-    )
-    deadline = CLOUD_SEARCH_CEILING["deadline_weighted"]
-    assert result.summary["champion_validation_fitness"] > deadline["validation"]
-    assert result.summary["champion_test_fitness"] > deadline["test"]
-    assert result.champion_id
-    champion = repository.genomes[result.champion_id]
-    assert champion.provider in {"random", "baseline"}
-    assert any(genome.provider == "random" for genome in repository.genomes.values())
+def test_hand_biased_local_seeds_are_gone() -> None:
+    cloud_source = Path("geneai_core/domains/cloud.py").read_text(encoding="utf-8")
+    controller_source = Path("geneai_core/controller.py").read_text(encoding="utf-8")
+    assert "_LOCAL_SAMPLE_BIAS" not in cloud_source
+    assert "objective_local_payload" not in cloud_source
+    assert "objective-biased" not in controller_source
+    assert "_seed_local_samples" not in controller_source

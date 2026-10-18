@@ -97,6 +97,7 @@ class BrowserUseClient:
         timeout_s: float = 420.0,
         poll_s: float = 2.0,
         sleeper: Any | None = None,
+        image_client: httpx.AsyncClient | None = None,
     ) -> None:
         if not api_key:
             raise CredentialsError("BROWSER_USE_API_KEY is missing. No request was sent.")
@@ -105,6 +106,7 @@ class BrowserUseClient:
         self.poll_s = poll_s
         self._client = client
         self._sleeper = sleeper
+        self._image_client = image_client
 
     @classmethod
     def from_env(cls) -> BrowserUseClient:
@@ -126,17 +128,15 @@ class BrowserUseClient:
         if not catalog_url.startswith("https://") and not catalog_url.startswith("http://"):
             raise ProviderError("catalog_url must be an http(s) URL. No request was sent.")
         task = (
-            "Read the public catalog page. Collect 30 to 40 products. "
-            "Cover tops, bottoms, shoes, and accessories. "
+            f"Stay on this site: {catalog_url}. Do not open any other retailer. "
+            "Collect 30 to 40 products. Cover tops, bottoms, shoes, layers, and accessories. "
             "Each role must be one of top, bottom, shoes, layer, accessory. "
+            "Open each product page on this site and copy product_url and image_url from that page. "
             "If this page is a single category, open the related category pages on the same site. "
-            "Prefer a multi-category retailer such as a department store that sells "
-            "tops, bottoms, shoes, and accessories when the opened page is only one category. "
             "For every product return title, price, product_url, image_url, retailer, availability, "
             "role, colors, and style tags. Include occasion tags when the page states them. "
             "Do not sign in, do not add to cart, and do not enter payment. "
-            "product_url and image_url must be the URLs you opened. "
-            f"Page: {catalog_url}. Request: {query}"
+            f"Request: {query}"
         )
         created = await self._request(
             "POST",
@@ -170,6 +170,7 @@ class BrowserUseClient:
         catalog["captured_at"] = document.get("finishedAt")
         catalog["total_cost_usd"] = document.get("cost")
         catalog["browser_use_run_id"] = task_id
+        await self._verify_catalog_images(catalog)
         if not catalog["products"]:
             raise ProviderError(
                 f"Browser Use task {task_id} returned no products with an http(s) product_url. "
@@ -199,13 +200,48 @@ class BrowserUseClient:
                 )
             await self._sleep(self.poll_s)
 
+    async def _verify_catalog_images(self, catalog: dict[str, Any]) -> None:
+        kept: list[dict[str, Any]] = []
+        dropped = 0
+        for product in catalog.get("products") or []:
+            if await self._image_ok(product.get("image_url")):
+                kept.append(product)
+            else:
+                dropped += 1
+        catalog["products"] = kept
+        catalog["image_verified_count"] = len(kept)
+        catalog["image_dropped_count"] = dropped
+
+    async def _image_ok(self, url: Any) -> bool:
+        if not isinstance(url, str) or not (url.startswith("https://") or url.startswith("http://")):
+            return False
+        owns = self._image_client is None
+        client = self._image_client or httpx.AsyncClient(timeout=10.0, follow_redirects=True)
+        try:
+            for method in ("HEAD", "GET"):
+                try:
+                    response = await client.request(method, url)
+                except httpx.HTTPError:
+                    continue
+                ctype = response.headers.get("content-type", "").split(";")[0].strip().lower()
+                if response.status_code == 200 and ctype.startswith("image/"):
+                    return True
+        finally:
+            if owns:
+                await client.aclose()
+        return False
+
     async def _stop(self, task_id: str) -> None:
-        """Ask Browser Use to stop the remote task when the local wait is over."""
+        """PATCH /api/v2/tasks/{id} with action stop. Log a failure and keep going."""
+
+        import logging
 
         try:
-            await self._request("POST", f"{API_ORIGIN}/tasks/{task_id}/stop", {})
-        except ProviderError:
-            return
+            await self._request("PATCH", f"{API_ORIGIN}/tasks/{task_id}", {"action": "stop"})
+        except ProviderError as exc:
+            logging.getLogger("geneai_core.providers.browser_use").warning(
+                "Browser Use stop failed for %s: %s", task_id, exc
+            )
 
     async def _request(self, method: str, url: str, body: dict[str, Any] | None) -> dict[str, Any]:
         if not url.startswith(API_ORIGIN + "/") and url != API_ORIGIN:

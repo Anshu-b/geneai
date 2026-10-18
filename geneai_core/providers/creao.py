@@ -604,7 +604,7 @@ class CreaoProvider:
             json_body=build_create_body(inputs, webhook_url=self.webhook_url),
         )
         run_id = run_id_from_create(created)
-        document = await self._poll(run_id)
+        document = await self._poll(run_id, timeout_s=self._bounded_timeout(inputs.get("timeout_s")))
         status = str(document.get("status") or "")
         if status != "completed":
             raise ProviderError(
@@ -719,8 +719,17 @@ class CreaoProvider:
         summary["body"] = parsed
         return summary
 
-    async def _poll(self, run_id: str) -> dict[str, Any]:
-        deadline = time.monotonic() + self.timeout_s
+    def _bounded_timeout(self, requested: Any) -> float:
+        """CREAO wait is min(180, remaining, configured timeout). A timeout stays soft upstream."""
+
+        limit = min(180.0, float(self.timeout_s))
+        if isinstance(requested, (int, float)) and not isinstance(requested, bool):
+            limit = min(limit, max(0.0, float(requested)))
+        return limit
+
+    async def _poll(self, run_id: str, timeout_s: float | None = None) -> dict[str, Any]:
+        limit = self.timeout_s if timeout_s is None else timeout_s
+        deadline = time.monotonic() + limit
         url = app_run_status(self.app_id, run_id)
         while True:
             document = await self._request("GET", url)
