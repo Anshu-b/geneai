@@ -35,6 +35,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--generations", type=int, default=12)
     parser.add_argument("--elite-count", type=int, default=2)
     parser.add_argument("--strategist-calls", type=int, default=3)
+    parser.add_argument(
+        "--max-wall-seconds",
+        type=int,
+        default=900,
+        help="Stop after this many seconds. The current generation still finishes its evaluations, and the champion is scored on validation.",
+    )
     parser.add_argument("--catalog-url", default=None, help="Required for shopping --mode live. No retailer default.")
     parser.add_argument("--out", default="runs")
     parser.add_argument("--skip-oneshot", action="store_true")
@@ -59,6 +65,7 @@ def main() -> None:
                 generations=args.generations,
                 elite_count=args.elite_count,
                 strategist_calls_per_generation=args.strategist_calls,
+                max_wall_seconds=args.max_wall_seconds,
                 root=args.out,
                 catalog_url=args.catalog_url,
                 attach_oneshot=not args.skip_oneshot,

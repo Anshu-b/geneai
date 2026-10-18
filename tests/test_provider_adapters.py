@@ -19,7 +19,7 @@ from geneai_core.providers.creao import (
     summarize_run_list,
 )
 from geneai_core.providers.creao_cli_unverified import UnverifiedCreaoCliProvider
-from geneai_core.providers.frontier import FrontierProvider
+from geneai_core.providers.frontier import FrontierProvider, uses_responses_api
 from geneai_core.providers.mock import MockModelProvider
 from geneai_core.providers.openai_compat import reject_chat_completions_base
 from geneai_core.providers.veri import (
@@ -500,3 +500,81 @@ async def test_veri_caps_in_flight_calls_at_the_deployment_target() -> None:
     proposals = await asyncio.gather(*tasks)
     assert state["max_seen"] == VERI_CONCURRENCY_TARGET
     assert len(proposals) == VERI_CONCURRENCY_TARGET + 4
+
+
+def test_gpt5_uses_responses_not_chat_temperature() -> None:
+    assert uses_responses_api("gpt-5.5") is True
+    assert uses_responses_api("o4-mini") is True
+    assert uses_responses_api("gpt-4.1") is False
+
+
+@pytest.mark.asyncio
+async def test_frontier_gpt55_calls_responses_without_temperature() -> None:
+    seen: dict[str, object] = {}
+
+    class Responses:
+        async def create(self, **kwargs):
+            seen["kwargs"] = kwargs
+            return SimpleNamespace(
+                id="resp_1",
+                model="gpt-5.5",
+                output_text='{"payload":{"ok":true},"hypothesis":"one shot"}',
+                usage=SimpleNamespace(input_tokens=3, output_tokens=4),
+            )
+
+    class Client:
+        def __init__(self) -> None:
+            self.responses = Responses()
+
+        async def close(self) -> None:
+            return None
+
+    provider = FrontierProvider(
+        api_key="sk-test",
+        base_url="https://api.openai.com/v1",
+        model="gpt-5.5",
+        client=Client(),
+    )
+    proposal = await provider.propose("Return one genome.", {"type": "object"}, call_id="c1")
+    kwargs = seen["kwargs"]
+    assert isinstance(kwargs, dict)
+    assert kwargs["model"] == "gpt-5.5"
+    assert kwargs["max_output_tokens"] == 4000
+    assert kwargs["store"] is False
+    assert "temperature" not in kwargs
+    assert proposal.extra["api"] == "responses"
+    assert proposal.payload == {"ok": True}
+
+
+@pytest.mark.asyncio
+async def test_frontier_chat_uses_max_completion_tokens() -> None:
+    seen: dict[str, object] = {}
+
+    class Completions:
+        async def create(self, **kwargs):
+            seen["kwargs"] = kwargs
+            return SimpleNamespace(
+                id="chat_1",
+                model="gpt-4.1",
+                choices=[
+                    SimpleNamespace(
+                        message=SimpleNamespace(content='{"payload":{"ok":true},"hypothesis":"chat"}'),
+                        finish_reason="stop",
+                    )
+                ],
+                usage=SimpleNamespace(prompt_tokens=2, completion_tokens=3, total_tokens=5),
+            )
+
+    client = SimpleNamespace(chat=SimpleNamespace(completions=Completions()), close=None)
+    provider = FrontierProvider(
+        api_key="sk-test",
+        base_url="https://api.openai.com/v1",
+        model="gpt-4.1",
+        client=client,
+    )
+    proposal = await provider.propose("Return one genome.", {"type": "object"}, call_id="c2")
+    kwargs = seen["kwargs"]
+    assert isinstance(kwargs, dict)
+    assert kwargs["max_completion_tokens"] == 4000
+    assert "max_tokens" not in kwargs
+    assert proposal.extra["api"] == "chat.completions"

@@ -6,7 +6,7 @@ plugins. Do not fork the engine per demo.
 ## Status
 
 Implemented: typed contracts, registry, the shared controller, toy_optimization,
-cloud_scheduling, shopping (fixture catalog plus Browser Use v4 client),
+cloud_scheduling, shopping (fixture catalog plus Browser Use v2 task client),
 tournament selection, mutation, crossover, elitism, immigrants, repair, dedup,
 pruning, budgets, lineage JSONL, section 13.3 export, Mock providers,
 VeriProvider, CreaoProvider (app-scoped GeneAI Mutator), FrontierProvider
@@ -30,7 +30,8 @@ without crowding the two primary domains.
 - Veri base URL is `https://api.veri.studio/v1/deployments/bfe84d51e141`.
   The OpenAI model field is `geneai-qwen7b`. Cap in-flight calls at 8 and
   retry 429/503 (`deployment_waking`) with Retry-After.
-- Mock output stays `provider_mode=mock`. Do not relabel it live or recorded.
+- Mock output stays `provider_mode=mock`. Do not relabel a run live or recorded.
+  A Browser Use catalog cache may be `source: recorded`; that is the file, not the run.
 - The controller must not import a concrete domain or sponsor client.
 - Secrets stay in the environment. `.env.example` has empty secrets and the
   public CREAO app id and Veri deployment id.

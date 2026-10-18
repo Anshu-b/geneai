@@ -21,6 +21,7 @@ from geneai_core.operators import (
     pick_two_parents,
     repair_instructions,
     sample_operation,
+    seed_batch_note,
     wrapper_schema,
 )
 from geneai_core.providers.base import Proposal, ProviderError
@@ -41,6 +42,24 @@ from geneai_core.selection import (
     select_elites,
 )
 from geneai_core.store import RunRepository
+
+# One seed call asks for several genomes. Temperatures rotate so repeated
+# calls are not samples from the same narrow distribution.
+_SEED_BATCH = 4
+_SEED_TEMPERATURES = (0.4, 0.8, 1.1, 0.6)
+
+
+def _proposal_bodies(proposal: Proposal) -> list[tuple[dict[str, Any], str]]:
+    raw = (proposal.extra or {}).get("candidates")
+    bodies: list[tuple[dict[str, Any], str]] = []
+    if isinstance(raw, list):
+        for item in raw:
+            if isinstance(item, dict) and isinstance(item.get("payload"), dict):
+                bodies.append((item["payload"], str(item.get("hypothesis") or proposal.hypothesis or "")))
+    if bodies:
+        return bodies
+    payload = proposal.payload if isinstance(proposal.payload, dict) else {}
+    return [(payload, proposal.hypothesis or "")]
 
 
 class EvolutionController:
@@ -101,8 +120,8 @@ class EvolutionController:
         counters = {"mutation": 0, "crossover": 0, "immigrant": 0, "seed": 0, "repair": 0}
         call_serial = 0
         strategist_used = 0
-        # Default 8 matches the Veri deployment concurrency_target. Proposals
-        # are awaited one at a time; the cap applies if calls overlap.
+        # Default 8 matches the Veri deployment concurrency_target. Seed waves
+        # and each generation's variation wave run this many calls at once.
         semaphore = asyncio.Semaphore(config.max_concurrent_model_calls)
         population: list[Individual] = []
         generations_completed = 0
@@ -220,7 +239,7 @@ class EvolutionController:
             generation: int,
             role: str | None,
             provider_role: str | None = None,
-        ) -> Genome | None:
+        ) -> tuple[Genome | None, str | None]:
             payload = normalize_payload(proposal.payload)
             if not isinstance(payload, dict):
                 repository.emit(
@@ -228,7 +247,7 @@ class EvolutionController:
                     {"reason_code": "invalid_schema", "reason": "payload was not an object", "operator": operator},
                     provenance,
                 )
-                return None
+                return None, "invalid_schema"
             payload = _project_payload(payload, adapter.genome_schema())
             try:
                 adapter.validate(payload, objective)
@@ -243,7 +262,7 @@ class EvolutionController:
                     },
                     provenance,
                 )
-                return None
+                return None, "invalid_schema"
             digest = content_hash(payload)
             if digest in seen_hashes:
                 repository.emit(
@@ -257,7 +276,7 @@ class EvolutionController:
                     },
                     provenance,
                 )
-                return None
+                return None, "duplicate"
             genome = Genome(
                 id=repository.next_genome_id(),
                 run_id=repository.run_id,
@@ -292,7 +311,7 @@ class EvolutionController:
                     {"reason_code": "lineage", "reason": str(exc), "operator": operator},
                     provenance,
                 )
-                return None
+                return None, "lineage"
             seen_hashes.add(digest)
             repository.emit(
                 creation_event_type(operator, origin),
@@ -311,15 +330,22 @@ class EvolutionController:
                     lineage_payload(genome),
                     provenance,
                 )
-            return genome
+            return genome, None
 
-        def evaluate_genome(genome: Genome, split: str) -> Evaluation | None:
-            if not budget.allows_evaluation():
+        def evaluate_genome(genome: Genome, split: str, *, required: bool = False) -> Evaluation | None:
+            if budget.cancelled:
                 return None
             key = (genome.content_hash, split)
             cached = _cached(repository, key)
             if cached is not None:
                 return cached
+            if budget.evaluations >= budget.config.max_evaluations:
+                budget.exhausted_reason = budget.exhausted_reason or "max_evaluations"
+                return None
+            # A genome already proposed, and the champion's validation score,
+            # still run when the wall clock is the only thing that tripped.
+            if not required and not budget.allows_evaluation():
+                return None
             started = time.perf_counter()
             evaluation = adapter.evaluate(genome, split)
             evaluation.elapsed_ms = max(evaluation.elapsed_ms, int((time.perf_counter() - started) * 1000))
@@ -344,7 +370,7 @@ class EvolutionController:
             )
             return evaluation
 
-        async def propose_one(
+        async def propose_many(
             *,
             operation: str,
             generation: int,
@@ -356,17 +382,37 @@ class EvolutionController:
             invalid_payload: dict[str, Any] | None = None,
             role: str | None = None,
             provider_role: str | None = None,
-        ) -> Individual | None:
+            batch_size: int = 1,
+            temperature: float | None = None,
+            sample_seed: int | None = None,
+        ) -> list[Individual]:
             nonlocal strategist_used
             token = rng.randrange(2**30)
-            context = {
+            effective_batch = 1 if invalid_payload is not None else max(1, min(int(batch_size), 8))
+            if operation not in {"seed", "immigrant"}:
+                effective_batch = 1
+            context: dict[str, Any] = {
                 "operation": "repair" if invalid_payload is not None else operation,
                 "slot": generation,
                 "token": token,
                 "parents": [item.payload for item in context_parents],
                 "invalid_payload": invalid_payload,
+                "batch_size": effective_batch,
+                "avoid_hashes": sorted(seen_hashes)[:32],
             }
-            instruction = attach_context(human, context)
+            if temperature is not None:
+                context["temperature"] = float(temperature)
+            if sample_seed is not None:
+                context["sample_seed"] = int(sample_seed)
+            note = ""
+            if effective_batch > 1 and operation in {"seed", "immigrant"} and sample_seed is not None:
+                note = seed_batch_note(
+                    count=effective_batch,
+                    avoid_hashes=list(context["avoid_hashes"]),
+                    temperature=float(temperature if temperature is not None else 0.2),
+                    sample_seed=int(sample_seed),
+                )
+            instruction = attach_context(human + note, context)
             proposal = await provider_call(
                 channel,
                 operation,
@@ -377,66 +423,75 @@ class EvolutionController:
                 provider_role=provider_role,
             )
             if proposal is None:
-                return None
+                return []
             origin = operation if operation != "immigrant" else "seed"
-            operator = origin
+            operator = "repair" if invalid_payload is not None else origin
             parent_ids = [item.id for item in context_parents]
-            genome = accept_payload(
-                proposal,
-                operator=operator,  # type: ignore[arg-type]
-                origin=origin,
-                parent_ids=parent_ids,
-                generation=generation,
-                role=role,
-                provider_role=provider_role,
-            )
-            if genome is None and invalid_payload is None:
-                # One repair pass. A strategist repair spends another workflow slot.
-                repository.emit(
-                    "genome.rejected",
-                    {"reason_code": "repair_scheduled", "reason": "scheduling one repair", "operator": operation},
-                    provenance,
-                )
-                repair_task = repair_instructions(
-                    objective=objective,
-                    payload_schema=adapter.genome_schema(),
-                    invalid_payload=proposal.payload if isinstance(proposal.payload, dict) else {},
-                    error="schema or duplicate rejection",
-                )
-                repair_channel = "model"
-                repair_role = "bulk"
-                if channel == "workflow" and strategist_used < config.strategist_calls_per_generation:
-                    strategist_used += 1
-                    repair_channel = "workflow"
-                    repair_role = "strategist"
-                return await propose_one(
-                    operation="repair",
+            accepted: list[Individual] = []
+            invalid_body: dict[str, Any] | None = None
+            for payload, hypothesis in _proposal_bodies(proposal):
+                cloned = proposal.model_copy(update={"payload": payload, "hypothesis": hypothesis})
+                genome, reason = accept_payload(
+                    cloned,
+                    operator=operator,  # type: ignore[arg-type]
+                    origin=origin,
+                    parent_ids=parent_ids,
                     generation=generation,
-                    parents=parents,
-                    channel=repair_channel,
-                    task=repair_task,
-                    human=repair_task,
-                    context_parents=context_parents,
-                    invalid_payload=proposal.payload if isinstance(proposal.payload, dict) else {},
                     role=role,
-                    provider_role=repair_role,
+                    provider_role=provider_role,
                 )
-            if genome is None:
-                return None
-            if genome.operator == "repair" or operation == "repair":
-                counters["repair"] += 1
-            evaluation = evaluate_genome(genome, "train")
-            if evaluation is None:
-                return None
-            if operation == "mutation":
-                counters["mutation"] += 1
-            elif operation == "crossover":
-                counters["crossover"] += 1
-            elif operation == "immigrant":
-                counters["immigrant"] += 1
-            elif operation == "seed":
-                counters["seed"] += 1
-            return Individual(genome=genome, evaluation=evaluation)
+                if genome is None:
+                    if reason == "invalid_schema" and invalid_body is None:
+                        invalid_body = payload
+                    continue
+                evaluation = evaluate_genome(genome, "train", required=True)
+                if evaluation is None:
+                    continue
+                if operator == "repair":
+                    counters["repair"] += 1
+                elif operation == "mutation":
+                    counters["mutation"] += 1
+                elif operation == "crossover":
+                    counters["crossover"] += 1
+                elif operation == "immigrant":
+                    counters["immigrant"] += 1
+                elif operation == "seed":
+                    counters["seed"] += 1
+                accepted.append(Individual(genome=genome, evaluation=evaluation))
+            if accepted or invalid_payload is not None or invalid_body is None:
+                return accepted
+            # Schema failures get one repair. Duplicate hashes do not: a repair
+            # that "changes as little as possible" reproduces the same genome.
+            repository.emit(
+                "genome.rejected",
+                {"reason_code": "repair_scheduled", "reason": "scheduling one repair", "operator": operation},
+                provenance,
+            )
+            repair_task = repair_instructions(
+                objective=objective,
+                payload_schema=adapter.genome_schema(),
+                invalid_payload=invalid_body,
+                error="schema rejection",
+            )
+            repair_channel = "model"
+            repair_role = provider_role or "bulk"
+            if channel == "workflow" and strategist_used < config.strategist_calls_per_generation:
+                strategist_used += 1
+                repair_channel = "workflow"
+                repair_role = "strategist"
+            return await propose_many(
+                operation="repair",
+                generation=generation,
+                parents=parents,
+                channel=repair_channel,
+                task=repair_task,
+                human=repair_task,
+                context_parents=context_parents,
+                invalid_payload=invalid_body,
+                role=role,
+                provider_role=repair_role,
+                batch_size=1,
+            )
 
         try:
             repository.emit("generation.started", {"generation": 0, "phase": "seed"}, provenance)
@@ -455,7 +510,7 @@ class EvolutionController:
                     mode="baseline",
                     extra={"seeded_baseline": True, "baseline_name": name},
                 )
-                genome = accept_payload(
+                genome, _reason = accept_payload(
                     proposal,
                     operator="seed",
                     origin="seed",
@@ -472,27 +527,58 @@ class EvolutionController:
                 counters["seed"] += 1
                 population.append(Individual(genome=genome, evaluation=evaluation))
             attempts = 0
-            while len(population) < config.population_size and attempts < config.population_size * 8:
-                if not budget.allows_model_call() or not budget.allows_evaluation():
+            attempt_cap = config.population_size * 4
+            temperature_index = 0
+            while len(population) < config.population_size and attempts < attempt_cap:
+                if not budget.allows_model_call():
                     stop_reason = budget.exhausted_reason or "budget"
                     break
-                attempts += 1
-                # The GeneAI Mutator only accepts mutate|crossover, so seeds stay
-                # on the model provider.
-                human = adapter.seed_instructions(objective)
-                child = await propose_one(
-                    operation="seed",
-                    generation=0,
-                    parents=[],
-                    channel="model",
-                    task=human,
-                    human=human,
-                    context_parents=[],
-                    role="seed",
-                    provider_role="seed",
+                if budget.evaluations >= config.max_evaluations:
+                    stop_reason = budget.exhausted_reason or "max_evaluations"
+                    break
+                remaining = config.population_size - len(population)
+                batch = min(_SEED_BATCH, remaining)
+                room_calls = max(0, config.max_model_calls - budget.model_calls)
+                wave = min(
+                    config.max_concurrent_model_calls,
+                    max(1, (remaining + batch - 1) // batch),
+                    room_calls,
+                    attempt_cap - attempts,
                 )
-                if child is not None:
-                    population.append(child)
+                if wave < 1:
+                    stop_reason = budget.exhausted_reason or "budget"
+                    break
+                coroutines = []
+                for _ in range(wave):
+                    attempts += 1
+                    temperature = _SEED_TEMPERATURES[temperature_index % len(_SEED_TEMPERATURES)]
+                    temperature_index += 1
+                    sample_seed = rng.randrange(2**31)
+                    # The GeneAI Mutator only accepts mutate|crossover, so seeds stay
+                    # on the model provider. Hand-written baselines were inserted above.
+                    human = adapter.seed_instructions(objective)
+                    coroutines.append(
+                        propose_many(
+                            operation="seed",
+                            generation=0,
+                            parents=[],
+                            channel="model",
+                            task=human,
+                            human=human,
+                            context_parents=[],
+                            role="seed",
+                            provider_role="seed",
+                            batch_size=batch,
+                            temperature=temperature,
+                            sample_seed=sample_seed,
+                        )
+                    )
+                groups = await asyncio.gather(*coroutines)
+                for group in groups:
+                    for child in group:
+                        if len(population) >= config.population_size:
+                            break
+                        population.append(child)
             if not population:
                 status = "failed"
                 stop_reason = budget.exhausted_reason or "no_valid_seeds"
@@ -595,7 +681,7 @@ class EvolutionController:
                     strategist_used += sum(1 for plan in plans if plan["channel"] == "workflow")
                     produced = await asyncio.gather(
                         *[
-                            propose_one(
+                            propose_many(
                                 operation=plan["operation"],
                                 generation=generation,
                                 parents=plan["parents"],
@@ -605,11 +691,18 @@ class EvolutionController:
                                 context_parents=plan["context_parents"],
                                 role=plan["role"],
                                 provider_role=plan["provider_role"],
+                                batch_size=int(plan.get("batch_size") or 1),
+                                temperature=plan.get("temperature"),
+                                sample_seed=plan.get("sample_seed"),
                             )
                             for plan in plans
                         ]
                     )
-                    children.extend(item for item in produced if item is not None)
+                    for group in produced:
+                        for item in group:
+                            if len(children) >= desired:
+                                break
+                            children.append(item)
                 nxt = next_population(elites, children, config.population_size, adapter)
                 removed = pruned_individuals(population, nxt)
                 for item in removed:
@@ -741,6 +834,7 @@ def _plan_variation(
             }
         operation = "mutation"
     if operation == "immigrant":
+        sample_seed = operation_rng.randrange(2**31)
         return {
             "operation": "immigrant",
             "parents": [],
@@ -749,6 +843,9 @@ def _plan_variation(
             "role": "immigrant",
             "channel": "model",
             "provider_role": "immigrant",
+            "batch_size": _SEED_BATCH,
+            "temperature": _SEED_TEMPERATURES[sample_seed % len(_SEED_TEMPERATURES)],
+            "sample_seed": sample_seed,
         }
     parent = operation_rng.choice(mating_pool)
     return {
@@ -885,7 +982,17 @@ def _finish_generation(
     )
     repository.emit("checkpoint.saved", {"generation": generation, "path": str(repository.checkpoint_path)}, provenance)
     repository.emit("generation.completed", payload, provenance)
-    repository.emit("budget.updated", budget.snapshot().model_dump(mode="json"), provenance)
+    snapshot = budget.snapshot()
+    repository.emit("budget.updated", snapshot.model_dump(mode="json"), provenance)
+    best_fitness = "none" if payload["best_fitness"] is None else f"{payload['best_fitness']:.6f}"
+    best_id = payload["best_genome_id"] or "-"
+    print(
+        f"generation {generation} complete  population={len(population)}  "
+        f"best_train={best_fitness}  best={best_id}  "
+        f"calls={snapshot.model_calls}  evals={snapshot.evaluations}  "
+        f"elapsed_s={snapshot.elapsed_seconds:.1f}",
+        flush=True,
+    )
 
 
 def _freeze_champion(
@@ -929,56 +1036,44 @@ def _freeze_champion(
         finalists = [ranked[0]]
     validated: list[tuple[Individual, Evaluation]] = []
     for item in finalists:
-        if not budget.allows_evaluation():
-            break
-        evaluation = evaluate_genome(item.genome, "validation")
-        if evaluation is not None:
+        evaluation = evaluate_genome(item.genome, "validation", required=True)
+        if evaluation is not None and evaluation.fitness is not None:
             validated.append((item, evaluation))
-    if validated:
-        winner, held = max(
-            validated,
-            key=lambda pair: (
-                1 if pair[1].feasible and pair[1].fitness is not None else 0,
-                pair[1].fitness or float("-inf"),
-                pair[0].evaluation.fitness or float("-inf"),
-                pair[0].genome.id,
-            ),
-        )
-        basis = "validation"
-        basis_fitness = held.fitness
-        basis_feasible = held.feasible
-    elif ranked:
-        winner = ranked[0]
-        basis = "train_fallback"
-        basis_fitness = winner.evaluation.fitness
-        basis_feasible = winner.evaluation.feasible
-    else:
+    if not validated:
         return None
+    winner, held = max(
+        validated,
+        key=lambda pair: (
+            1 if pair[1].feasible else 0,
+            pair[1].fitness or float("-inf"),
+            pair[0].evaluation.fitness or float("-inf"),
+            pair[0].genome.id,
+        ),
+    )
     repository.emit(
         "champion.frozen",
         lineage_payload(
             winner.genome,
-            evaluation_fitness=basis_fitness,
-            feasible=basis_feasible,
-            split="validation" if basis == "validation" else "train",
-            extra={"basis": basis},
+            evaluation_fitness=held.fitness,
+            feasible=held.feasible,
+            split="validation",
+            extra={"basis": "validation"},
         ),
         provenance,
     )
-    if budget.allows_evaluation():
-        tested = evaluate_genome(winner.genome, "test")
-        if tested is not None:
-            repository.emit(
-                "champion.tested",
-                lineage_payload(
-                    winner.genome,
-                    evaluation_fitness=tested.fitness,
-                    feasible=tested.feasible,
-                    split="test",
-                    extra={"metrics": tested.metrics, "basis": basis},
-                ),
-                provenance.model_copy(update={"evaluator_version": adapter.evaluator_version}),
-            )
+    tested = evaluate_genome(winner.genome, "test", required=True)
+    if tested is not None:
+        repository.emit(
+            "champion.tested",
+            lineage_payload(
+                winner.genome,
+                evaluation_fitness=tested.fitness,
+                feasible=tested.feasible,
+                split="test",
+                extra={"metrics": tested.metrics, "basis": "validation"},
+            ),
+            provenance.model_copy(update={"evaluator_version": adapter.evaluator_version}),
+        )
     return winner
 
 

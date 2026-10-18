@@ -561,23 +561,31 @@ def _repair_node(invalid: Any, schema: dict[str, Any], rng: random.Random, fallb
     return invalid if invalid is not None else fallback
 
 
-def materialize(instruction: str, schema: dict[str, Any]) -> tuple[dict[str, Any], str]:
-    context = parse_context(instruction)
-    token = int(context.get("token") or 0)
-    rng = random.Random(token)
-    payload_schema = _payload_schema(schema)
-    operation = str(context.get("operation") or "seed")
-    parents = context.get("parents") or []
+def _one_candidate(
+    *,
+    operation: str,
+    parents: list[Any],
+    invalid_payload: dict[str, Any] | None,
+    payload_schema: dict[str, Any],
+    rng: random.Random,
+    token: int,
+    avoid: set[str],
+) -> tuple[dict[str, Any], str]:
     if operation == "mutation" and parents and isinstance(parents[0], dict):
         payload = mutate_one(parents[0], payload_schema, rng)
     elif operation == "crossover" and len(parents) >= 2 and isinstance(parents[0], dict):
         second = parents[1] if isinstance(parents[1], dict) else {}
         payload = cross_payloads(parents[0], second, payload_schema, rng)
     elif operation == "repair":
-        invalid = context.get("invalid_payload") if isinstance(context.get("invalid_payload"), dict) else {}
+        invalid = invalid_payload if isinstance(invalid_payload, dict) else {}
         payload = repair_payload(invalid, payload_schema, rng)
     else:
         payload = fill_schema(payload_schema, rng)
+        for _ in range(4):
+            normalized = normalize_payload(payload)
+            if isinstance(normalized, dict) and content_hash(normalized) not in avoid:
+                break
+            payload = fill_schema(payload_schema, rng)
     payload = normalize_payload(payload)
     if not isinstance(payload, dict):
         payload = {"value": payload}
@@ -586,8 +594,37 @@ def materialize(instruction: str, schema: dict[str, Any]) -> tuple[dict[str, Any
             payload = dict(payload)
             payload["description"] = str(payload.get("description") or "candidate") + f" #{token}"
             payload = normalize_payload(payload)
-    hypothesis = f"{operation} proposal token {token}"
-    return payload, hypothesis
+    return payload, f"{operation} proposal token {token}"
+
+
+def materialize(instruction: str, schema: dict[str, Any]) -> tuple[dict[str, Any], str, list[dict[str, Any]]]:
+    context = parse_context(instruction)
+    token = int(context.get("token") or 0)
+    rng = random.Random(token + int(context.get("sample_seed") or 0))
+    payload_schema = _payload_schema(schema)
+    operation = str(context.get("operation") or "seed")
+    parents = context.get("parents") or []
+    invalid = context.get("invalid_payload") if isinstance(context.get("invalid_payload"), dict) else None
+    avoid = {str(item) for item in (context.get("avoid_hashes") or [])}
+    batch = int(context.get("batch_size") or 1)
+    if operation not in {"seed", "immigrant"}:
+        batch = 1
+    batch = max(1, min(batch, 8))
+    candidates: list[dict[str, Any]] = []
+    for index in range(batch):
+        child_rng = random.Random(token + index * 997 + int(context.get("sample_seed") or 0))
+        payload, hypothesis = _one_candidate(
+            operation=operation,
+            parents=parents,
+            invalid_payload=invalid,
+            payload_schema=payload_schema,
+            rng=child_rng,
+            token=token + index,
+            avoid=avoid | {content_hash(item["payload"]) for item in candidates if isinstance(item.get("payload"), dict)},
+        )
+        candidates.append({"payload": payload, "hypothesis": hypothesis})
+    first = candidates[0]
+    return first["payload"], first["hypothesis"], candidates
 
 
 class MockModelProvider:
@@ -600,7 +637,10 @@ class MockModelProvider:
 
     async def propose(self, instruction: str, schema: dict[str, Any], *, call_id: str) -> Proposal:
         self.calls += 1
-        payload, hypothesis = materialize(instruction, schema)
+        payload, hypothesis, candidates = materialize(instruction, schema)
+        extra: dict[str, Any] = {}
+        if len(candidates) > 1:
+            extra["candidates"] = candidates
         return Proposal(
             payload=payload,
             hypothesis=hypothesis,
@@ -611,6 +651,7 @@ class MockModelProvider:
             cost_is_estimate=self.cost_per_call > 0,
             latency_ms=0,
             mode="mock",
+            extra=extra,
         )
 
     async def propose_json(self, instruction: str, schema: dict[str, Any]) -> dict[str, Any]:

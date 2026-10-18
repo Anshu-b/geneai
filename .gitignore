@@ -6,6 +6,7 @@ __pycache__/
 runs/
 data/recordings/*
 !data/recordings/.gitkeep
+data/catalogs/*.json
 *.pyc
 .python-version
 dist/

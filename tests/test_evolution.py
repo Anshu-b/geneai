@@ -105,6 +105,7 @@ async def test_malformed_and_duplicate_genomes_do_not_crash(tmp_path: Path) -> N
             proposal = await super().propose(instruction, schema, call_id=call_id)
             if self.calls % 4 == 0:
                 proposal.payload = {"nope": True}
+                proposal.extra = {}
             return proposal
 
     class ChaosAgent(MockAgentProvider):
@@ -171,7 +172,9 @@ async def test_cli_mock_run(tmp_path: Path) -> None:
         text=True,
     )
     assert completed.returncode == 0, completed.stderr
-    summary = json.loads(completed.stdout)
+    start = completed.stdout.find("\n{")
+    payload = completed.stdout if start < 0 else completed.stdout[start + 1 :]
+    summary = json.loads(payload)
     assert summary["generations_completed"] == 2
     assert summary["mode"] == "mock"
     assert Path(summary["export_path"]).exists()

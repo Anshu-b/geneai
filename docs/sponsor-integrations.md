@@ -110,21 +110,33 @@ controller or the smoke script.
 
 ## Frontier
 
-`FrontierProvider` is the OpenAI-compatible client for the one-shot arm
-(`FRONTIER_API_KEY`, `FRONTIER_BASE_URL`, `FRONTIER_MODEL`). Evolution does not
-call it. `scripts/run_domain.py` makes one request after the champion is
-frozen. Missing variables skip the arm. The comparison is not compute-matched.
+`FrontierProvider` is the one-shot client (`FRONTIER_API_KEY`, `FRONTIER_BASE_URL`,
+`FRONTIER_MODEL`). gpt-5.5 and other gpt-5 / o-series models use the Responses
+API (`max_output_tokens`, `store: false`, no temperature). Other models use
+Chat Completions with `max_completion_tokens`. Evolution does not call it.
+`scripts/run_domain.py` makes one request after the champion is frozen.
+Missing variables skip the arm. The comparison is not compute-matched.
+Verified settings: `FRONTIER_BASE_URL=https://api.openai.com/v1`,
+`FRONTIER_MODEL=gpt-5.5`.
 
 ## Browser Use
 
-Live shopping catalog collection uses Browser Use Cloud API v4 only:
+Live shopping catalog collection uses Browser Use Cloud API v2 tasks. The key
+was verified with `GET /api/v2/billing/account` and header `X-Browser-Use-API-Key`.
 
 ```text
-POST https://api.browser-use.com/api/v4/runs
-GET  https://api.browser-use.com/api/v4/runs/{id}/status
-GET  https://api.browser-use.com/api/v4/runs/{id}
+POST https://api.browser-use.com/api/v2/tasks
+GET  https://api.browser-use.com/api/v2/tasks/{task_id}/status
+GET  https://api.browser-use.com/api/v2/tasks/{task_id}
 Header: X-Browser-Use-API-Key
 ```
+
+`structuredOutput` is a stringified JSON schema asking for title, price,
+product URL, image URL, retailer, and availability. `startUrl` is the
+`--catalog-url`. A finished task's `output` string is parsed. A successful
+collection is cached at `data/catalogs/shopping_recorded.json` with
+`source`, `label`, and `mode` set to `recorded`. That file is not a fixture
+and is not committed.
 
 The task forbids login, cart, and payment. A product row is kept only when the
 run returns an `http` or `https` `product_url`. Rows without one are dropped.

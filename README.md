@@ -65,9 +65,17 @@ If a variable is missing, hybrid and live exit 3 and print the setup. They do
 not substitute a mock response and label it live.
 
 Live shopping also needs `BROWSER_USE_API_KEY` and `--catalog-url` pointing at
-a public page you may read. The client uses Browser Use API v4, does not log
-in or pay, and drops any row that has no http(s) product URL. It does not
-default to a retailer. Quant is not in this tree.
+a public page you may read. The client uses Browser Use API v2 tasks
+(`POST /api/v2/tasks`, header `X-Browser-Use-API-Key`), does not log in or pay,
+and drops any row that has no http(s) product URL. A successful collection is
+written to `data/catalogs/shopping_recorded.json` with `source: recorded`.
+It does not default to a retailer. Quant is not in this tree.
+
+Hybrid runs call the model provider concurrently (default 8, `VERI_CONCURRENCY`).
+Seed calls ask for several distinct genomes and skip hashes already kept.
+`--max-wall-seconds` defaults to 900. A wall-clock stop still finishes the
+current generation's evaluations and scores the champion on validation before
+freezing it. Each finished generation prints one progress line.
 
 ## Layout
 

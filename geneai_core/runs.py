@@ -10,7 +10,7 @@ from geneai_core.benchmark.oneshot import attach_baseline, frontier_blocker_mess
 from geneai_core.controller import EvolutionController
 from geneai_core.domains.base import DomainAdapter
 from geneai_core.domains.cloud import CloudSchedulingAdapter, cloud_objective
-from geneai_core.domains.shopping import ShoppingAdapter, shopping_objective
+from geneai_core.domains.shopping import ShoppingAdapter, shopping_objective, write_recorded_catalog
 from geneai_core.domains.toy import ToyOptimizationAdapter
 from geneai_core.experiments import build_providers, toy_objective
 from geneai_core.providers.base import CredentialsError
@@ -57,6 +57,7 @@ async def execute_domain_run(
     strategist_calls_per_generation: int = 3,
     catalog_url: str | None = None,
     attach_oneshot: bool = True,
+    max_wall_seconds: int = 900,
 ) -> RunResult:
     catalog = None
     if domain == "shopping" and mode == "live":
@@ -72,8 +73,9 @@ async def execute_domain_run(
             raise SystemExit(browser_use_blocker_message()) from None
         catalog = await client.collect_catalog(
             catalog_url=catalog_url,
-            query="neutral and athletic apparel with visible prices, sizes, and product page URLs",
+            query="neutral and athletic apparel with visible prices, sizes, image URLs, retailer, and product page URLs",
         )
+        write_recorded_catalog(catalog)
     elif domain == "shopping":
         catalog = None
     adapter, objective = make_adapter(domain, seed=seed, catalog=catalog)
@@ -88,7 +90,7 @@ async def execute_domain_run(
         strategist_calls_per_generation=strategist_calls_per_generation,
         max_model_calls=800,
         max_evaluations=900,
-        max_wall_seconds=600,
+        max_wall_seconds=max_wall_seconds,
         finalist_count=6,
     )
     repository = RunRepository(root)

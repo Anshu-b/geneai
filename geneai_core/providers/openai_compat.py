@@ -11,6 +11,7 @@ import json
 import time
 from typing import Any
 
+from geneai_core.operators import parse_context
 from geneai_core.providers.base import Proposal, ProviderError, coerce_proposal_body, message_text, parse_json_object
 
 
@@ -40,6 +41,7 @@ class OpenAICompatibleProvider:
         in_flight_limit: int | None = None,
         wake_timeout_s: float = 180.0,
         sleeper: Any | None = None,
+        request_timeout_s: float = 30.0,
     ) -> None:
         if not api_key:
             raise ProviderError(f"{name} api key is empty")
@@ -54,6 +56,7 @@ class OpenAICompatibleProvider:
         self.max_tokens = max_tokens
         self.max_attempts = max_attempts
         self.wake_timeout_s = wake_timeout_s
+        self.request_timeout_s = request_timeout_s
         self.in_flight_limit = in_flight_limit
         self._in_flight = asyncio.Semaphore(in_flight_limit) if in_flight_limit else None
         self._sleeper = sleeper
@@ -70,7 +73,7 @@ class OpenAICompatibleProvider:
         self._client = AsyncOpenAI(
             api_key=self._api_key,
             base_url=self.base_url,
-            timeout=120.0,
+            timeout=self.request_timeout_s,
             max_retries=0,
         )
         return self._client
@@ -82,23 +85,37 @@ class OpenAICompatibleProvider:
 
     async def propose(self, instruction: str, schema: dict[str, Any], *, call_id: str) -> Proposal:
         started = time.perf_counter()
+        context = parse_context(instruction)
+        batch_size = _positive_int(context.get("batch_size"), default=1, cap=8)
+        temperature = context.get("temperature")
+        sample_seed = context.get("sample_seed")
+        if batch_size > 1:
+            system = (
+                f"You propose {batch_size} distinct candidate genomes. "
+                'Reply with one JSON object {"candidates":[{"payload":{...},"hypothesis":"..."}]}. '
+                "payload must match the schema. The payloads must not be copies. No markdown."
+            )
+            token_cap = min(3200, max(self.max_tokens, 800 * batch_size))
+        else:
+            system = (
+                "You propose one candidate genome. Reply with a single JSON object "
+                "containing keys payload and hypothesis. payload must match the schema. "
+                "No markdown."
+            )
+            token_cap = self.max_tokens
         messages = [
-            {
-                "role": "system",
-                "content": (
-                    "You propose one candidate genome. Reply with a single JSON object "
-                    "containing keys payload and hypothesis. payload must match the schema. "
-                    "No markdown."
-                ),
-            },
+            {"role": "system", "content": system},
             {
                 "role": "user",
-                "content": (
-                    f"{instruction}\n\nJSON schema:\n{json.dumps(schema, sort_keys=True)}"
-                ),
+                "content": f"{instruction}\n\nJSON schema:\n{json.dumps(schema, sort_keys=True)}",
             },
         ]
-        text, response, used_response_format = await self._complete(messages)
+        text, response, used_response_format = await self._complete(
+            messages,
+            temperature=None if temperature is None else float(temperature),
+            sample_seed=None if sample_seed is None else int(sample_seed),
+            max_tokens=token_cap,
+        )
         try:
             parsed = parse_json_object(text)
         except ProviderError:
@@ -106,14 +123,16 @@ class OpenAICompatibleProvider:
             # text is still not JSON, the controller may request one repair call.
             raise
         payload, hypothesis = coerce_proposal_body(parsed)
+        candidates = _candidate_bodies(parsed, payload, hypothesis)
         usage = getattr(response, "usage", None)
         extra = getattr(response, "model_extra", None) or {}
         if not isinstance(extra, dict):
             extra = {}
         latency_ms = int((time.perf_counter() - started) * 1000)
+        stored = dict(candidates[0])
         return Proposal(
-            payload=payload if isinstance(payload, dict) else {"value": payload},
-            hypothesis=hypothesis,
+            payload=stored["payload"] if isinstance(stored.get("payload"), dict) else {"value": stored.get("payload")},
+            hypothesis=str(stored.get("hypothesis") or hypothesis),
             provider=self.name,
             provider_run_id=str(getattr(response, "id", None) or call_id),
             model=str(getattr(response, "model", None) or self.model),
@@ -131,6 +150,9 @@ class OpenAICompatibleProvider:
                 "response_format": used_response_format,
                 "finish_reason": _finish_reason(response),
                 "model_extra_keys": sorted(extra.keys()),
+                "candidates": candidates if len(candidates) > 1 else [],
+                "temperature": self.temperature if temperature is None else float(temperature),
+                "sample_seed": None if sample_seed is None else int(sample_seed),
             },
         )
 
@@ -138,18 +160,29 @@ class OpenAICompatibleProvider:
         proposal = await self.propose(instruction, schema, call_id="direct")
         return {"payload": proposal.payload, "hypothesis": proposal.hypothesis}
 
-    async def _complete(self, messages: list[dict[str, str]]) -> tuple[str, Any, bool]:
+    async def _complete(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        temperature: float | None = None,
+        sample_seed: int | None = None,
+        max_tokens: int | None = None,
+        token_field: str = "max_tokens",
+    ) -> tuple[str, Any, bool]:
         client = self._client_or_create()
         use_format = True
+        send_seed = sample_seed is not None
         slept = 0.0
         timeouts = 0
         while True:
             kwargs: dict[str, Any] = {
                 "model": self.model,
                 "messages": messages,
-                "temperature": self.temperature,
-                "max_tokens": self.max_tokens,
+                "temperature": self.temperature if temperature is None else temperature,
+                token_field: self.max_tokens if max_tokens is None else max_tokens,
             }
+            if send_seed and sample_seed is not None:
+                kwargs["seed"] = int(sample_seed)
             if use_format:
                 kwargs["response_format"] = {"type": "json_object"}
             try:
@@ -159,6 +192,20 @@ class OpenAICompatibleProvider:
                 code = _error_code(exc)
                 if use_format and status in {400, 422}:
                     use_format = False
+                    continue
+                if send_seed and status in {400, 422} and "seed" in str(exc).lower():
+                    send_seed = False
+                    continue
+                if _is_timeout(exc) or status == 408:
+                    timeouts += 1
+                    if timeouts >= 3:
+                        raise ProviderError(
+                            f"{self.name} chat completion timed out after {timeouts} attempts",
+                            retryable=True,
+                            status_code=status or 408,
+                            code="timeout",
+                        ) from exc
+                    await self._sleep(min(2 ** (timeouts - 1), 4))
                     continue
                 if status in {429, 503}:
                     waking = status == 503
@@ -172,10 +219,6 @@ class OpenAICompatibleProvider:
                         ) from exc
                     await self._sleep(delay)
                     slept += delay
-                    continue
-                if status == 408 and timeouts + 1 < self.max_attempts:
-                    timeouts += 1
-                    await self._sleep(min(2 ** (timeouts - 1), 8))
                     continue
                 raise ProviderError(
                     f"{self.name} chat completion failed: {exc.__class__.__name__}",
@@ -206,6 +249,49 @@ class OpenAICompatibleProvider:
     async def _sleep(self, delay: float) -> None:
         sleeper = self._sleeper or asyncio.sleep
         await sleeper(delay)
+
+
+def _positive_int(value: Any, *, default: int, cap: int) -> int:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return default
+    return max(1, min(cap, int(value)))
+
+
+def _candidate_bodies(parsed: dict[str, Any], payload: Any, hypothesis: str) -> list[dict[str, Any]]:
+    raw = parsed.get("candidates")
+    if raw is None:
+        raw = parsed.get("children")
+    bodies: list[dict[str, Any]] = []
+    if isinstance(raw, list):
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+            if isinstance(item.get("payload"), dict):
+                bodies.append(
+                    {
+                        "payload": item["payload"],
+                        "hypothesis": str(item.get("hypothesis") or hypothesis),
+                    }
+                )
+            elif "payload" not in item and "hypothesis" not in item:
+                bodies.append({"payload": item, "hypothesis": hypothesis})
+    if bodies:
+        return bodies
+    if isinstance(payload, dict):
+        return [{"payload": payload, "hypothesis": hypothesis}]
+    return [{"payload": {"value": payload}, "hypothesis": hypothesis}]
+
+
+def _is_timeout(exc: Exception) -> bool:
+    name = exc.__class__.__name__
+    return name in {
+        "APITimeoutError",
+        "APIConnectionError",
+        "Timeout",
+        "ReadTimeout",
+        "ConnectTimeout",
+        "TimeoutException",
+    } or isinstance(exc, TimeoutError)
 
 
 def _usage_int(usage: Any, name: str) -> int | None:

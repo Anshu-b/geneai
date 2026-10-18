@@ -22,6 +22,7 @@ COLORS = ("catalog_default", "black", "bone", "sage", "navy", "neon")
 SIZES = ("S", "M", "L")
 NEUTRAL = {"black", "bone", "sage", "navy"}
 FIXTURE_PATH = Path(__file__).resolve().parents[2] / "data" / "fixtures" / "shopping_catalog.json"
+RECORDED_CATALOG_PATH = Path(__file__).resolve().parents[2] / "data" / "catalogs" / "shopping_recorded.json"
 
 # Disjoint shoppers. Train is larger. Validation and test use the same menu of
 # palettes, occasions, and budgets, in a different mix, so a held-out score is
@@ -58,9 +59,27 @@ SHOPPERS = {
 
 def load_catalog(path: Path | None = None) -> dict[str, Any]:
     document = json.loads((path or FIXTURE_PATH).read_text(encoding="utf-8"))
-    if document.get("source") not in {"fixture", "browser_use"}:
-        raise ValueError("catalog source must be fixture or browser_use")
+    if document.get("source") not in {"fixture", "browser_use", "recorded"}:
+        raise ValueError("catalog source must be fixture, browser_use, or recorded")
     return document
+
+
+def write_recorded_catalog(catalog: dict[str, Any], path: Path | None = None) -> Path:
+    """Cache a real Browser Use collection. Does not invent rows."""
+
+    if catalog.get("source") != "browser_use":
+        raise ValueError("only a Browser Use collection can be cached as recorded")
+    products = catalog.get("products") or []
+    if not products:
+        raise ValueError("refusing to cache an empty catalog")
+    target = path or RECORDED_CATALOG_PATH
+    document = dict(catalog)
+    document["source"] = "recorded"
+    document["label"] = "recorded"
+    document["mode"] = "recorded"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
+    return target
 
 
 def _http_url(value: Any) -> bool:
@@ -101,6 +120,7 @@ def products_from_browser_output(output: Any, *, run_id: str, session_id: str | 
                 "currency": str(item.get("currency") or "USD"),
                 "product_url": item["product_url"],
                 "image_url": image,
+                "retailer": str(item["retailer"]).strip() if isinstance(item.get("retailer"), str) and str(item.get("retailer")).strip() else None,
                 "role": role,
                 "colors": [str(color) for color in item.get("colors") or ["black"]][:6],
                 "sizes": [str(size) for size in item.get("sizes") or ["M"]][:6],

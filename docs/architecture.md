@@ -51,7 +51,10 @@ same [-0.8, 0.8]^2 distribution. Test is not a harder basin.
 
 Stopping conditions: generation limit, model-call cap (Veri and CREAO both
 count), evaluation cap, wall clock, estimated USD, or cancel. A stop returns
-the partial run and still writes the export.
+the partial run and still writes the export. The wall clock does not drop
+genomes already proposed in the current wave, and a champion is frozen only
+after a numeric validation fitness. Seed calls run concurrently, several
+candidates per call, and generation 0 also includes the hand-written baselines.
 
 ## Lineage
 

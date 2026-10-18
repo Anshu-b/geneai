@@ -23,11 +23,12 @@ from geneai_core.domains.shopping import (
     ShoppingAdapter,
     gym_outfit,
     load_catalog,
+    write_recorded_catalog,
     neutral_outfit,
     products_from_browser_output,
 )
 from geneai_core.providers.base import CredentialsError, Proposal, ProviderError
-from geneai_core.providers.browser_use import API_ORIGIN, BrowserUseClient
+from geneai_core.providers.browser_use import BrowserUseClient
 from geneai_core.providers.mock import MockAgentProvider, MockModelProvider
 from geneai_core.runs import execute_domain_run
 from geneai_core.schemas import EvolutionConfig, Genome, ObjectiveSpec
@@ -263,7 +264,7 @@ def test_browser_output_drops_rows_without_urls() -> None:
 
 
 @pytest.mark.asyncio
-async def test_browser_use_client_parses_v4_and_refuses_other_hosts(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_browser_use_client_parses_v2_and_refuses_other_hosts(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.delenv("BROWSER_USE_API_KEY", raising=False)
     calls = {"n": 0}
 
@@ -271,43 +272,65 @@ async def test_browser_use_client_parses_v4_and_refuses_other_hosts(monkeypatch:
         calls["n"] += 1
         assert request.headers["x-browser-use-api-key"] == "bu_test"
         path = request.url.path
-        if request.method == "POST" and path.endswith("/runs"):
-            return httpx.Response(200, json={"id": "run_1", "status": "queued", "sessionId": "sess", "model": "bu"})
+        assert path.startswith("/api/v2/")
+        if request.method == "POST" and path.endswith("/tasks"):
+            body = json.loads(request.content)
+            assert body["startUrl"] == "https://shop.example/c"
+            assert "outputSchema" not in body
+            schema = json.loads(body["structuredOutput"])
+            required = schema["properties"]["products"]["items"]["required"]
+            assert "title" in required and "price" in required
+            assert "product_url" in required and "image_url" in required
+            assert "retailer" in required and "availability" in required
+            return httpx.Response(200, json={"id": "task_1", "sessionId": "sess"})
         if path.endswith("/status"):
-            return httpx.Response(200, json={"status": "completed"})
+            return httpx.Response(200, json={"id": "task_1", "status": "finished", "isSuccess": True})
         return httpx.Response(
             200,
             json={
-                "status": "completed",
-                "output": {
-                    "products": [
-                        {
-                            "title": "Known tee",
-                            "price": 20,
-                            "currency": "USD",
-                            "product_url": "https://shop.example/p/1",
-                            "image_url": "https://shop.example/i/1.jpg",
-                            "role": "top",
-                            "availability": "in_stock",
-                        },
-                        {"title": "Dropped", "price": 5, "currency": "USD", "role": "bottom"},
-                    ]
-                },
-                "model": "bu-model",
+                "id": "task_1",
                 "sessionId": "sess",
-                "updatedAt": "2026-10-18T00:00:00Z",
-                "totalCostUsd": "0.02",
+                "llm": "browser-use-2.0",
+                "status": "finished",
+                "finishedAt": "2026-10-18T00:00:00Z",
+                "isSuccess": True,
+                "cost": "0.02",
+                "output": json.dumps(
+                    {
+                        "products": [
+                            {
+                                "title": "Known tee",
+                                "price": 20,
+                                "currency": "USD",
+                                "product_url": "https://shop.example/p/1",
+                                "image_url": "https://shop.example/i/1.jpg",
+                                "retailer": "Example Shop",
+                                "role": "top",
+                                "availability": "in_stock",
+                            },
+                            {"title": "Dropped", "price": 5, "currency": "USD", "role": "bottom"},
+                        ]
+                    }
+                ),
             },
         )
 
     client = BrowserUseClient(api_key="bu_test", client=httpx.AsyncClient(transport=httpx.MockTransport(handler)))
     catalog = await client.collect_catalog(catalog_url="https://shop.example/c", query="tees")
-    assert catalog["browser_use_run_id"] == "run_1"
+    assert catalog["browser_use_run_id"] == "task_1"
     assert catalog["source"] == "browser_use"
     assert len(catalog["products"]) == 1
+    assert catalog["products"][0]["retailer"] == "Example Shop"
+    assert catalog["products"][0]["image_url"] == "https://shop.example/i/1.jpg"
     assert calls["n"] == 3
+    recorded = write_recorded_catalog(catalog, tmp_path / "shopping_recorded.json")
+    cached = load_catalog(recorded)
+    assert cached["source"] == "recorded"
+    assert cached["label"] == "recorded"
+    assert cached["mode"] == "recorded"
+    assert cached["products"][0]["product_url"] == "https://shop.example/p/1"
     with pytest.raises(ProviderError, match="non Browser Use"):
-        await client._request("GET", "https://evil.example/api/v2/tasks", None)
+        await client._request("GET", "https://evil.example/api/v4/runs", None)
     with pytest.raises(CredentialsError):
         BrowserUseClient.from_env()
 
@@ -316,12 +339,15 @@ async def test_browser_use_client_parses_v4_and_refuses_other_hosts(monkeypatch:
 async def test_browser_use_empty_catalog_does_not_substitute_the_fixture() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         if request.method == "POST":
-            return httpx.Response(200, json={"id": "run_empty", "status": "queued"})
+            return httpx.Response(200, json={"id": "task_empty", "sessionId": "sess"})
         if str(request.url).endswith("/status"):
-            return httpx.Response(200, json={"status": "completed"})
+            return httpx.Response(200, json={"status": "finished"})
         return httpx.Response(
             200,
-            json={"status": "completed", "output": {"products": [{"title": "no url", "price": 1}]}},
+            json={
+                "status": "finished",
+                "output": json.dumps({"products": [{"title": "no url", "price": 1}]}),
+            },
         )
 
     client = BrowserUseClient(api_key="bu_test", client=httpx.AsyncClient(transport=httpx.MockTransport(handler)))
