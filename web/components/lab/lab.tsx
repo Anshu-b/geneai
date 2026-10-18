@@ -376,7 +376,7 @@ export function Lab({ fixture, title }: { fixture: string; title: string }) {
                     Color is the recorded provider. Mock is not veri.studio or CREAO. Squares are baselines, diamonds veri, hexagons CREAO, triangles random. A rose mark is an immigrant.
                   </p>
                   <p className="mt-1 text-[11px] leading-relaxed text-faint">
-                    Node size is train fitness. Ghosts were pruned. An ivory ring is an elite carried unchanged. Gold is the frozen champion.
+                    Node size is train fitness. Ghosts were pruned. A ring marks an elite carried unchanged. Gold marks the frozen champion.
                   </p>
                 </div>
                 <div className="space-y-2">

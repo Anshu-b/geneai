@@ -143,7 +143,7 @@ function Provenance({
       <Scores view={selected} frozen={projection.championFrozen} testVisible={projection.testVisible} />
       <div>
         <p className="kicker">Payload</p>
-        <pre className="mt-2 max-h-72 overflow-auto rounded border border-line bg-black/30 p-3 font-mono text-[11px] leading-relaxed text-ivory/90">
+        <pre className="mt-2 max-h-72 overflow-auto rounded border border-line bg-raise-2 p-3 font-mono text-[11px] leading-relaxed text-ivory/90">
           {JSON.stringify(genome.payload, null, 2)}
         </pre>
       </div>
@@ -370,7 +370,7 @@ function Spark({ series }: { series: Projection["series"] }) {
     <section>
       <p className="kicker">Best train fitness by generation</p>
       <svg viewBox={`0 0 ${width} ${height}`} className="mt-2 w-full" role="img" aria-label="Best train fitness by generation">
-        <polyline fill="none" stroke="#7ee0c6" strokeWidth="1.6" points={points} />
+        <polyline fill="none" stroke="var(--chart)" strokeWidth="1.6" points={points} />
       </svg>
       <p className="font-mono text-[10px] text-faint">
         {formatFitness(min)} to {formatFitness(max)}. The line is the recorded best, including flats.

@@ -2,17 +2,40 @@
 
 import { OrbitControls } from "@react-three/drei";
 import { Canvas } from "@react-three/fiber";
-import { Component, useEffect, useLayoutEffect, useMemo, useRef, type ReactNode } from "react";
+import { Component, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import * as THREE from "three";
 import {
-  PROVIDER_COLOR,
   providerBucket,
   stableJitter,
   type GenomeView,
   type LayoutModel,
 } from "@/lib/project";
+import { readThemePaint, type ThemePaint } from "@/lib/theme";
 
 const SCALE = 0.045;
+
+function useThemePaint() {
+  const [paint, setPaint] = useState<ThemePaint>(() => readThemePaint());
+  useLayoutEffect(() => {
+    const sync = () => setPaint(readThemePaint());
+    sync();
+    const observer = new MutationObserver(sync);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    return () => observer.disconnect();
+  }, []);
+  return paint;
+}
+
+function place(id: string, layout: LayoutModel, dummy: THREE.Object3D) {
+  const pos = layout.nodes.get(id);
+  if (!pos) return null;
+  dummy.position.set(
+    (pos.x - layout.width / 2) * SCALE,
+    -(pos.y - layout.height / 2) * SCALE,
+    (stableJitter(id) - 0.5) * 8,
+  );
+  return pos;
+}
 
 interface Props {
   views: GenomeView[];
@@ -25,11 +48,13 @@ function Cloud({
   views,
   layout,
   opacity,
+  paint,
   onSelect,
 }: {
   views: GenomeView[];
   layout: LayoutModel;
   opacity: number;
+  paint: ThemePaint;
   onSelect: (id: string) => void;
 }) {
   const ref = useRef<THREE.InstancedMesh>(null);
@@ -42,20 +67,17 @@ function Cloud({
     views.forEach((view, index) => {
       const pos = layout.nodes.get(view.genome.id);
       if (!pos) return;
-      dummy.position.set(
-        (pos.x - layout.width / 2) * SCALE,
-        -(pos.y - layout.height / 2) * SCALE,
-        (stableJitter(view.genome.id) - 0.5) * 8,
-      );
+      place(view.genome.id, layout, dummy);
       dummy.scale.setScalar(Math.max(0.35, pos.r * 0.16));
       dummy.updateMatrix();
       mesh.setMatrixAt(index, dummy.matrix);
-      color.set(PROVIDER_COLOR[providerBucket(view.genome.provider)]);
+      const bucket = providerBucket(view.genome.provider);
+      color.set(view.status === "champion" ? paint.champ : paint.providers[bucket]);
       mesh.setColorAt(index, color);
     });
     mesh.instanceMatrix.needsUpdate = true;
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-  }, [views, layout]);
+  }, [views, layout, paint]);
 
   if (views.length === 0) return null;
   return (
@@ -74,7 +96,7 @@ function Cloud({
   );
 }
 
-function Edges({ views, layout }: { views: GenomeView[]; layout: LayoutModel }) {
+function Edges({ views, layout, paint }: { views: GenomeView[]; layout: LayoutModel; paint: ThemePaint }) {
   const geometry = useMemo(() => {
     const positions: number[] = [];
     const born = new Set(views.map((view) => view.genome.id));
@@ -105,22 +127,44 @@ function Edges({ views, layout }: { views: GenomeView[]; layout: LayoutModel }) 
 
   return (
     <lineSegments geometry={geometry}>
-      <lineBasicMaterial color="#c9ddd6" transparent opacity={0.38} />
+      <lineBasicMaterial color={paint.edge} transparent opacity={paint.edgeOpacity} />
     </lineSegments>
   );
 }
 
+function MarkerRings({ views, layout, paint }: { views: GenomeView[]; layout: LayoutModel; paint: ThemePaint }) {
+  const marked = views.filter((view) => view.status === "elite" || view.status === "champion");
+  const dummy = useMemo(() => new THREE.Object3D(), []);
+  return (
+    <>
+      {marked.map((view) => {
+        const pos = place(view.genome.id, layout, dummy);
+        if (!pos) return null;
+        const radius = Math.max(0.35, pos.r * 0.16) + (view.status === "champion" ? 0.28 : 0.18);
+        return (
+          <mesh key={view.genome.id} position={dummy.position.clone()} rotation={[Math.PI / 2, 0, 0]}>
+            <ringGeometry args={[radius, radius + 0.07, 40]} />
+            <meshBasicMaterial color={view.status === "champion" ? paint.champ : paint.elite} side={THREE.DoubleSide} />
+          </mesh>
+        );
+      })}
+    </>
+  );
+}
+
 function Scene({ views, layout, onSelect, reduced }: Props) {
+  const paint = useThemePaint();
   const living = views.filter((view) => view.status !== "pruned");
   const pruned = views.filter((view) => view.status === "pruned");
   return (
     <>
-      <color attach="background" args={["#070908"]} />
-      <ambientLight intensity={0.7} />
-      <directionalLight position={[12, 18, 20]} intensity={1.1} />
-      <Edges views={views} layout={layout} />
-      <Cloud key={`live-${living.length}`} views={living} layout={layout} opacity={1} onSelect={onSelect} />
-      <Cloud key={`pruned-${pruned.length}`} views={pruned} layout={layout} opacity={0.3} onSelect={onSelect} />
+      <color attach="background" args={[paint.stage]} />
+      <ambientLight intensity={paint.light ? 1.05 : 0.7} />
+      <directionalLight position={[12, 18, 20]} intensity={paint.light ? 0.85 : 1.1} />
+      <Edges views={views} layout={layout} paint={paint} />
+      <Cloud key={`live-${living.length}`} views={living} layout={layout} opacity={1} paint={paint} onSelect={onSelect} />
+      <Cloud key={`pruned-${pruned.length}`} views={pruned} layout={layout} opacity={paint.pruned} paint={paint} onSelect={onSelect} />
+      <MarkerRings views={living} layout={layout} paint={paint} />
       <OrbitControls enableDamping={!reduced} makeDefault />
     </>
   );

@@ -88,7 +88,7 @@ export function AskPanel() {
             <p className="mt-3 text-sm text-dim">POST {api.replace(/\/$/, "")}/api/runs · population 4 · 2 generations. The response is shown raw.</p>
           )}
           {fault ? <p className="mt-3 text-sm text-danger" role="alert">{fault}</p> : null}
-          {result ? <pre className="mt-4 max-h-80 overflow-auto rounded border border-line bg-black/30 p-3 font-mono text-xs">{result}</pre> : null}
+          {result ? <pre className="mt-4 max-h-80 overflow-auto rounded border border-line bg-raise-2 p-3 font-mono text-xs">{result}</pre> : null}
         </form>
       </main>
     </>

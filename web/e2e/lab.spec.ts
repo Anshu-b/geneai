@@ -8,6 +8,8 @@ test("cloud lab renders a mock lineage without console errors", async ({ page })
   });
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Intelligence that evolves." })).toBeVisible();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await expect(page.getByRole("button", { name: "Toggle color theme" })).toBeVisible();
   await expect(page.getByTestId("mode-badge")).toHaveText(/Mock/);
   await expect(page.getByTestId("lineage-svg")).toBeVisible({ timeout: 30_000 });
   const champion = page.locator('[data-genome="g0206"]');
@@ -36,4 +38,5 @@ test("quant is a placeholder and ask stays disabled without an API", async ({ pa
   await page.goto("/ask");
   await expect(page.getByTestId("ask-composer")).toBeVisible();
   await expect(page.getByRole("button", { name: "Launch micro run" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Toggle color theme" })).toBeVisible();
 });

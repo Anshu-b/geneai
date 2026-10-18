@@ -2,7 +2,7 @@
 
 import gsap from "gsap";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { familyOf } from "@/lib/format";
+import { familyOf, formatFitness } from "@/lib/format";
 import {
   PROVIDER_COLOR,
   operatorLabel,
@@ -198,14 +198,14 @@ export function LineageSvg({
                 y={lane.y}
                 width={layout.width}
                 height={lane.height}
-                fill={index % 2 === 0 ? "rgba(243,239,228,0.015)" : "transparent"}
+                fill={index % 2 === 0 ? "var(--lane)" : "transparent"}
               />
               <text
                 x={LABEL_X}
                 y={lane.y + lane.height / 2}
                 textAnchor="end"
                 dominantBaseline="middle"
-                fill="rgba(243,239,228,0.72)"
+                fill="var(--lane-label)"
                 fontSize="11"
                 fontFamily="IBM Plex Mono, ui-monospace, monospace"
               >
@@ -226,12 +226,12 @@ export function LineageSvg({
             return (
               <g key={generation} data-gen-col={generation}>
                 {focused ? (
-                  <rect x={x - 46} y={36} width={92} height={layout.height - 48} fill="rgba(126,224,198,0.04)" />
+                  <rect x={x - 46} y={36} width={92} height={layout.height - 48} fill="var(--focus-col)" />
                 ) : null}
-                <text x={x} y={22} textAnchor="middle" fill={focused ? "#f3efe4" : "rgba(243,239,228,0.55)"} fontSize="12" fontFamily="IBM Plex Mono, ui-monospace, monospace">
+                <text x={x} y={22} textAnchor="middle" fill={focused ? "var(--gen-focus)" : "var(--gen-label)"} fontSize="12" fontFamily="IBM Plex Mono, ui-monospace, monospace">
                   G{generation}
                 </text>
-                <text x={x} y={38} textAnchor="middle" fill="rgba(166,158,144,0.9)" fontSize="9" fontFamily="IBM Plex Mono, ui-monospace, monospace">
+                <text x={x} y={38} textAnchor="middle" fill="var(--gen-meta)" fontSize="9" fontFamily="IBM Plex Mono, ui-monospace, monospace">
                   {championHere ? "champion" : `${kept} kept`}
                 </text>
               </g>
@@ -250,13 +250,13 @@ export function LineageSvg({
               const selected = selectedId === view.genome.id || selectedId === parentId;
               const faded = view.status === "pruned" && !onPath && !selected;
               const stroke =
-                label === "crossover" ? "#c4b5fd" : label === "repair" ? "#e7a3c0" : label === "immigrant" ? "#e7a3c0" : "#7ee0c6";
+                label === "crossover" ? "var(--edge-cross)" : label === "repair" || label === "immigrant" ? "var(--edge-rose)" : "var(--edge-mutate)";
               return (
                 <g key={`${parentId}-${view.genome.id}`}>
                   <path
                     d={`M ${parent.x} ${parent.y} C ${midX} ${parent.y}, ${midX} ${child.y}, ${child.x} ${child.y}`}
                     fill="none"
-                    stroke={onPath ? "#e4c27a" : stroke}
+                    stroke={onPath ? "var(--edge-path)" : stroke}
                     strokeWidth={onPath || selected ? 1.7 : 1}
                     strokeDasharray={label === "repair" ? "3 3" : undefined}
                     opacity={faded ? 0.12 : onPath || selected ? 0.95 : 0.45}
@@ -269,7 +269,7 @@ export function LineageSvg({
                       fontSize="8"
                       fontFamily="IBM Plex Mono, ui-monospace, monospace"
                       fill={stroke}
-                      stroke="#0b0e0c"
+                      stroke="var(--label-halo)"
                       strokeWidth="3"
                       paintOrder="stroke"
                       style={{ pointerEvents: "none" }}
@@ -287,7 +287,7 @@ export function LineageSvg({
             const bucket = providerBucket(view.genome.provider);
             const color = PROVIDER_COLOR[bucket];
             const dimmed = follow && projection.championFrozen && !ancestry.has(view.genome.id);
-            const opacity = view.status === "pruned" ? 0.28 : dimmed ? 0.16 : 1;
+            const opacity = view.status === "pruned" ? "var(--pruned-opacity)" : dimmed ? 0.16 : 1;
             const points = shapePoints(bucket, pos.r);
             const immigrant = operatorLabel(view.genome) === "immigrant";
             const selected = selectedId === view.genome.id;
@@ -296,9 +296,12 @@ export function LineageSvg({
                 key={view.genome.id}
                 transform={`translate(${pos.x} ${pos.y})`}
                 data-genome={view.genome.id}
-                opacity={opacity}
                 className="node"
-                style={{ cursor: "pointer", transition: reduced ? undefined : "opacity 380ms ease" }}
+                style={{
+                  cursor: "pointer",
+                  opacity,
+                  transition: reduced ? undefined : "opacity 380ms ease",
+                }}
                 onMouseEnter={() => setHover(view.genome.id)}
                 onMouseLeave={() => setHover((current) => (current === view.genome.id ? null : current))}
                 onClick={() => onSelect(view.genome.id)}
@@ -314,12 +317,12 @@ export function LineageSvg({
                 aria-label={`${view.genome.id}, generation ${view.genome.generation}, ${view.status}, ${view.genome.provider}, ${familyOf(view.genome.metadata)}`}
               >
                 {view.status === "champion" ? (
-                  <circle className="champion-halo" r={pos.r + 8} fill="none" stroke="#e4c27a" strokeWidth="1.6" filter="url(#champ-glow)" />
+                  <circle className="champion-halo" r={pos.r + 8} fill="none" stroke="var(--champ)" strokeWidth="1.6" filter="url(#champ-glow)" />
                 ) : null}
                 {view.status === "elite" || (view.status === "champion" && projection.eliteIds.includes(view.genome.id)) ? (
-                  <circle r={pos.r + 4.5} fill="none" stroke="#f3efe4" strokeWidth="1.1" />
+                  <circle r={pos.r + 4.5} fill="none" stroke="var(--elite-ring)" strokeWidth="1.1" />
                 ) : null}
-                {selected ? <circle r={pos.r + 6.5} fill="none" stroke="#7ee0c6" strokeWidth="1" /> : null}
+                {selected ? <circle r={pos.r + 6.5} fill="none" stroke="var(--select-ring)" strokeWidth="1" /> : null}
                 {view.status === "pruned" ? (
                   <circle r={pos.r + 2.4} fill="none" stroke={color} strokeWidth="0.8" strokeDasharray="2 2" />
                 ) : null}
@@ -331,13 +334,13 @@ export function LineageSvg({
                   <circle r={pos.r} fill={view.feasible === false ? "none" : color} stroke={color} strokeWidth="1.2" />
                 )}
                 {view.feasible === false ? (
-                  <line x1={-pos.r} y1={pos.r} x2={pos.r} y2={-pos.r} stroke="#e08a78" strokeWidth="1.2" />
+                  <line x1={-pos.r} y1={pos.r} x2={pos.r} y2={-pos.r} stroke="var(--infeasible)" strokeWidth="1.2" />
                 ) : null}
                 {immigrant ? (
-                  <polygon points={`0,${-pos.r - 7} 4,${-pos.r - 1} -4,${-pos.r - 1}`} fill="#e7a3c0" />
+                  <polygon points={`0,${-pos.r - 7} 4,${-pos.r - 1} -4,${-pos.r - 1}`} fill="var(--edge-rose)" />
                 ) : null}
                 {immigrant && (labelIds.has(view.genome.id) || hover === view.genome.id) ? (
-                  <text y={pos.r + 12} textAnchor="middle" fontSize="8" fill="#e7a3c0" fontFamily="IBM Plex Mono, ui-monospace, monospace">
+                  <text y={pos.r + 12} textAnchor="middle" fontSize="8" fill="var(--edge-rose)" fontFamily="IBM Plex Mono, ui-monospace, monospace">
                     immigrant
                   </text>
                 ) : null}
@@ -346,6 +349,25 @@ export function LineageSvg({
           })}
         </svg>
       </div>
+      {hover ? <LineageTooltip id={hover} projection={projection} /> : null}
+    </div>
+  );
+}
+
+function LineageTooltip({ id, projection }: { id: string; projection: Projection }) {
+  const view = projection.byId.get(id);
+  if (!view) return null;
+  return (
+    <div
+      className="pointer-events-none absolute bottom-3 left-3 z-10 max-w-xs rounded border border-line bg-raise px-3 py-2"
+      data-testid="lineage-tooltip"
+      role="tooltip"
+    >
+      <p className="font-mono text-[11px] text-ivory">{view.genome.id}</p>
+      <p className="text-[11px] text-dim">
+        {view.status} · {view.genome.provider} · gen {view.genome.generation}
+        {view.trainFitness != null ? ` · train ${formatFitness(view.trainFitness)}` : ""}
+      </p>
     </div>
   );
 }

@@ -517,12 +517,12 @@ export function providerBucket(provider: string | null | undefined): "veri" | "c
 }
 
 export const PROVIDER_COLOR: Record<ReturnType<typeof providerBucket>, string> = {
-  veri: "#8ecbff",
-  creao: "#c3b2ff",
-  baseline: "#e4c27a",
-  mock: "#3fbea5",
-  random: "#e7a3c0",
-  other: "#d9d3c7",
+  veri: "var(--prov-veri)",
+  creao: "var(--prov-creao)",
+  baseline: "var(--prov-baseline)",
+  mock: "var(--prov-mock)",
+  random: "var(--prov-random)",
+  other: "var(--prov-other)",
 };
 
 function radiusFor(fitness: number | null, feasible: boolean | null, min: number | null, max: number | null): number {

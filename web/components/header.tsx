@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { Presentation } from "@/lib/mode";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 const LINKS = [
   { href: "/", label: "Evolution Lab" },
@@ -38,8 +39,10 @@ export function Header({ presentation }: { presentation?: Presentation | null })
             );
           })}
         </nav>
-        {presentation ? (
-          <div className="shrink-0 text-right" title={presentation.detail}>
+        <div className="flex shrink-0 items-start gap-2">
+          <ThemeToggle />
+          {presentation ? (
+          <div className="text-right" title={presentation.detail}>
             <div
               data-testid="mode-badge"
               className="inline-flex items-center gap-2 rounded-full border border-line px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.16em]"
@@ -60,7 +63,8 @@ export function Header({ presentation }: { presentation?: Presentation | null })
             </div>
             <p className="mt-1 hidden font-mono text-[10px] text-faint sm:block">run.mode {presentation.runMode}</p>
           </div>
-        ) : null}
+          ) : null}
+        </div>
       </div>
     </header>
   );
