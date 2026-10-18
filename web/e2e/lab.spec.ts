@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-test("cloud lab renders a mock lineage without console errors", async ({ page }) => {
+test("cloud lab renders a recorded lineage without console errors", async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   page.on("console", (message) => {
@@ -10,17 +10,17 @@ test("cloud lab renders a mock lineage without console errors", async ({ page })
   await expect(page.getByRole("heading", { name: "Intelligence that evolves." })).toBeVisible();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   await expect(page.getByRole("button", { name: "Toggle color theme" })).toBeVisible();
-  await expect(page.getByTestId("mode-badge")).toHaveText(/Mock/);
+  await expect(page.getByTestId("mode-badge")).toHaveText(/Recorded/);
   await expect(page.getByTestId("lineage-svg")).toBeVisible({ timeout: 30_000 });
-  const champion = page.locator('[data-genome="g0206"]');
+  const champion = page.locator('[data-genome="g0060"]');
   await champion.scrollIntoViewIfNeeded();
   await expect(champion).toBeVisible();
   await page.getByRole("tab", { name: "Results" }).click();
   await expect(page.getByTestId("results-panel")).toContainText("single attempt vs evolutionary search");
   await expect(page.getByTestId("results-panel")).toContainText("Not compute-matched");
   await page.getByRole("tab", { name: "Provenance" }).click();
-  await page.locator('[data-genome="g0206"]').click();
-  await expect(page.getByTestId("provenance-panel")).toContainText("g0206");
+  await page.locator('[data-genome="g0060"]').click();
+  await expect(page.getByTestId("provenance-panel")).toContainText("g0060");
   expect(errors.filter((line) => !line.includes("favicon"))).toEqual([]);
 });
 

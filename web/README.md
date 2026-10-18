@@ -9,4 +9,4 @@ npm run build
 npm start
 ```
 
-Bundled replays live in `public/fixtures/`. They are trimmed mock-mode exports: the event `task` field is omitted, and `integrity_sha256` is still the engine hash of the full file.
+Bundled replays live in `public/fixtures/`. They are trimmed recorded hybrid exports (veri.studio + CREAO, gpt-5.5 one-shot arm): the event `task` field is omitted, and `integrity_sha256` is still the engine hash of the full file.
