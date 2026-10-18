@@ -1,8 +1,11 @@
 import type { Metadata } from "next";
-import { Lab } from "@/components/lab/lab";
+import { HomeExperience } from "@/components/home/home-experience";
 
-export const metadata: Metadata = { title: "Evolution Lab" };
+export const metadata: Metadata = {
+  title: "Evolution Lab",
+  description: "How the GeneAI engine searches, freezes a champion, and swaps domains.",
+};
 
 export default function HomePage() {
-  return <Lab fixture="/fixtures/cloud_scheduling.json" title="Evolution lab · cloud scheduling" />;
+  return <HomeExperience />;
 }

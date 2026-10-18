@@ -1,0 +1,591 @@
+{
+  "schema": "geneai-showcase-v1",
+  "domain": "cloud_scheduling",
+  "run_id": "run_37cb66650b80",
+  "export_integrity_sha256": "fb01fca6137d27617264eec5d10805ad0ae29d70ac32dfc9924b43e6ea336545",
+  "split": "test",
+  "case_id": "sample-shown-workload",
+  "case_note": "Development sample for layout only. Schedules and split totals are not the recorded evaluator. The shown case is one example; the comparison row is the whole held-out split. Replace this file with the real cloud_scheduling_showcase.json.",
+  "cloud": {
+    "units": {
+      "time": "minutes",
+      "energy": "kWh"
+    },
+    "machines": [
+      {
+        "id": "cpu-1",
+        "kind": "cpu",
+        "cpu": 8,
+        "mem_gb": 32,
+        "gpu": 0
+      },
+      {
+        "id": "cpu-2",
+        "kind": "cpu",
+        "cpu": 8,
+        "mem_gb": 32,
+        "gpu": 0
+      },
+      {
+        "id": "highmem-1",
+        "kind": "highmem",
+        "cpu": 16,
+        "mem_gb": 128,
+        "gpu": 0
+      },
+      {
+        "id": "gpu-1",
+        "kind": "gpu",
+        "cpu": 8,
+        "mem_gb": 64,
+        "gpu": 1
+      }
+    ],
+    "jobs": [
+      {
+        "id": "j01",
+        "class": "interactive",
+        "cpu": 2,
+        "mem_gb": 4,
+        "gpu": 0,
+        "arrival_min": 0,
+        "duration_min": 8,
+        "deadline_min": 16,
+        "hard_deadline": true
+      },
+      {
+        "id": "j02",
+        "class": "batch",
+        "cpu": 4,
+        "mem_gb": 8,
+        "gpu": 0,
+        "arrival_min": 0,
+        "duration_min": 10,
+        "deadline_min": 22,
+        "hard_deadline": true
+      },
+      {
+        "id": "j03",
+        "class": "gpu",
+        "cpu": 4,
+        "mem_gb": 16,
+        "gpu": 1,
+        "arrival_min": 0,
+        "duration_min": 12,
+        "deadline_min": 13,
+        "hard_deadline": true
+      },
+      {
+        "id": "j04",
+        "class": "highmem",
+        "cpu": 8,
+        "mem_gb": 64,
+        "gpu": 0,
+        "arrival_min": 0,
+        "duration_min": 14,
+        "deadline_min": 13,
+        "hard_deadline": true
+      },
+      {
+        "id": "j05",
+        "class": "interactive",
+        "cpu": 2,
+        "mem_gb": 4,
+        "gpu": 0,
+        "arrival_min": 2,
+        "duration_min": 6,
+        "deadline_min": 20,
+        "hard_deadline": true
+      },
+      {
+        "id": "j06",
+        "class": "batch",
+        "cpu": 2,
+        "mem_gb": 8,
+        "gpu": 0,
+        "arrival_min": 0,
+        "duration_min": 16,
+        "deadline_min": 15,
+        "hard_deadline": true
+      },
+      {
+        "id": "j07",
+        "class": "gpu",
+        "cpu": 4,
+        "mem_gb": 16,
+        "gpu": 1,
+        "arrival_min": 4,
+        "duration_min": 10,
+        "deadline_min": 23,
+        "hard_deadline": true
+      },
+      {
+        "id": "j08",
+        "class": "interactive",
+        "cpu": 2,
+        "mem_gb": 4,
+        "gpu": 0,
+        "arrival_min": 6,
+        "duration_min": 8,
+        "deadline_min": 30,
+        "hard_deadline": false
+      }
+    ],
+    "policies": [
+      {
+        "key": "champion",
+        "label": "GeneAI champion",
+        "provider": "veri",
+        "genome_id": "g0060",
+        "description": "Sample champion policy for the layout.",
+        "rules_plain": [
+          "Run GPU jobs only on gpu-1, and the high-memory job only on highmem-1.",
+          "Put short interactive work on a free CPU before a long batch job.",
+          "Do not start a job before it arrives."
+        ],
+        "feasible": true,
+        "infeasible_reason": null,
+        "schedule": [
+          {
+            "job_id": "j01",
+            "machine_id": "cpu-1",
+            "start_min": 0,
+            "end_min": 8,
+            "wait_min": 0,
+            "deadline_min": 16,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j05",
+            "machine_id": "cpu-1",
+            "start_min": 8,
+            "end_min": 14,
+            "wait_min": 6,
+            "deadline_min": 20,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j02",
+            "machine_id": "cpu-2",
+            "start_min": 0,
+            "end_min": 10,
+            "wait_min": 0,
+            "deadline_min": 22,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j06",
+            "machine_id": "cpu-2",
+            "start_min": 10,
+            "end_min": 26,
+            "wait_min": 10,
+            "deadline_min": 15,
+            "missed_deadline": true
+          },
+          {
+            "job_id": "j08",
+            "machine_id": "cpu-2",
+            "start_min": 26,
+            "end_min": 34,
+            "wait_min": 20,
+            "deadline_min": 30,
+            "missed_deadline": true
+          },
+          {
+            "job_id": "j04",
+            "machine_id": "highmem-1",
+            "start_min": 0,
+            "end_min": 14,
+            "wait_min": 0,
+            "deadline_min": 13,
+            "missed_deadline": true
+          },
+          {
+            "job_id": "j03",
+            "machine_id": "gpu-1",
+            "start_min": 0,
+            "end_min": 12,
+            "wait_min": 0,
+            "deadline_min": 13,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j07",
+            "machine_id": "gpu-1",
+            "start_min": 12,
+            "end_min": 22,
+            "wait_min": 8,
+            "deadline_min": 23,
+            "missed_deadline": false
+          }
+        ],
+        "summary": {
+          "avg_completion_min": 17.5,
+          "p95_wait_min": 20,
+          "sla_misses": 3,
+          "hard_deadline_misses": 2,
+          "energy_kwh": 0.697,
+          "makespan_min": 34,
+          "capacity_violations": 0
+        },
+        "aggregate": {
+          "avg_completion_min": 19.4,
+          "p95_wait_min": 12,
+          "sla_misses": 31,
+          "hard_deadline_misses": 24,
+          "energy_kwh": 8.64,
+          "makespan_min": 33.5,
+          "capacity_violations": 0,
+          "fitness": -1.48,
+          "n_cases": 12
+        },
+        "behavior_origin": {
+          "genome_id": "g0051",
+          "provider": "creao",
+          "operator": "crossover",
+          "generation": 5
+        }
+      },
+      {
+        "key": "gpt55_one_shot",
+        "label": "GPT-5.5 one shot",
+        "provider": "openai",
+        "genome_id": null,
+        "description": "Sample single attempt, outside the evolutionary loop.",
+        "rules_plain": [
+          "One prompt wrote the whole assignment.",
+          "It kept the special machines legal, then stacked most CPU jobs onto cpu-1."
+        ],
+        "feasible": true,
+        "infeasible_reason": null,
+        "schedule": [
+          {
+            "job_id": "j01",
+            "machine_id": "cpu-1",
+            "start_min": 0,
+            "end_min": 8,
+            "wait_min": 0,
+            "deadline_min": 16,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j02",
+            "machine_id": "cpu-1",
+            "start_min": 8,
+            "end_min": 18,
+            "wait_min": 8,
+            "deadline_min": 22,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j05",
+            "machine_id": "cpu-1",
+            "start_min": 18,
+            "end_min": 24,
+            "wait_min": 16,
+            "deadline_min": 20,
+            "missed_deadline": true
+          },
+          {
+            "job_id": "j06",
+            "machine_id": "cpu-1",
+            "start_min": 24,
+            "end_min": 40,
+            "wait_min": 24,
+            "deadline_min": 15,
+            "missed_deadline": true
+          },
+          {
+            "job_id": "j08",
+            "machine_id": "cpu-1",
+            "start_min": 40,
+            "end_min": 48,
+            "wait_min": 34,
+            "deadline_min": 30,
+            "missed_deadline": true
+          },
+          {
+            "job_id": "j04",
+            "machine_id": "highmem-1",
+            "start_min": 8,
+            "end_min": 22,
+            "wait_min": 8,
+            "deadline_min": 13,
+            "missed_deadline": true
+          },
+          {
+            "job_id": "j03",
+            "machine_id": "gpu-1",
+            "start_min": 6,
+            "end_min": 18,
+            "wait_min": 6,
+            "deadline_min": 13,
+            "missed_deadline": true
+          },
+          {
+            "job_id": "j07",
+            "machine_id": "gpu-1",
+            "start_min": 18,
+            "end_min": 28,
+            "wait_min": 14,
+            "deadline_min": 23,
+            "missed_deadline": true
+          }
+        ],
+        "summary": {
+          "avg_completion_min": 25.75,
+          "p95_wait_min": 34,
+          "sla_misses": 6,
+          "hard_deadline_misses": 5,
+          "energy_kwh": 0.984,
+          "makespan_min": 48,
+          "capacity_violations": 0
+        },
+        "aggregate": {
+          "avg_completion_min": 28.1,
+          "p95_wait_min": 24,
+          "sla_misses": 67,
+          "hard_deadline_misses": 51,
+          "energy_kwh": 13.4,
+          "makespan_min": 48.2,
+          "capacity_violations": 2,
+          "fitness": -1.91,
+          "n_cases": 12
+        },
+        "behavior_origin": {
+          "genome_id": null,
+          "provider": "openai",
+          "operator": "one_shot",
+          "generation": 0
+        }
+      },
+      {
+        "key": "deadline_weighted",
+        "label": "Deadline weighted",
+        "provider": "baseline",
+        "genome_id": "g0004",
+        "description": "Hand-written baseline that ranks by deadline pressure.",
+        "rules_plain": [
+          "Prefer the job whose deadline is closest.",
+          "Still refuse a machine that cannot hold the job."
+        ],
+        "feasible": true,
+        "infeasible_reason": null,
+        "schedule": [
+          {
+            "job_id": "j05",
+            "machine_id": "cpu-1",
+            "start_min": 2,
+            "end_min": 8,
+            "wait_min": 0,
+            "deadline_min": 20,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j01",
+            "machine_id": "cpu-1",
+            "start_min": 8,
+            "end_min": 16,
+            "wait_min": 8,
+            "deadline_min": 16,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j08",
+            "machine_id": "cpu-1",
+            "start_min": 16,
+            "end_min": 24,
+            "wait_min": 10,
+            "deadline_min": 30,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j02",
+            "machine_id": "cpu-2",
+            "start_min": 0,
+            "end_min": 10,
+            "wait_min": 0,
+            "deadline_min": 22,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j06",
+            "machine_id": "cpu-2",
+            "start_min": 10,
+            "end_min": 26,
+            "wait_min": 10,
+            "deadline_min": 15,
+            "missed_deadline": true
+          },
+          {
+            "job_id": "j04",
+            "machine_id": "highmem-1",
+            "start_min": 0,
+            "end_min": 14,
+            "wait_min": 0,
+            "deadline_min": 13,
+            "missed_deadline": true
+          },
+          {
+            "job_id": "j03",
+            "machine_id": "gpu-1",
+            "start_min": 0,
+            "end_min": 12,
+            "wait_min": 0,
+            "deadline_min": 13,
+            "missed_deadline": false
+          },
+          {
+            "job_id": "j07",
+            "machine_id": "gpu-1",
+            "start_min": 14,
+            "end_min": 24,
+            "wait_min": 10,
+            "deadline_min": 23,
+            "missed_deadline": true
+          }
+        ],
+        "summary": {
+          "avg_completion_min": 16.75,
+          "p95_wait_min": 10,
+          "sla_misses": 3,
+          "hard_deadline_misses": 3,
+          "energy_kwh": 0.533,
+          "makespan_min": 26,
+          "capacity_violations": 0
+        },
+        "aggregate": {
+          "avg_completion_min": 22.6,
+          "p95_wait_min": 16,
+          "sla_misses": 44,
+          "hard_deadline_misses": 33,
+          "energy_kwh": 10.15,
+          "makespan_min": 39.0,
+          "capacity_violations": 0,
+          "fitness": -1.62,
+          "n_cases": 12
+        },
+        "behavior_origin": {
+          "genome_id": "g0004",
+          "provider": "baseline",
+          "operator": "seed",
+          "generation": 0
+        }
+      },
+      {
+        "key": "round_robin",
+        "label": "Round robin",
+        "provider": "baseline",
+        "genome_id": "g0001",
+        "description": "Hand-written baseline that queues jobs onto the first legal machine.",
+        "rules_plain": [
+          "Take jobs in a fixed order.",
+          "Place each one on the first machine that can run its class.",
+          "Do not look at deadlines."
+        ],
+        "feasible": true,
+        "infeasible_reason": null,
+        "schedule": [
+          {
+            "job_id": "j06",
+            "machine_id": "cpu-1",
+            "start_min": 0,
+            "end_min": 16,
+            "wait_min": 0,
+            "deadline_min": 15,
+            "missed_deadline": true
+          },
+          {
+            "job_id": "j02",
+            "machine_id": "cpu-1",
+            "start_min": 16,
+            "end_min": 26,
+            "wait_min": 16,
+            "deadline_min": 22,
+            "missed_deadline": true
+          },
+          {
+            "job_id": "j08",
+            "machine_id": "cpu-1",
+            "start_min": 26,
+            "end_min": 34,
+            "wait_min": 20,
+            "deadline_min": 30,
+            "missed_deadline": true
+          },
+          {
+            "job_id": "j05",
+            "machine_id": "cpu-1",
+            "start_min": 34,
+            "end_min": 40,
+            "wait_min": 32,
+            "deadline_min": 20,
+            "missed_deadline": true
+          },
+          {
+            "job_id": "j01",
+            "machine_id": "cpu-1",
+            "start_min": 40,
+            "end_min": 48,
+            "wait_min": 40,
+            "deadline_min": 16,
+            "missed_deadline": true
+          },
+          {
+            "job_id": "j04",
+            "machine_id": "highmem-1",
+            "start_min": 0,
+            "end_min": 14,
+            "wait_min": 0,
+            "deadline_min": 13,
+            "missed_deadline": true
+          },
+          {
+            "job_id": "j03",
+            "machine_id": "gpu-1",
+            "start_min": 2,
+            "end_min": 14,
+            "wait_min": 2,
+            "deadline_min": 13,
+            "missed_deadline": true
+          },
+          {
+            "job_id": "j07",
+            "machine_id": "gpu-1",
+            "start_min": 16,
+            "end_min": 26,
+            "wait_min": 12,
+            "deadline_min": 23,
+            "missed_deadline": true
+          }
+        ],
+        "summary": {
+          "avg_completion_min": 27.25,
+          "p95_wait_min": 40,
+          "sla_misses": 8,
+          "hard_deadline_misses": 7,
+          "energy_kwh": 0.984,
+          "makespan_min": 48,
+          "capacity_violations": 0
+        },
+        "aggregate": {
+          "avg_completion_min": 34.8,
+          "p95_wait_min": 31,
+          "sla_misses": 81,
+          "hard_deadline_misses": 63,
+          "energy_kwh": 16.2,
+          "makespan_min": 57.4,
+          "capacity_violations": 0,
+          "fitness": -2.14,
+          "n_cases": 12
+        },
+        "behavior_origin": {
+          "genome_id": "g0001",
+          "provider": "baseline",
+          "operator": "seed",
+          "generation": 0
+        }
+      }
+    ]
+  }
+}

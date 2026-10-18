@@ -237,6 +237,37 @@ input[type="range"]::-moz-range-thumb {
   scrollbar-color: var(--scroll) transparent;
 }
 
+.glass {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--ivory) 6%, transparent), transparent 42%),
+    color-mix(in srgb, var(--raise) 78%, transparent);
+  border: 1px solid var(--line);
+  box-shadow: 0 24px 80px color-mix(in srgb, var(--bg) 55%, transparent);
+  backdrop-filter: blur(18px);
+}
+
+.lift {
+  transition: transform 220ms ease, border-color 220ms ease, background-color 220ms ease;
+}
+
+.lift:hover {
+  transform: translateY(-2px);
+}
+
+:root {
+  --job-interactive: #7ee0c6;
+  --job-batch: #e4c27a;
+  --job-gpu: #c4b5fd;
+  --job-highmem: #e7a3c0;
+}
+
+:root[data-theme="light"] {
+  --job-interactive: #0c5c4c;
+  --job-batch: #8a5a12;
+  --job-gpu: #4e34a8;
+  --job-highmem: #a33b66;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

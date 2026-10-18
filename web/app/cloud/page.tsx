@@ -4,5 +4,5 @@ import { Lab } from "@/components/lab/lab";
 export const metadata: Metadata = { title: "Cloud" };
 
 export default function CloudPage() {
-  return <Lab fixture="/fixtures/cloud_scheduling.json" title="Cloud scheduling" />;
+  return <Lab fixture="/fixtures/cloud_scheduling.json" title="Cloud scheduling" showcase="/fixtures/cloud_scheduling_showcase.json" />;
 }

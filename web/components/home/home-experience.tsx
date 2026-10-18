@@ -1,0 +1,213 @@
+"use client";
+
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import Link from "next/link";
+import { useState } from "react";
+import { Header } from "@/components/header";
+import { LivingField } from "@/components/home/living-field";
+import { ToyLandscape } from "@/components/home/toy-landscape";
+
+const STAGES = [
+  { id: "seed", title: "Seed", copy: "The first generation drops in any hand-written baselines, then fills the remaining slots from the model." },
+  { id: "evaluate", title: "Evaluate", copy: "Each candidate is scored on the training cases. That score is the only signal selection uses." },
+  { id: "select", title: "Select", copy: "A tournament of three picks parents. A small novelty bonus and a family cap keep one family from taking over." },
+  { id: "vary", title: "Mutate / cross", copy: "Parents are changed or crossed. CREAO handles a few of these calls. Veri handles the bulk." },
+  { id: "repair", title: "Repair", copy: "If a child breaks the rules, it gets one repair attempt. If that fails, the child is dropped." },
+  { id: "dedup", title: "Dedup", copy: "Two genomes with the same payload are not both kept. Duplicates are rejected." },
+  { id: "prune", title: "Prune", copy: "Losers leave the living population. They stay in the log, so the lineage can still show them." },
+  { id: "elites", title: "Elites", copy: "The best few are copied forward unchanged, under the same id. A few random immigrants arrive with no parents." },
+];
+
+const rise = {
+  hidden: { opacity: 0, y: 28 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.7, ease: [0.22, 1, 0.36, 1] as const } },
+};
+
+export function HomeExperience() {
+  const reduced = useReducedMotion();
+  const [stage, setStage] = useState(STAGES[0]);
+  const [frozen, setFrozen] = useState(false);
+
+  return (
+    <div data-testid="architecture-home">
+      <Header />
+      <section className="relative min-h-[100svh] overflow-hidden">
+        <LivingField />
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-bg via-bg/88 to-bg/20" />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-bg to-transparent" />
+        <div className="relative z-10 mx-auto flex min-h-[100svh] max-w-[1600px] flex-col justify-end px-4 pb-16 pt-28 md:px-6 md:pb-24">
+          <p className="kicker">GeneAI · the engine</p>
+          <h1 className="mt-4 max-w-4xl font-serif text-[clamp(3.4rem,8vw,7.4rem)] leading-[0.9] tracking-tight text-ivory">
+            One loop.
+            <span className="mt-1 block italic text-ivory/80">Better agents.</span>
+          </h1>
+          <p className="mt-6 max-w-xl text-lg leading-relaxed text-dim">
+            A population of policies is scored, crossed, and pruned. The survivor is chosen on validation. The test is read once.
+          </p>
+          <div className="mt-8 flex flex-wrap gap-3">
+            <Link href="/cloud" className="lift rounded-full bg-ivory px-5 py-2.5 text-sm text-bg">Open the cloud run</Link>
+            <Link href="/shopping" className="lift rounded-full border border-line bg-raise/40 px-5 py-2.5 text-sm text-ivory backdrop-blur">See a shopping run</Link>
+          </div>
+        </div>
+      </section>
+
+      <main className="mx-auto max-w-[1600px] px-4 md:px-6">
+        <motion.section
+          className="py-24 md:py-32"
+          initial={reduced ? false : "hidden"}
+          whileInView="show"
+          viewport={{ once: true, margin: "-12%" }}
+          variants={rise}
+        >
+          <p className="kicker">The loop</p>
+          <h2 className="mt-3 max-w-2xl font-serif text-4xl tracking-tight text-ivory md:text-6xl">Same steps, every generation.</h2>
+          <div className="mt-10 grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-8">
+            {STAGES.map((item, index) => {
+              const active = item.id === stage.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  data-testid={`loop-${item.id}`}
+                  aria-pressed={active}
+                  onClick={() => setStage(item)}
+                  className={`lift relative rounded-2xl border px-3 py-4 text-left ${active ? "border-teal bg-teal/10" : "border-line bg-raise/30"}`}
+                >
+                  <span className="font-mono text-[10px] text-faint">0{index + 1}</span>
+                  <span className="mt-2 block font-serif text-xl text-ivory">{item.title}</span>
+                </button>
+              );
+            })}
+          </div>
+          <AnimatePresence mode="wait">
+            <motion.p
+              key={stage.id}
+              data-testid="stage-copy"
+              initial={reduced ? false : { opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={reduced ? undefined : { opacity: 0, y: -8 }}
+              transition={{ duration: 0.28 }}
+              className="glass mt-4 max-w-3xl rounded-2xl px-5 py-4 text-base leading-relaxed text-ivory"
+            >
+              {stage.copy}
+            </motion.p>
+          </AnimatePresence>
+        </motion.section>
+
+        <motion.section className="pb-24 md:pb-32" initial={reduced ? false : "hidden"} whileInView="show" viewport={{ once: true, margin: "-12%" }} variants={rise}>
+          <p className="kicker">Who does what</p>
+          <h2 className="mt-3 max-w-3xl font-serif text-4xl tracking-tight text-ivory md:text-6xl">A few sharp calls. A lot of small ones.</h2>
+          <div className="mt-10 grid gap-4 lg:grid-cols-3">
+            <article className="glass lift rounded-3xl p-6">
+              <p className="kicker">Strategist</p>
+              <h3 className="mt-3 font-serif text-3xl text-ivory">CREAO</h3>
+              <p className="mt-3 text-sm leading-relaxed text-dim">A few high-level calls each generation, crossover first, then mutation. The default cap is three, and that batch runs together.</p>
+              <div className="mt-6 flex gap-2" aria-hidden>
+                {[0, 1, 2].map((dot) => (
+                  <span key={dot} className="h-3 w-3 rounded-full bg-violet" />
+                ))}
+              </div>
+            </article>
+            <article className="glass lift rounded-3xl p-6 lg:translate-y-6">
+              <p className="kicker">Bulk mutation</p>
+              <h3 className="mt-3 font-serif text-3xl text-ivory">Qwen2.5-7B on Veri</h3>
+              <p className="mt-3 text-sm leading-relaxed text-dim">veri.studio hosts the model that writes most mutations and the immigrants. Most of the population comes from here, not from CREAO.</p>
+              <div className="mt-6 flex flex-wrap gap-1.5" aria-hidden>
+                {Array.from({ length: 18 }, (_, index) => (
+                  <span key={index} className="h-2 w-2 rounded-full bg-teal" style={{ opacity: 0.45 + (index % 5) * 0.1 }} />
+                ))}
+              </div>
+            </article>
+            <article className="glass lift rounded-3xl p-6">
+              <p className="kicker">Outside the loop</p>
+              <h3 className="mt-3 font-serif text-3xl text-ivory">GPT-5.5</h3>
+              <p className="mt-3 text-sm leading-relaxed text-dim">One request, scored on the same test. That is a single attempt against the search. It is not compute-matched, and it is not a parent in the lineage.</p>
+              <div className="mt-6 h-3 w-3 rounded-full bg-amber" aria-hidden />
+            </article>
+          </div>
+        </motion.section>
+
+        <motion.section className="pb-24 md:pb-32" initial={reduced ? false : "hidden"} whileInView="show" viewport={{ once: true, margin: "-12%" }} variants={rise}>
+          <p className="kicker">Train, validation, test</p>
+          <h2 className="mt-3 max-w-3xl font-serif text-4xl tracking-tight text-ivory md:text-6xl">The test stays sealed.</h2>
+          <p className="mt-4 max-w-2xl text-base leading-relaxed text-dim">Train is what the loop sees. Validation picks the champion. Test is not read until that champion is frozen, and then only once.</p>
+          <div className="mt-8 grid gap-4 md:grid-cols-3">
+            <SplitPane label="Train" detail="Seen every generation." open dots={18} />
+            <SplitPane label="Validation" detail="Chooses the champion." open dots={8} highlight />
+            <SplitPane label="Test" detail={frozen ? "Read once, after the freeze." : "Sealed until champion.frozen."} open={frozen} dots={8} />
+          </div>
+          <button type="button" className="lift mt-4 rounded-full border border-line px-4 py-2 text-sm" aria-pressed={frozen} onClick={() => setFrozen((value) => !value)}>
+            {frozen ? "Seal the test again" : "Freeze the champion"}
+          </button>
+        </motion.section>
+
+        <motion.section className="pb-24 md:pb-32" initial={reduced ? false : "hidden"} whileInView="show" viewport={{ once: true, margin: "-12%" }} variants={rise}>
+          <p className="kicker">Domain adapters</p>
+          <h2 className="mt-3 max-w-3xl font-serif text-4xl tracking-tight text-ivory md:text-6xl">Same engine. Swap the score.</h2>
+          <p className="mt-4 max-w-2xl text-base leading-relaxed text-dim">The controller does not import a domain. Cloud, shopping, or quant is a plugin that supplies the genome, the rules, and the score.</p>
+          <div className="mt-8 grid gap-4 md:grid-cols-[1.2fr_1fr_1fr_1fr] md:items-stretch">
+            <div className="glass flex items-center rounded-3xl p-6">
+              <div>
+                <p className="kicker">Controller</p>
+                <p className="mt-2 font-serif text-3xl text-ivory">One loop</p>
+                <p className="mt-2 text-sm text-dim">Operators, elites, and the lineage stay put.</p>
+              </div>
+            </div>
+            <Adapter href="/cloud" name="Cloud" detail="Schedule jobs on a mixed pool." />
+            <Adapter href="/shopping" name="Shopping" detail="Build an outfit for one shopper." />
+            <div className="rounded-3xl border border-dashed border-line p-6 opacity-70">
+              <p className="kicker">Soon</p>
+              <p className="mt-2 font-serif text-3xl text-ivory">Quant</p>
+              <p className="mt-2 text-sm text-dim">The plug is reserved. The adapter is not built.</p>
+            </div>
+          </div>
+        </motion.section>
+
+        <motion.section className="pb-24 md:pb-32" initial={reduced ? false : "hidden"} whileInView="show" viewport={{ once: true, margin: "-12%" }} variants={rise}>
+          <p className="kicker">A sketch you can touch</p>
+          <h2 className="mt-3 font-serif text-4xl tracking-tight text-ivory md:text-6xl">Dots on a hill.</h2>
+          <div className="mt-8 max-w-3xl">
+            <ToyLandscape />
+          </div>
+        </motion.section>
+
+        <section className="pb-28">
+          <div className="glass flex flex-col items-start justify-between gap-6 rounded-3xl px-6 py-8 md:flex-row md:items-center md:px-10">
+            <div>
+              <p className="kicker">Recorded runs</p>
+              <h2 className="mt-2 font-serif text-4xl text-ivory">Watch the search, then read what it produced.</h2>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              <Link href="/cloud" className="lift rounded-full bg-ivory px-5 py-2.5 text-sm text-bg">Cloud scheduling</Link>
+              <Link href="/shopping" className="lift rounded-full border border-line px-5 py-2.5 text-sm">Shopping</Link>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+  );
+}
+
+function SplitPane({ label, detail, open, dots, highlight = false }: { label: string; detail: string; open: boolean; dots: number; highlight?: boolean }) {
+  return (
+    <article className={`rounded-3xl border p-5 ${highlight ? "border-teal/50 bg-teal/5" : "border-line bg-raise/30"} ${open ? "" : "opacity-70"}`}>
+      <p className="kicker">{label}</p>
+      <p className="mt-3 text-sm text-ivory">{detail}</p>
+      <div className={`mt-4 flex flex-wrap gap-1.5 ${open ? "" : "blur-[2px]"}`} aria-hidden>
+        {Array.from({ length: dots }, (_, index) => (
+          <span key={index} className={`h-2 w-2 rounded-full ${highlight && index === 0 ? "bg-amber" : "bg-ivory/70"}`} />
+        ))}
+      </div>
+    </article>
+  );
+}
+
+function Adapter({ href, name, detail }: { href: string; name: string; detail: string }) {
+  return (
+    <Link href={href} className="glass lift block rounded-3xl p-6">
+      <p className="kicker">Adapter</p>
+      <p className="mt-2 font-serif text-3xl text-ivory">{name}</p>
+      <p className="mt-2 text-sm text-dim">{detail}</p>
+    </Link>
+  );
+}

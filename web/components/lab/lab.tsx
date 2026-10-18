@@ -4,6 +4,7 @@ import gsap from "gsap";
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Header } from "@/components/header";
+import { OutputShowcase } from "@/components/showcase/output-showcase";
 import { LineageSvg } from "@/components/lab/lineage-svg";
 import { Scrubber } from "@/components/lab/scrubber";
 import { SidePanel } from "@/components/lab/side-panel";
@@ -32,7 +33,7 @@ const Lineage3D = dynamic(() => import("@/components/lab/lineage-3d"), {
 
 type Filter = "all" | "living" | "pruned" | "infeasible" | "ancestry";
 
-export function Lab({ fixture, title }: { fixture: string; title: string }) {
+export function Lab({ fixture, title, showcase }: { fixture: string; title: string; showcase?: string }) {
   const [exp, setExp] = useState<RunExport | null>(null);
   const [beats, setBeats] = useState<Beat[]>([]);
   const [beatIndex, setBeatIndex] = useState(0);
@@ -248,6 +249,8 @@ export function Lab({ fixture, title }: { fixture: string; title: string }) {
             One engine grows a population, scores it, and prunes what does not survive. This page plays an export. It is not a live claim.
           </p>
         </div>
+
+        {showcase ? <OutputShowcase src={showcase} /> : null}
 
         {loading ? (
           <p className="mt-16 text-sm text-dim" role="status">Reading the export…</p>

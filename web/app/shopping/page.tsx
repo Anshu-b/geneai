@@ -4,5 +4,5 @@ import { Lab } from "@/components/lab/lab";
 export const metadata: Metadata = { title: "Shopping" };
 
 export default function ShoppingPage() {
-  return <Lab fixture="/fixtures/shopping.json" title="Shopping" />;
+  return <Lab fixture="/fixtures/shopping.json" title="Shopping" showcase="/fixtures/shopping_showcase.json" />;
 }

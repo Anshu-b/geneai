@@ -1,0 +1,195 @@
+{
+  "schema": "geneai-showcase-v1",
+  "domain": "shopping",
+  "run_id": "run_9cc0bc08bdde",
+  "export_integrity_sha256": "70a81860f990c7e8c8418d65b18a2912d039ccb45c4600f4776153c709040240",
+  "split": "test",
+  "case_id": "sample-shopper-s07",
+  "case_note": "Development sample for layout only. Outfits, prices, links, and split totals are not the recorded catalog or the evaluator. Replace this file with the real shopping_showcase.json.",
+  "shopping": {
+    "shopper": {
+      "id": "s07",
+      "style": "quiet neutrals, nothing logo-heavy",
+      "budget_usd": 220,
+      "apparel_size": "M",
+      "shoe_size": 9,
+      "occasions": [
+        "campus",
+        "travel day"
+      ],
+      "likes": [
+        "black",
+        "bone",
+        "clean sneakers"
+      ],
+      "dislikes": [
+        "neon",
+        "logos",
+        "stiff denim"
+      ],
+      "notes": "Wants two or three pieces that work together. Size M, shoe 9. Would rather skip a piece than blow the budget."
+    },
+    "outfits": [
+      {
+        "key": "champion",
+        "label": "GeneAI champion",
+        "provider": "veri",
+        "genome_id": "g0025",
+        "feasible": true,
+        "infeasible_reason": null,
+        "items": [
+          {
+            "id": "sample_top_01",
+            "name": "Bone merino tee",
+            "role": "top",
+            "price_usd": 68,
+            "url": "https://example.com/sample/bone-tee",
+            "image_url": "/showcase/top.svg",
+            "source": "fixture"
+          },
+          {
+            "id": "sample_bottom_01",
+            "name": "Black relaxed trouser",
+            "role": "bottom",
+            "price_usd": 98,
+            "url": "https://example.com/sample/black-trouser",
+            "image_url": "/showcase/bottom.svg",
+            "source": "fixture"
+          },
+          {
+            "id": "sample_shoes_01",
+            "name": "White court sneaker",
+            "role": "shoes",
+            "price_usd": 42,
+            "url": "https://example.com/sample/court-sneaker",
+            "image_url": "/showcase/shoes.svg",
+            "source": "fixture"
+          }
+        ],
+        "total_usd": 208,
+        "score": 0.62,
+        "why": [
+          "Three neutral pieces, which matches the ask for quiet color.",
+          "Under the $220 budget by $12.",
+          "No logo-heavy or neon item from the dislikes list."
+        ],
+        "behavior_origin": {
+          "genome_id": "g0018",
+          "provider": "creao",
+          "operator": "crossover",
+          "generation": 4
+        },
+        "aggregate": {
+          "score_mean": 0.58,
+          "feasible_count": 18,
+          "n_shoppers": 20,
+          "total_usd_mean": 176,
+          "budget_usd_mean": 214
+        }
+      },
+      {
+        "key": "gpt55_one_shot",
+        "label": "GPT-5.5 one shot",
+        "provider": "openai",
+        "genome_id": null,
+        "feasible": false,
+        "infeasible_reason": "The outfit totals $246, which is $26 over the $220 budget.",
+        "items": [
+          {
+            "id": "sample_top_02",
+            "name": "Ivory silk shirt",
+            "role": "top",
+            "price_usd": 128,
+            "url": "https://example.com/sample/silk-shirt",
+            "image_url": "/showcase/top.svg",
+            "source": "fixture"
+          },
+          {
+            "id": "sample_bottom_02",
+            "name": "Tailored black pant",
+            "role": "bottom",
+            "price_usd": 118,
+            "url": "https://example.com/sample/tailored-pant",
+            "image_url": "/showcase/bottom.svg",
+            "source": "fixture"
+          }
+        ],
+        "total_usd": 246,
+        "score": null,
+        "why": [
+          "The colors fit the neutral brief.",
+          "It stopped at two pieces and still crossed the budget."
+        ],
+        "behavior_origin": {
+          "genome_id": null,
+          "provider": "openai",
+          "operator": "one_shot",
+          "generation": 0
+        },
+        "aggregate": {
+          "score_mean": 0.31,
+          "feasible_count": 9,
+          "n_shoppers": 20,
+          "total_usd_mean": 241,
+          "budget_usd_mean": 214
+        }
+      },
+      {
+        "key": "best_baseline",
+        "label": "Neutral outfit baseline",
+        "provider": "baseline",
+        "genome_id": "g0001",
+        "feasible": true,
+        "infeasible_reason": null,
+        "items": [
+          {
+            "id": "sample_top_03",
+            "name": "Navy cotton tee",
+            "role": "top",
+            "price_usd": 32,
+            "url": "https://example.com/sample/navy-tee",
+            "image_url": "/showcase/top.svg",
+            "source": "fixture"
+          },
+          {
+            "id": "sample_bottom_03",
+            "name": "Stone chino",
+            "role": "bottom",
+            "price_usd": 54,
+            "url": "https://example.com/sample/chino",
+            "image_url": "/showcase/bottom.svg",
+            "source": "fixture"
+          },
+          {
+            "id": "sample_layer_01",
+            "name": "Grey zip layer",
+            "role": "layer",
+            "price_usd": 70,
+            "url": "https://example.com/sample/zip-layer",
+            "image_url": "/showcase/layer.svg",
+            "source": "fixture"
+          }
+        ],
+        "total_usd": 156,
+        "score": 0.41,
+        "why": [
+          "Hand-written neutral template, not a search result.",
+          "Under budget by $64, with a navy piece the shopper did not ask for."
+        ],
+        "behavior_origin": {
+          "genome_id": "g0001",
+          "provider": "baseline",
+          "operator": "seed",
+          "generation": 0
+        },
+        "aggregate": {
+          "score_mean": 0.4,
+          "feasible_count": 20,
+          "n_shoppers": 20,
+          "total_usd_mean": 151,
+          "budget_usd_mean": 214
+        }
+      }
+    ]
+  }
+}

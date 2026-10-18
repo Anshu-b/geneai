@@ -28,20 +28,8 @@ test("light theme uses floral white and the toggle persists", async ({ page }) =
   });
 
   const toggle = page.getByTestId("theme-toggle");
-  const badge = page.getByTestId("mode-badge");
-  await expect(badge).toBeVisible();
-  await expect.poll(async () => {
-    const toggleBox = await toggle.boundingBox();
-    const badgeBox = await badge.boundingBox();
-    if (!toggleBox || !badgeBox) return -1;
-    return badgeBox.x - (toggleBox.x + toggleBox.width);
-  }).toBeGreaterThanOrEqual(0);
-  await expect.poll(async () => {
-    const toggleBox = await toggle.boundingBox();
-    const badgeBox = await badge.boundingBox();
-    if (!toggleBox || !badgeBox) return 999;
-    return Math.abs(toggleBox.y - badgeBox.y);
-  }).toBeLessThan(20);
+  await expect(page.getByTestId("architecture-home")).toBeVisible();
+  await expect(page.getByTestId("lineage-svg")).toHaveCount(0);
 
   await toggle.click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
