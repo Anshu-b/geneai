@@ -13,6 +13,7 @@ import {
   hitsOptimum,
   interpretTspResponse,
   isSampleTsp,
+  provenanceLine,
   maxRaceMs,
   timeFraction,
   tspVerdict,
@@ -365,6 +366,15 @@ function ComparisonTable({ file }: { file: TspFile }) {
         </tbody>
       </table>
       <p className="mt-3 max-w-3xl text-sm leading-relaxed text-dim" data-testid="tsp-heldout-line">{heldoutLine(file)} Mean gap counts only valid tours.</p>
+      {provenanceLine(file) ? (
+        <p className="mt-2 max-w-3xl text-sm leading-relaxed text-dim" data-testid="tsp-provenance">{provenanceLine(file)}</p>
+      ) : null}
+      {file.notes ? (
+        <details className="mt-2 max-w-3xl text-sm text-dim" data-testid="tsp-notes">
+          <summary className="cursor-pointer text-faint">How this benchmark was run</summary>
+          <p className="mt-2 leading-relaxed">{file.notes}</p>
+        </details>
+      ) : null}
     </div>
   );
 }

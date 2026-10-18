@@ -7,6 +7,7 @@ import {
   interpretTspResponse,
   isSampleTsp,
   parseTsp,
+  provenanceLine,
   timeFraction,
   tspVerdict,
   type TspFile,
@@ -56,6 +57,10 @@ describe("tsp benchmark", () => {
     }
     const verdict = tspVerdict(file);
     expect(verdict).toContain("Held-Karp proves a tour");
+    const gene = file.methods[3];
+    if (gene.provenance_counts) {
+      for (const count of Object.values(gene.provenance_counts)) expect(provenanceLine(file)).toContain(`${count} from`);
+    }
     const shot = file.methods[2];
     if (!shot.valid) expect(verdict).toContain(shot.invalid_reason!);
   });

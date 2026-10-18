@@ -63,7 +63,7 @@ test("tsp showdown races Held-Karp against the other three methods", async ({ pa
   await expect(page.getByTestId("tsp-ghost-classic_ga")).toBeVisible();
   await expect(page.getByTestId("tsp-ghost-geneai")).toBeVisible();
   await expect(page.getByTestId("tsp-crown-held_karp")).toBeVisible();
-  await expect(page.getByTestId("tsp-invalid-reason")).toContainText("empty output");
+  await expect(page.getByTestId("tsp-provenance")).toBeVisible();
   await expect(page.getByTestId("tsp-heldout")).toContainText("5 of 5");
   await page.getByTestId("tsp-race").click();
   await expect(page.getByTestId("tsp-race")).toHaveAttribute("aria-pressed", "true");

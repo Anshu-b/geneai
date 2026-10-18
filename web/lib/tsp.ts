@@ -28,6 +28,8 @@ export interface TspMethod {
   valid: boolean;
   invalid_reason: string | null;
   convergence: TspPoint[];
+  /** GeneAI only: genomes added during the run, by source, e.g. {"llm:veri": 0, "llm:creao": 0, "algorithmic": 2}. */
+  provenance_counts?: Record<string, number> | null;
 }
 
 export interface TspOptimum {
@@ -113,7 +115,16 @@ function parseMethod(value: unknown): TspMethod {
     valid: row.valid,
     invalid_reason: typeof row.invalid_reason === "string" ? row.invalid_reason : null,
     convergence,
+    provenance_counts: parseCounts(row.provenance_counts),
   };
+}
+
+function parseCounts(value: unknown): Record<string, number> | null {
+  const row = asRecord(value);
+  if (!row) return null;
+  const out: Record<string, number> = {};
+  for (const [key, count] of Object.entries(row)) if (typeof count === "number" && Number.isFinite(count)) out[key] = count;
+  return Object.keys(out).length > 0 ? out : null;
 }
 
 function parseSummary(value: unknown, key: string): TspHeldoutSummary {
@@ -263,6 +274,15 @@ export function heldoutLine(file: TspFile): string {
     return `${name[key]} hits ${row.optimal_hits} of ${n} (mean gap ${formatGap(row.mean_gap_pct)}, mean ${formatDuration(row.mean_time_ms)})`;
   });
   return `Across ${n} held-out maps, ${bits.join("; ")}.`;
+}
+
+export function provenanceLine(file: TspFile): string | null {
+  const gene = file.methods.find((method) => method.key === "geneai");
+  const counts = gene?.provenance_counts;
+  if (!counts) return null;
+  const name = (key: string) => (key === "llm:veri" ? "Veri" : key === "llm:creao" ? "CREAO" : key === "algorithmic" ? "algorithmic operators (OX, ERX, swap, 2-opt)" : key);
+  const bits = Object.entries(counts).map(([key, count]) => `${count} from ${name(key)}`);
+  return `Genomes GeneAI added on this map, by source: ${bits.join(", ")}.`;
 }
 
 export const TSP_COLOR: Record<TspMethodKey, string> = {
