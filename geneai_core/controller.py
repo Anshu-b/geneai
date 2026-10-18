@@ -126,6 +126,13 @@ class EvolutionController:
         seen_hashes: set[str] = set()
         repaired_hashes: set[str] = set()
         counters = {"mutation": 0, "crossover": 0, "immigrant": 0, "seed": 0, "repair": 0}
+        memetic = adapter.uses_memetic_fallback()
+        slice_s = max(0.25, float(config.max_wall_seconds) / float(config.generations + 2)) if memetic else None
+        # provider_call reads this. A memetic wave sets it to the generation slice
+        # so one slow provider cannot consume the rest of the wall.
+        invoke_cap: dict[str, float | None] = {"seconds": None}
+        if memetic:
+            repository.provenance_counts = {"llm:veri": 0, "llm:creao": 0, "algorithmic": 0}
         call_serial = 0
         strategist_used = 0
         # Default 8 matches the Veri deployment concurrency_target. Seed waves
@@ -153,7 +160,9 @@ class EvolutionController:
             nonlocal call_serial
             if not budget.allows_model_call():
                 return None
-            wait_s = budget.remaining_seconds()
+            remaining_wall = budget.remaining_seconds()
+            capped = invoke_cap["seconds"]
+            wait_s = remaining_wall if capped is None else min(remaining_wall, float(capped))
             if wait_s <= 0:
                 budget.exhausted_reason = budget.exhausted_reason or "max_wall_seconds"
                 return None
@@ -219,7 +228,22 @@ class EvolutionController:
                     },
                     call_provenance,
                 )
-                budget.exhausted_reason = budget.exhausted_reason or "max_wall_seconds"
+                # A memetic slice expiring is a skipped child. The wall is exhausted
+                # only when almost none of it is left.
+                if budget.remaining_seconds() <= 0.25:
+                    budget.exhausted_reason = budget.exhausted_reason or "max_wall_seconds"
+                return None
+            except asyncio.CancelledError:
+                repository.emit(
+                    f"{event_prefix}.failed",
+                    {
+                        "call_id": call_id,
+                        "operation": operation,
+                        "error": "provider call cancelled after the generation slice",
+                        "code": "cancelled",
+                    },
+                    call_provenance,
+                )
                 return None
             except ProviderError as exc:
                 repository.emit(
@@ -303,6 +327,27 @@ class EvolutionController:
                 )
                 return None, "invalid_schema"
             digest = content_hash(payload)
+            if digest in seen_hashes and operator in {"mutation", "crossover"}:
+                alter = getattr(adapter, "alter_duplicate", None)
+                rewritten = alter(payload, rng) if callable(alter) else None
+                if isinstance(rewritten, dict):
+                    prepared_again, extra_notes = adapter.prepare_payload(rewritten)
+                    candidate = prepared_again if isinstance(prepared_again, dict) else None
+                    if isinstance(candidate, dict):
+                        candidate = _project_payload(candidate, adapter.genome_schema())
+                        try:
+                            adapter.validate(candidate, objective)
+                        except ValueError:
+                            candidate = None
+                    if isinstance(candidate, dict):
+                        new_digest = content_hash(candidate)
+                        if new_digest not in seen_hashes:
+                            payload = candidate
+                            digest = new_digest
+                            normalization_notes.extend(extra_notes)
+                            normalization_notes.append(
+                                "duplicate behavior rewritten so the child is not a copy"
+                            )
             if digest in seen_hashes:
                 repository.emit(
                     "genome.rejected",
@@ -343,6 +388,12 @@ class EvolutionController:
                     "normalizations": list(normalization_notes),
                 },
             )
+            provenance_label = _provenance_label(proposal.provider, provider_role, memetic)
+            if provenance_label:
+                genome.metadata["provenance"] = provenance_label
+                counts = repository.provenance_counts
+                if isinstance(counts, dict):
+                    counts[provenance_label] = int(counts.get(provenance_label, 0)) + 1
             try:
                 repository.add_genome(genome)
             except Exception as exc:
@@ -545,6 +596,117 @@ class EvolutionController:
                 batch_size=1,
             )
 
+        def fill_algorithmic(
+            *,
+            generation: int,
+            donors: list[Individual],
+            needed: int,
+            sink: list[Individual],
+            as_seed: bool,
+        ) -> int:
+            if needed <= 0 or not memetic:
+                return 0
+            added = 0
+            local_attempts = 0
+            limit = max(needed * 8, 8)
+            while added < needed and local_attempts < limit and budget.allows_evaluation():
+                batch = adapter.algorithmic_offspring(
+                    [item.genome.payload for item in (donors or sink)],
+                    rng,
+                    max(1, needed - added),
+                )
+                if not batch:
+                    break
+                for op_name, raw in batch:
+                    local_attempts += 1
+                    if added >= needed or not budget.allows_evaluation():
+                        break
+                    if not isinstance(raw, dict):
+                        continue
+                    if as_seed or not donors:
+                        operator = "seed"
+                        parent_ids: list[str] = []
+                        origin = "seed"
+                    elif op_name in {"OX", "ERX"} and len(donors) >= 2:
+                        operator = "crossover"
+                        parent_ids = [item.genome.id for item in rng.sample(donors, 2)]
+                        origin = "crossover"
+                    else:
+                        operator = "mutation"
+                        parent_ids = [rng.choice(donors).genome.id]
+                        origin = "mutation"
+                    proposal = Proposal(
+                        payload=raw,
+                        hypothesis=f"algorithmic {op_name}",
+                        provider="algorithmic",
+                        provider_run_id=f"algorithmic-g{generation}-{local_attempts}",
+                        mode="algorithmic",
+                        extra={"algorithmic_operator": op_name},
+                    )
+                    genome, _reason = accept_payload(
+                        proposal,
+                        operator=operator,  # type: ignore[arg-type]
+                        origin=origin,
+                        parent_ids=parent_ids,
+                        generation=generation,
+                        role="algorithmic_seed" if as_seed else "algorithmic",
+                        provider_role="algorithmic",
+                    )
+                    if genome is None:
+                        continue
+                    evaluation = evaluate_genome(genome, "train")
+                    if evaluation is None:
+                        continue
+                    counters[origin] += 1
+                    sink.append(Individual(genome=genome, evaluation=evaluation))
+                    added += 1
+            return added
+
+        async def memetic_model_wave(*, generation: int, plans: list[dict[str, Any]], sink: list[Individual]) -> None:
+            """One parallel provider wave. Finished calls are kept; the rest are cancelled at the slice."""
+
+            if not plans or slice_s is None:
+                return
+            if budget.remaining_seconds() <= 0.25 or not budget.allows_model_call() or not budget.allows_evaluation():
+                return
+            invoke_cap["seconds"] = float(slice_s)
+            tasks = [
+                asyncio.create_task(
+                    propose_many(
+                        operation=plan["operation"],
+                        generation=generation,
+                        parents=plan["parents"],
+                        channel=plan["channel"],
+                        task=plan["human"],
+                        human=plan["human"],
+                        context_parents=plan["context_parents"],
+                        role=plan["role"],
+                        provider_role=plan["provider_role"],
+                        batch_size=int(plan.get("batch_size") or 1),
+                        temperature=plan.get("temperature"),
+                        sample_seed=plan.get("sample_seed"),
+                    )
+                )
+                for plan in plans
+            ]
+            try:
+                done, pending = await asyncio.wait(tasks, timeout=max(float(slice_s), 0.05))
+                for task in pending:
+                    task.cancel()
+                if pending:
+                    await asyncio.gather(*pending, return_exceptions=True)
+                for task in done:
+                    if task.cancelled():
+                        continue
+                    if task.exception() is not None:
+                        continue
+                    group = task.result()
+                    if not group:
+                        continue
+                    sink.extend(group)
+            finally:
+                invoke_cap["seconds"] = None
+
         try:
             repository.emit("generation.started", {"generation": 0, "phase": "seed"}, provenance)
             for spec in adapter.seeded_baselines():
@@ -589,10 +751,44 @@ class EvolutionController:
                 body = prepared if isinstance(prepared, dict) else raw
                 seen_hashes.add(content_hash(body))
             attempts = 0
-            attempt_cap = config.population_size * 4
+            # One parallel seed wave is enough. Extra waves of rejected seeds were
+            # spending minutes in generation 0 (shopping duplicate-role rejections).
+            attempt_cap = min(config.population_size * 4, max(config.max_concurrent_model_calls, 4))
             temperature_index = 0
             model_wait = _provider_wait_seconds(model, "request_timeout_s")
-            while len(population) < config.population_size and attempts < attempt_cap:
+            if memetic:
+                fill_algorithmic(
+                    generation=0,
+                    donors=[],
+                    needed=config.population_size - len(population),
+                    sink=population,
+                    as_seed=True,
+                )
+                room_calls = max(0, config.max_model_calls - budget.model_calls)
+                wave = min(config.max_concurrent_model_calls, max(1, config.population_size), room_calls)
+                seed_plans: list[dict[str, Any]] = []
+                human = adapter.seed_instructions(objective)
+                for _ in range(wave):
+                    temperature = _SEED_TEMPERATURES[temperature_index % len(_SEED_TEMPERATURES)]
+                    temperature_index += 1
+                    seed_plans.append(
+                        {
+                            "operation": "seed",
+                            "parents": [],
+                            "context_parents": [],
+                            "human": human,
+                            "role": "seed",
+                            "channel": "model",
+                            "provider_role": "seed",
+                            "batch_size": _SEED_BATCH,
+                            "temperature": temperature,
+                            "sample_seed": rng.randrange(2**31),
+                        }
+                    )
+                await memetic_model_wave(generation=0, plans=seed_plans, sink=population)
+                if len(population) > config.population_size:
+                    population[:] = _trim_by_fitness(population, config.population_size)
+            while (not memetic) and len(population) < config.population_size and attempts < attempt_cap:
                 if budget.remaining_seconds() < model_wait:
                     budget.exhausted_reason = budget.exhausted_reason or "max_wall_seconds"
                     stop_reason = "max_wall_seconds"
@@ -685,10 +881,13 @@ class EvolutionController:
                 offspring=population,
                 pruned=[],
                 budget=budget,
+                adapter=adapter,
             )
             generations_completed = 0
 
-            generation_estimate = _generation_estimate_seconds(model, workflow, config)
+            generation_estimate = (
+                float(slice_s) if memetic and slice_s is not None else _generation_estimate_seconds(model, workflow, config)
+            )
             for generation in range(1, config.generations + 1):
                 if budget.cancelled:
                     stop_reason = "cancelled"
@@ -698,7 +897,11 @@ class EvolutionController:
                     budget.exhausted_reason = budget.exhausted_reason or "max_wall_seconds"
                     stop_reason = "max_wall_seconds"
                     break
-                if not budget.allows_model_call() or not budget.allows_evaluation():
+                if memetic:
+                    if not budget.allows_evaluation():
+                        stop_reason = budget.exhausted_reason or "budget"
+                        break
+                elif not budget.allows_model_call() or not budget.allows_evaluation():
                     stop_reason = budget.exhausted_reason or "budget"
                     break
                 repository.emit("generation.started", {"generation": generation}, provenance)
@@ -758,11 +961,37 @@ class EvolutionController:
                     adapter=adapter,
                     objective=objective,
                 )
+                if memetic:
+                    fill_algorithmic(
+                        generation=generation,
+                        donors=list(population),
+                        needed=desired - len(children),
+                        sink=children,
+                        as_seed=False,
+                    )
+                    room = min(config.max_concurrent_model_calls, max(desired, 1))
+                    plans = list(elite_plans[:room])
+                    while len(plans) < room and budget.allows_model_call():
+                        plans.append(
+                            _plan_variation(
+                                operation_rng=rng,
+                                config=config,
+                                mating_pool=mating_pool,
+                                adapter=adapter,
+                                objective=objective,
+                            )
+                        )
+                    _mark_strategist(plans, config.strategist_calls_per_generation - strategist_used)
+                    strategist_used += sum(1 for plan in plans if plan["channel"] == "workflow")
+                    # Algorithmic children already fill the slots. LLM children are extra
+                    # and next_population keeps the best, including any that return in time.
+                    await memetic_model_wave(generation=generation, plans=plans, sink=children)
                 elite_cursor = 0
                 child_attempts = 0
                 attempt_limit = max(desired * 8, 8)
                 while (
-                    len(children) < desired
+                    not memetic
+                    and len(children) < desired
                     and child_attempts < attempt_limit
                     and budget.allows_model_call()
                     and budget.allows_evaluation()
@@ -827,6 +1056,17 @@ class EvolutionController:
                             if len(children) >= desired:
                                 break
                             children.append(item)
+                _mutate_baseline_if_unchanged(
+                    adapter=adapter,
+                    rng=rng,
+                    generation=generation,
+                    population=population,
+                    children=children,
+                    budget=budget,
+                    accept_payload=accept_payload,
+                    evaluate_genome=evaluate_genome,
+                    counters=counters,
+                )
                 nxt = next_population(elites, children, config.population_size, adapter)
                 removed = pruned_individuals(population, nxt)
                 for item in removed:
@@ -861,15 +1101,24 @@ class EvolutionController:
                     offspring=children,
                     pruned=removed,
                     budget=budget,
+                    adapter=adapter,
                 )
                 generations_completed = generation
                 if budget.cancelled:
                     stop_reason = "cancelled"
                     status = "cancelled"
                     break
-                if budget.exhausted_reason in {"max_model_calls", "max_evaluations", "max_usd_estimate", "max_wall_seconds"} and (
-                    not budget.allows_model_call() or not budget.allows_evaluation()
-                ):
+                hard_stop = (
+                    {"max_evaluations", "max_wall_seconds"}
+                    if memetic
+                    else {"max_model_calls", "max_evaluations", "max_usd_estimate", "max_wall_seconds"}
+                )
+                blocked = (
+                    not budget.allows_evaluation()
+                    if memetic
+                    else (not budget.allows_model_call() or not budget.allows_evaluation())
+                )
+                if budget.exhausted_reason in hard_stop and blocked:
                     # The schedule may still have generations left. Stop before the next one.
                     if generation < config.generations:
                         stop_reason = budget.exhausted_reason
@@ -1018,6 +1267,63 @@ def _add_local_perturbations(
             counters["mutation"] += 1
             children.append(Individual(genome=genome, evaluation=evaluation))
             added += 1
+
+
+def _mutate_baseline_if_unchanged(
+    *,
+    adapter: DomainAdapter,
+    rng: random.Random,
+    generation: int,
+    population: list[Individual],
+    children: list[Individual],
+    budget: Budget,
+    accept_payload: Any,
+    evaluate_genome: Any,
+    counters: dict[str, int],
+) -> None:
+    """If every feasible genome is still a hand baseline, mutate one so the champion can move."""
+
+    def novel(item: Individual) -> bool:
+        return bool(
+            item.evaluation.feasible
+            and not item.genome.metadata.get("seeded_baseline")
+        )
+
+    if any(novel(item) for item in population) or any(novel(item) for item in children):
+        return
+    baselines = [item for item in population if item.genome.metadata.get("seeded_baseline")]
+    if not baselines or not budget.allows_evaluation():
+        return
+    parent = max(baselines, key=lambda item: (item.evaluation.fitness or float("-inf"), item.genome.id))
+    for attempt in range(4):
+        rewritten = adapter.alter_duplicate(parent.genome.payload, rng)
+        if not isinstance(rewritten, dict):
+            return
+        proposal = Proposal(
+            payload=rewritten,
+            hypothesis="mutation of a seeded baseline that changes the behavior",
+            provider="random",
+            provider_run_id=f"baseline-edit-{parent.genome.id}-{generation}-{attempt}",
+            mode="random",
+            extra={"baseline_edit": True},
+        )
+        genome, _reason = accept_payload(
+            proposal,
+            operator="mutation",
+            origin="mutation",
+            parent_ids=[parent.genome.id],
+            generation=generation,
+            role=None,
+            provider_role="random",
+        )
+        if genome is None:
+            continue
+        evaluation = evaluate_genome(genome, "train")
+        if evaluation is None or not evaluation.feasible:
+            continue
+        counters["mutation"] += 1
+        children.append(Individual(genome=genome, evaluation=evaluation))
+        return
 
 
 def _fill_random_seeds(
@@ -1286,6 +1592,7 @@ def _finish_generation(
     offspring: list[Individual],
     pruned: list[Individual],
     budget: Budget,
+    adapter: DomainAdapter | None = None,
 ) -> None:
     feasible = [item for item in population if item.evaluation.feasible and item.evaluation.fitness is not None]
     best = max(feasible, key=lambda item: (item.evaluation.fitness or float("-inf"), item.genome.id), default=None)
@@ -1311,6 +1618,9 @@ def _finish_generation(
     )
     repository.emit("checkpoint.saved", {"generation": generation, "path": str(repository.checkpoint_path)}, provenance)
     repository.emit("generation.completed", payload, provenance)
+    observer = getattr(adapter, "observe_generation", None) if adapter is not None else None
+    if callable(observer):
+        observer(generation, payload["best_fitness"])
     snapshot = budget.snapshot()
     repository.emit("budget.updated", snapshot.model_dump(mode="json"), provenance)
     best_fitness = "none" if payload["best_fitness"] is None else f"{payload['best_fitness']:.6f}"
@@ -1349,6 +1659,22 @@ def _freeze_champion(
             item.genome.id,
         ),
     )
+    baseline_hashes = {
+        genome.content_hash
+        for genome in repository.genomes.values()
+        if genome.metadata.get("seeded_baseline")
+    }
+    novel = [
+        item
+        for item in ranked
+        if item.evaluation.feasible
+        and item.genome.content_hash not in baseline_hashes
+        and not item.genome.metadata.get("seeded_baseline")
+    ]
+    # A copy of a hand baseline is not a search result. Fall back only when
+    # nothing else feasible exists, so a run still freezes a champion.
+    if novel:
+        ranked = novel + [item for item in ranked if item not in novel]
     finalists: list[Individual] = []
     family_counts: dict[str, int] = {}
     for item in ranked:
@@ -1370,6 +1696,10 @@ def _freeze_champion(
             validated.append((item, evaluation))
     if not validated:
         return None
+    novel_ids = {item.genome.id for item in novel}
+    validated_novel = [pair for pair in validated if pair[0].genome.id in novel_ids]
+    if validated_novel:
+        validated = validated_novel
     winner, held = max(
         validated,
         key=lambda pair: (
@@ -1426,7 +1756,7 @@ def _summary(
         if row["genome_id"] not in seen:
             seen.add(row["genome_id"])
             preserved_ids.append(row)
-    return {
+    summary = {
         "run_id": repository.run_id,
         "mode": repository.mode,
         "domain": None if repository.objective is None else repository.objective.domain,
@@ -1450,6 +1780,39 @@ def _summary(
         "budget": budget.snapshot().model_dump(mode="json"),
         "provider_mode_note": _provider_mode_note(repository.mode, repository.providers_meta),
     }
+    if repository.provenance_counts is not None:
+        summary["provenance_counts"] = dict(repository.provenance_counts)
+    return summary
+
+
+def _provenance_label(provider: str | None, provider_role: str | None, memetic: bool) -> str | None:
+    """Honest child source. Mock stays unlabeled. Veri and CREAO are named only when they ran."""
+
+    if not memetic:
+        return None
+    name = str(provider or "").lower()
+    role = str(provider_role or "").lower()
+    if name in {"mock", "mock-agent"}:
+        return None
+    if name == "creao" or role == "strategist":
+        return "llm:creao"
+    if name == "veri":
+        return "llm:veri"
+    if name in {"algorithmic", "random", "baseline"} or role in {"algorithmic", "random", "baseline"}:
+        return "algorithmic"
+    return None
+
+
+def _trim_by_fitness(population: list[Individual], size: int) -> list[Individual]:
+    ranked = sorted(
+        population,
+        key=lambda item: (
+            0 if item.evaluation.feasible and item.evaluation.fitness is not None else 1,
+            -(item.evaluation.fitness or float("-inf")),
+            item.genome.id,
+        ),
+    )
+    return ranked[:size]
 
 
 def _latest_split(repository: RunRepository, genome_id: str | None, split: str) -> Evaluation | None:

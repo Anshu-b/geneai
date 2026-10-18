@@ -78,6 +78,7 @@ class RunRepository:
         self.created_at: str = utc_now()
         self.summary: dict[str, Any] = {}
         self.catalog: dict[str, Any] | None = None
+        self.provenance_counts: dict[str, int] | None = None
         self._handle = self.events_path.open("a", encoding="utf-8")
 
     def close(self) -> None:
@@ -200,6 +201,8 @@ class RunRepository:
         }
         if self.catalog is not None:
             document["catalog"] = self.catalog
+        if self.provenance_counts is not None:
+            document["provenance_counts"] = dict(self.provenance_counts)
         document["integrity_sha256"] = export_integrity(document)
         return document
 

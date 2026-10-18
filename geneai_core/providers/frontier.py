@@ -2,8 +2,9 @@
 
 ``FRONTIER_BASE_URL`` must be a real base URL. This module does not invent a
 vendor endpoint. gpt-5.5 and other reasoning models use the Responses API
-(``max_output_tokens``, no temperature). Other models use Chat Completions
-with ``max_completion_tokens``.
+(``max_output_tokens``, no temperature). Reasoning effort stays low so the
+token budget is not spent before any visible JSON. Other models use Chat
+Completions with ``max_completion_tokens``.
 """
 
 from __future__ import annotations
@@ -28,6 +29,11 @@ from geneai_core.providers.openai_compat import (
     _usage_int,
     reject_chat_completions_base,
 )
+
+
+# Reasoning models can spend a small output cap entirely on hidden tokens.
+# 16000 leaves room for the JSON genome after a low-effort reasoning pass.
+RESPONSES_MAX_OUTPUT_TOKENS = 16000
 
 
 def uses_responses_api(model: str) -> bool:
@@ -99,7 +105,9 @@ class FrontierProvider(OpenAICompatibleProvider):
         started = time.perf_counter()
         client = self._client_or_create()
         use_format = True
+        use_reasoning = True
         timeouts = 0
+        empty_retries = 0
         while True:
             kwargs: dict[str, Any] = {
                 "model": self.model,
@@ -108,15 +116,20 @@ class FrontierProvider(OpenAICompatibleProvider):
                     "containing keys payload and hypothesis. No markdown."
                 ),
                 "input": f"{instruction}\n\nJSON schema:\n{json.dumps(schema, sort_keys=True)}",
-                "max_output_tokens": self.max_tokens,
+                "max_output_tokens": RESPONSES_MAX_OUTPUT_TOKENS,
                 "store": False,
             }
+            if use_reasoning:
+                kwargs["reasoning"] = {"effort": "low"}
             if use_format:
                 kwargs["text"] = {"format": {"type": "json_object"}}
             try:
                 response = await client.responses.create(**kwargs)
             except Exception as exc:
                 status = getattr(exc, "status_code", None)
+                if status in {400, 422} and use_reasoning:
+                    use_reasoning = False
+                    continue
                 if use_format and status in {400, 422}:
                     use_format = False
                     continue
@@ -138,6 +151,9 @@ class FrontierProvider(OpenAICompatibleProvider):
                 ) from exc
             text = _responses_text(response)
             if not text:
+                if empty_retries < 1:
+                    empty_retries += 1
+                    continue
                 raise ProviderError("frontier responses returned empty output")
             proposal = _proposal_from_text(
                 self,
@@ -171,23 +187,67 @@ def _chat_messages(instruction: str, schema: dict[str, Any]) -> list[dict[str, s
     ]
 
 
+def _lookup(obj: Any, key: str) -> Any:
+    if isinstance(obj, dict):
+        return obj.get(key)
+    return getattr(obj, key, None)
+
+
+def _as_text(value: Any) -> str:
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, dict):
+        for key in ("value", "text", "content"):
+            found = _as_text(value.get(key))
+            if found:
+                return found
+    return ""
+
+
+def _block_text(block: Any) -> str:
+    if isinstance(block, str):
+        return block.strip()
+    text = _as_text(_lookup(block, "text"))
+    if text:
+        return text
+    kind = str(_lookup(block, "type") or "")
+    if kind in {"output_text", "text"}:
+        nested = _as_text(_lookup(block, "content"))
+        if nested:
+            return nested
+    return ""
+
+
 def _responses_text(response: Any) -> str:
-    direct = getattr(response, "output_text", None)
-    if isinstance(direct, str) and direct.strip():
-        return direct.strip()
+    """Visible text only. A dict or an attribute both count, including nested output items."""
+
+    direct = _as_text(_lookup(response, "output_text"))
+    if direct:
+        return direct
+    output = _lookup(response, "output")
+    if isinstance(output, str):
+        return message_text(output).strip()
+    if not isinstance(output, list):
+        return ""
     parts: list[str] = []
-    for item in getattr(response, "output", None) or []:
-        content = getattr(item, "content", None)
-        if content is None and isinstance(item, dict):
-            content = item.get("content")
-        if not isinstance(content, list):
+    for item in output:
+        if isinstance(item, str):
+            if item.strip():
+                parts.append(item.strip())
             continue
-        for block in content:
-            text = getattr(block, "text", None)
-            if text is None and isinstance(block, dict):
-                text = block.get("text")
-            if text:
-                parts.append(str(text))
+        content = _lookup(item, "content")
+        if isinstance(content, str) and content.strip():
+            parts.append(content.strip())
+            continue
+        if isinstance(content, list):
+            for block in content:
+                text = _block_text(block)
+                if text:
+                    parts.append(text)
+            continue
+        text = _block_text(item)
+        if text:
+            parts.append(text)
     return message_text("".join(parts)).strip()
 
 

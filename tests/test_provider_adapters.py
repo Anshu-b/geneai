@@ -539,11 +539,95 @@ async def test_frontier_gpt55_calls_responses_without_temperature() -> None:
     kwargs = seen["kwargs"]
     assert isinstance(kwargs, dict)
     assert kwargs["model"] == "gpt-5.5"
-    assert kwargs["max_output_tokens"] == 4000
+    assert kwargs["max_output_tokens"] == 16000
+    assert kwargs["reasoning"] == {"effort": "low"}
     assert kwargs["store"] is False
     assert "temperature" not in kwargs
     assert proposal.extra["api"] == "responses"
     assert proposal.payload == {"ok": True}
+
+
+@pytest.mark.asyncio
+async def test_frontier_retries_once_when_output_text_is_empty() -> None:
+    calls = {"n": 0}
+
+    class Responses:
+        async def create(self, **kwargs):
+            del kwargs
+            calls["n"] += 1
+            if calls["n"] == 1:
+                return SimpleNamespace(
+                    id="resp_empty",
+                    model="gpt-5.5",
+                    output_text="",
+                    output=[],
+                    usage=SimpleNamespace(input_tokens=1, output_tokens=0),
+                )
+            return SimpleNamespace(
+                id="resp_2",
+                model="gpt-5.5",
+                output_text='{"payload":{"ok":true},"hypothesis":"second try"}',
+                usage=SimpleNamespace(input_tokens=2, output_tokens=3),
+            )
+
+    class Client:
+        def __init__(self) -> None:
+            self.responses = Responses()
+
+        async def close(self) -> None:
+            return None
+
+    provider = FrontierProvider(
+        api_key="sk-test",
+        base_url="https://api.openai.com/v1",
+        model="gpt-5.5",
+        client=Client(),
+    )
+    proposal = await provider.propose("Return one genome.", {"type": "object"}, call_id="c-empty")
+    assert calls["n"] == 2
+    assert proposal.payload == {"ok": True}
+    assert proposal.hypothesis == "second try"
+
+
+@pytest.mark.asyncio
+async def test_frontier_reads_output_text_nested_in_message_content() -> None:
+    class Responses:
+        async def create(self, **kwargs):
+            del kwargs
+            return {
+                "id": "resp_dict",
+                "model": "gpt-5.5",
+                "output_text": "",
+                "output": [
+                    {
+                        "type": "message",
+                        "content": [
+                            {
+                                "type": "output_text",
+                                "text": '{"payload":{"ok":true},"hypothesis":"nested"}',
+                            }
+                        ],
+                    }
+                ],
+                "usage": {"input_tokens": 1, "output_tokens": 2},
+            }
+
+    class Client:
+        def __init__(self) -> None:
+            self.responses = Responses()
+
+        async def close(self) -> None:
+            return None
+
+    provider = FrontierProvider(
+        api_key="sk-test",
+        base_url="https://api.openai.com/v1",
+        model="gpt-5.5",
+        client=Client(),
+    )
+    proposal = await provider.propose("Return one genome.", {"type": "object"}, call_id="c-nested")
+    assert proposal.payload == {"ok": True}
+    assert proposal.hypothesis == "nested"
 
 
 @pytest.mark.asyncio

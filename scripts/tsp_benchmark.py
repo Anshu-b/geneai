@@ -83,64 +83,37 @@ def _gap_pct(length: float | None, optimum: float) -> float | None:
 
 
 def _geneai_config(mode: str, *, showcase: bool) -> EvolutionConfig:
-    """Showcase hybrid is about 5 generations and a 4 minute wall. Held-out is smaller.
+    """Memetic TSP: 20 showcase generations inside about 150s, 8 held-out inside about 60s.
 
-    Mock uses a short budget so tests finish without a network. The controller
-    still refuses to start a generation that cannot finish inside one provider
-    timeout, so a slow Veri or CREAO call can complete fewer generations than
-    the configured count.
+    The controller slices each generation, fills it with OX/ERX/swap/2-opt, and
+    does not wait out a slow Veri or CREAO call. Mock uses the same generation
+    counts. The slice is a timeout, not a sleep, so mock stays fast.
     """
 
-    if mode == "mock":
-        if showcase:
-            return EvolutionConfig(
-                seed=SHOWCASE_SEED,
-                population_size=6,
-                generations=2,
-                elite_count=2,
-                max_wall_seconds=30,
-                max_model_calls=24,
-                max_evaluations=80,
-                strategist_calls_per_generation=1,
-                finalist_count=6,
-                finalist_family_cap=6,
-            )
-        return EvolutionConfig(
-            seed=0,
-            population_size=4,
-            generations=1,
-            elite_count=1,
-            max_wall_seconds=20,
-            max_model_calls=12,
-            max_evaluations=40,
-            strategist_calls_per_generation=1,
-            finalist_count=4,
-            finalist_family_cap=4,
-        )
     if showcase:
         return EvolutionConfig(
             seed=SHOWCASE_SEED,
-            population_size=8,
-            generations=5,
+            population_size=8 if mode == "hybrid" else 6,
+            generations=20,
             elite_count=2,
-            max_wall_seconds=240,
-            max_model_calls=48,
-            max_evaluations=160,
-            strategist_calls_per_generation=2,
-            finalist_count=8,
-            finalist_family_cap=8,
+            max_wall_seconds=150,
+            max_model_calls=400,
+            max_evaluations=2000,
+            strategist_calls_per_generation=2 if mode == "hybrid" else 1,
+            finalist_count=8 if mode == "hybrid" else 6,
+            finalist_family_cap=8 if mode == "hybrid" else 6,
         )
     return EvolutionConfig(
         seed=0,
-        population_size=6,
-        generations=2,
+        population_size=6 if mode == "hybrid" else 4,
+        generations=8,
         elite_count=1,
-        max_wall_seconds=180,
-        max_model_calls=24,
-        max_evaluations=80,
+        max_wall_seconds=60,
+        max_model_calls=200,
+        max_evaluations=800,
         strategist_calls_per_generation=1,
-        finalist_count=6,
-        finalist_family_cap=6,
+        finalist_count=6 if mode == "hybrid" else 4,
+        finalist_family_cap=6 if mode == "hybrid" else 4,
     )
 
 
@@ -320,7 +293,7 @@ async def _geneai_method(
         }
     cities = [int(city) for city in tour]
     length = tour_length(cities, distance_matrix(adapter.cities))
-    return _method(
+    method = _method(
         key="geneai",
         label=label,
         provider=provider,
@@ -333,6 +306,10 @@ async def _geneai_method(
         invalid_reason=None,
         convergence=adapter.convergence(),
     )
+    counts = result.summary.get("provenance_counts")
+    if isinstance(counts, dict):
+        method["provenance_counts"] = counts
+    return method
 
 
 def _heldout_row(method: dict[str, Any]) -> dict[str, Any]:
@@ -415,13 +392,13 @@ async def build_benchmark(mode: str, work_root: Path) -> dict[str, Any]:
         f"{24}, {40} generations, order crossover, and swap mutation. It does not call a model. "
         "llm_one_shot is one frontier call with the coordinates. An illegal tour stays illegal. "
         "geneai is the shared evolution controller. Mock uses the mock providers. "
-        "Hybrid uses Veri for most proposals and CREAO for the strategist slots, "
-        "with about 5 generations and a 240s wall on the showcase instance. "
-        "Held-out hybrid runs use 2 generations and a 180s wall. "
-        "The controller will not start a generation that cannot finish inside one provider timeout, "
-        "so a slow call can finish fewer generations than the cap. "
+        "Hybrid uses Veri for most proposals and CREAO for the strategist slots. "
+        "GeneAI uses LLM-guided operators plus 2-opt local search. "
+        "The showcase run is 20 generations inside about 150s. "
+        "Each held-out map is 8 generations inside about 60s. "
+        "A slow provider is cancelled at the generation slice and the population is filled with algorithmic children. "
         "A TSP genome is a permutation. Swap and 2-opt are the mutations. OX and ERX are the crossovers. "
-        "GeneAI repairs an invalid city list before scoring and logs it. The one-shot arm does not. "
+        "GeneAI repairs an invalid city list and runs 2-opt before scoring. The one-shot arm does not. "
         "Dedup hashes the canonical cycle (city 0 first, then the lexicographically smaller direction). "
         "Train, validation, and test all score the same instance. Fitness is negative tour length. "
         "time_ms is wall clock."

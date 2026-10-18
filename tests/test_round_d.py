@@ -253,6 +253,9 @@ async def test_baseline_copies_are_duplicates_and_catalog_is_exported(tmp_path: 
     assert copies == []
     reasons = [event.payload.get("reason_code") for event in repository.events if event.type == "genome.rejected"]
     assert "duplicate" in reasons
+    champion = repository.genomes[result.champion_id]
+    assert champion.metadata.get("seeded_baseline") is not True
+    assert champion.content_hash != baseline_hash
     document = json.loads(Path(result.export_path).read_text(encoding="utf-8"))
     assert verify_export(document)
     catalog = document["catalog"]

@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import subprocess
 import sys
+import time
 from itertools import permutations
 from pathlib import Path
 
 import pytest
 
+from geneai_core.controller import EvolutionController
 from geneai_core.diversity import content_hash
 from geneai_core.domains.tsp import (
     HELD_OUT_SEEDS,
@@ -30,8 +33,11 @@ from geneai_core.domains.tsp import (
     run_classic_ga,
     tour_length,
     tsp_objective,
+    two_opt_improve,
 )
-from geneai_core.schemas import ObjectiveSpec
+from geneai_core.providers.mock import MockAgentProvider, MockModelProvider
+from geneai_core.schemas import EvolutionConfig, ObjectiveSpec
+from geneai_core.store import RunRepository
 import random
 
 
@@ -181,6 +187,20 @@ def test_mock_benchmark_schema_and_hybrid_refuses_missing_keys(tmp_path: Path) -
     assert summary["geneai"]["valid_count"] == 5
     assert "Held-Karp" in document["notes"]
     assert "nearest" in document["notes"]
+    assert "LLM-guided operators plus 2-opt local search" in document["notes"]
+    assert max(point["gen"] for point in geneai["convergence"]) >= 20
+    assert geneai["provenance_counts"]["algorithmic"] > 0
+    summaries = list((tmp_path / "tsp_runs").glob("**/summary.json"))
+    assert summaries
+    by_seed = {}
+    for path in summaries:
+        body = json.loads(path.read_text(encoding="utf-8"))
+        by_seed[body["seed"]] = body
+    assert by_seed[SHOWCASE_SEED]["generations_completed"] >= 20
+    assert by_seed[SHOWCASE_SEED]["provenance_counts"]["algorithmic"] > 0
+    for seed in HELD_OUT_SEEDS:
+        assert by_seed[seed]["generations_completed"] >= 8
+        assert by_seed[seed]["provenance_counts"]["algorithmic"] > 0
     blocked = tmp_path / "should_not_exist.json"
     env = os.environ.copy()
     for name in list(env):
@@ -207,3 +227,55 @@ def test_objective_lists_coordinates() -> None:
     assert "0:(" in objective.prompt
     assert adapter.oneshot_hint().startswith("payload.tour")
     assert "not repaired" in adapter.oneshot_hint()
+
+
+def test_prepare_runs_two_opt_and_validate_leaves_an_illegal_tour_alone() -> None:
+    adapter = TspAdapter(SHOWCASE_SEED)
+    scrambled = [0, 2, 4, 6, 8, 10, 12, 14, 1, 3, 5, 7, 9, 11, 13]
+    before = tour_length(scrambled, adapter.dist)
+    improved, changed = two_opt_improve(scrambled, adapter.dist)
+    assert changed
+    assert tour_length(improved, adapter.dist) < before - 1e-6
+    raw = {"tour": scrambled, "description": "scrambled"}
+    snapshot = json.loads(json.dumps(raw))
+    adapter.validate(raw, tsp_objective(adapter))
+    assert raw == snapshot
+    prepared, notes = adapter.prepare_payload(raw)
+    assert any("2-opt" in note for note in notes)
+    assert tour_length(prepared["tour"], adapter.dist) < before - 1e-6
+
+
+@pytest.mark.asyncio
+async def test_memetic_tsp_keeps_evolving_when_the_provider_is_slow(tmp_path: Path) -> None:
+    class Slow(MockModelProvider):
+        async def propose(self, instruction, schema, *, call_id):
+            await asyncio.sleep(30)
+            return await super().propose(instruction, schema, call_id=call_id)
+
+    adapter = TspAdapter(SHOWCASE_SEED)
+    started = time.perf_counter()
+    result = await EvolutionController().evolve(
+        objective=tsp_objective(adapter),
+        adapter=adapter,
+        config=EvolutionConfig(
+            seed=SHOWCASE_SEED,
+            population_size=4,
+            generations=4,
+            elite_count=1,
+            strategist_calls_per_generation=0,
+            max_concurrent_model_calls=2,
+            max_model_calls=40,
+            max_evaluations=200,
+            max_wall_seconds=8,
+        ),
+        providers={"model": Slow(), "workflow": MockAgentProvider()},
+        mode="mock",
+        repository=RunRepository(tmp_path),
+    )
+    elapsed = time.perf_counter() - started
+    assert result.generations_completed >= 4
+    assert elapsed < 20
+    counts = result.summary["provenance_counts"]
+    assert counts["algorithmic"] > 0
+    assert counts["llm:veri"] == 0
+    assert counts["llm:creao"] == 0

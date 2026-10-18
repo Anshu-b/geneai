@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+import random
 import time
 from pathlib import Path
 from typing import Any
@@ -470,7 +471,19 @@ class ShoppingAdapter(DomainAdapter):
                     notes.append(f"{row.get('product_id')} shoe size normalized to {text}")
                     row["size"] = text
             corrected.append(row)
-        body["items"] = corrected
+        deduped: list[Any] = []
+        seen_roles: set[str] = set()
+        for row in corrected:
+            if isinstance(row, dict):
+                role = str(row.get("role") or "")
+                if role and role in seen_roles:
+                    notes.append(f"dropped extra {role}")
+                    _LOG.info("dropped extra %s", role)
+                    continue
+                if role:
+                    seen_roles.add(role)
+            deduped.append(row)
+        body["items"] = deduped
         self._fill_styling_notes(body, notes)
         return body, notes
 
@@ -564,6 +577,73 @@ class ShoppingAdapter(DomainAdapter):
         problem = _completeness_problem(roles, self._catalog_roles())
         if problem:
             raise ValueError(problem)
+
+    def alter_duplicate(self, payload: dict[str, Any], rng: random.Random) -> dict[str, Any] | None:
+        return self._swap_one_item(payload, rng)
+
+    def local_perturbations(self, payload: dict[str, Any], rng: random.Random, count: int) -> list[dict[str, Any]]:
+        """Swap a catalog product so an elite edit is not the same outfit."""
+
+        variants: list[dict[str, Any]] = []
+        body = payload
+        for _ in range(max(0, count)):
+            swapped = self._swap_one_item(body, rng)
+            if swapped is None:
+                break
+            variants.append(swapped)
+            body = swapped
+        return variants
+
+    def _swap_one_item(self, payload: dict[str, Any], rng: random.Random) -> dict[str, Any] | None:
+        items = payload.get("items") if isinstance(payload, dict) else None
+        if not isinstance(items, list) or not items:
+            return None
+        apparel = str(self._objective_constraints.get("size") or "M")
+        shoe_size = self._objective_constraints.get("shoe_size", DEFAULT_SHOE_SIZE)
+        order = list(range(len(items)))
+        rng.shuffle(order)
+        products = [product for product in self.catalog.get("products") or [] if isinstance(product, dict)]
+        spend = 0.0
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            product = self._by_id.get(str(item.get("product_id")))
+            if product is not None:
+                spend += _product_price(product)
+        # Every shopper must still be able to buy the outfit. The tightest
+        # profile is the ceiling, so a mutation of a baseline stays feasible.
+        ceiling = min(_BUDGET_MENU)
+        legal: list[dict[str, Any]] = []
+        for index in order:
+            item = items[index]
+            if not isinstance(item, dict):
+                continue
+            role = str(item.get("role") or "")
+            current = str(item.get("product_id") or "")
+            current_product = self._by_id.get(current)
+            current_price = _product_price(current_product) if current_product is not None else 0.0
+            alternatives = [
+                product
+                for product in products
+                if str(product.get("role") or "") == role and str(product.get("product_id") or "") != current
+            ]
+            rng.shuffle(alternatives)
+            for product in alternatives:
+                size = _size_for(product, apparel_size=apparel, shoe_size=shoe_size)
+                if size is None:
+                    continue
+                if spend - current_price + _product_price(product) > ceiling + 1e-9:
+                    continue
+                replacement = _item_from_product(product, size=size)
+                new_items = [dict(row) if isinstance(row, dict) else row for row in items]
+                new_items[index] = replacement
+                body = dict(payload)
+                body["items"] = new_items
+                legal.append(body)
+                break
+        if not legal:
+            return None
+        return legal[rng.randrange(len(legal))]
 
     def seeded_baselines(self) -> list[dict[str, Any]]:
         outfits = _hand_baselines(

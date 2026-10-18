@@ -8,12 +8,16 @@ from pathlib import Path
 import httpx
 import pytest
 
+import random
+
 from geneai_core.benchmark.oneshot import run_frontier_oneshot
+from geneai_core.diversity import content_hash
 from geneai_core.controller import EvolutionController, _provider_mode_note
 from geneai_core.domains.cloud import CLOUD_SEARCH_CEILING, CloudSchedulingAdapter
 from geneai_core.domains.shopping import (
     ShoppingAdapter,
     _catalog_role,
+    neutral_outfit,
     products_from_browser_output,
 )
 from geneai_core.domains.toy import ToyOptimizationAdapter
@@ -34,6 +38,37 @@ from geneai_core.schemas import EvolutionConfig, ObjectiveSpec
 from geneai_core.store import RunRepository, verify_export
 
 SAMPLE = Path(__file__).parent / "fixtures" / "creao_failed_run_703a.json"
+
+
+def test_duplicate_role_keeps_the_first_item_and_a_swap_changes_the_outfit() -> None:
+    adapter = ShoppingAdapter()
+    objective = ObjectiveSpec(
+        domain="shopping",
+        prompt="outfit",
+        constraints={"size": "M", "shoe_size": 9},
+        evaluation_version=adapter.evaluator_version,
+    )
+    adapter.bind_objective(objective)
+    payload = {
+        "family": "neutral_layers",
+        "items": [
+            {"product_id": "fx_top_01", "color_id": "black", "size": "M", "role": "top"},
+            {"product_id": "fx_top_02", "color_id": "bone", "size": "M", "role": "top"},
+            {"product_id": "fx_bottom_01", "color_id": "black", "size": "M", "role": "bottom"},
+            {"product_id": "fx_shoes_01", "color_id": "black", "size": "9", "role": "shoes"},
+        ],
+        "styling_notes": "two tops",
+    }
+    prepared, notes = adapter.prepare_payload(payload)
+    tops = [item for item in prepared["items"] if item["role"] == "top"]
+    assert len(tops) == 1
+    assert tops[0]["product_id"] == "fx_top_01"
+    assert any(note == "dropped extra top" for note in notes)
+    adapter.validate(prepared, objective)
+    baseline = neutral_outfit()
+    changed = adapter.alter_duplicate(baseline, random.Random(1))
+    assert changed is not None
+    assert content_hash(changed) != content_hash(baseline)
 
 
 def test_veri_timeout_defaults_to_120_and_env_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -367,7 +402,9 @@ async def test_oneshot_reports_duplicate_role(monkeypatch: pytest.MonkeyPatch) -
     )
     assert record["status"] == "invalid"
     assert record["feasible"] is False
-    assert "duplicate role" in str(record["reason"])
+    # The extra top is dropped. The outfit is still invalid because a required role is missing.
+    assert "duplicate role" not in str(record["reason"])
+    assert "bottom" in str(record["reason"])
 
 
 @pytest.mark.asyncio

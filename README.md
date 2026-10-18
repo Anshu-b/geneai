@@ -16,10 +16,12 @@ uv run python scripts/tsp_benchmark.py --out tsp_benchmark.json --mode mock
 ```
 
 The TSP benchmark is a 15-city Euclidean tour. `mock` writes `geneai-tsp-v1`
-with Held-Karp, a classic OX/swap GA, an uncalled frontier one-shot, and a
-short GeneAI run. `hybrid` uses `VERI_*`, `CREAO_*`, and `FRONTIER_*` and
-exits 3 if any of those credentials are missing. Held-Karp is the traditional
-method and the optimum. There is no nearest-neighbor arm.
+with Held-Karp, a classic OX/swap GA, an uncalled frontier one-shot, and
+GeneAI. `hybrid` uses `VERI_*`, `CREAO_*`, and `FRONTIER_*` and exits 3 if
+any of those credentials are missing. Held-Karp is the traditional method and
+the optimum. There is no nearest-neighbor arm. GeneAI uses LLM-guided
+operators plus 2-opt local search: 20 showcase generations in about 150s, and
+8 generations per held-out map in about 60s. The classic GA is unchanged.
 
 Mock mode makes no network calls. The evaluator is real: the cloud simulator,
 or the committed fixture catalog for shopping. The process writes

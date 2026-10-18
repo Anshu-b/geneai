@@ -66,6 +66,31 @@ class DomainAdapter(ABC):
         del payload, rng, count
         return []
 
+    def uses_memetic_fallback(self) -> bool:
+        """Algorithmic children fill every generation, and model calls use a short slice."""
+
+        return False
+
+    def algorithmic_offspring(
+        self,
+        payloads: list[dict[str, Any]],
+        rng: random.Random,
+        count: int,
+    ) -> list[tuple[str, dict[str, Any]]]:
+        """Cheap domain operators. Each pair is (operator name, payload)."""
+
+        del payloads, rng, count
+        return []
+
+    def alter_duplicate(self, payload: dict[str, Any], rng: random.Random) -> dict[str, Any] | None:
+        """A different behavior when a child copies an existing genome.
+
+        None leaves the controller's duplicate rejection in place.
+        """
+
+        del payload, rng
+        return None
+
     def seeded_baselines(self) -> list[dict[str, Any]]:
         """Generation-0 payloads inserted before model seeds.
 

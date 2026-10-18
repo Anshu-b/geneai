@@ -163,6 +163,42 @@ def random_two_opt(tour: list[int], rng: random.Random) -> list[int]:
     return two_opt_move(tour, i, j)
 
 
+def two_opt_improve(tour: list[int], dist: list[list[float]]) -> tuple[list[int], bool]:
+    """First-improvement 2-opt until a local optimum, or ``n * n`` improving moves.
+
+    Reversing the whole cycle (the same tour walked backwards) is skipped.
+    """
+
+    best = [int(city) for city in tour]
+    n = len(best)
+    if n < 4:
+        return best, False
+    changed = False
+    passes = 0
+    while passes < n * n:
+        passes += 1
+        improved = False
+        for i in range(n - 1):
+            # i == 0 stops before the closing reversal, which does not change the cycle.
+            end = n - 1 if i == 0 else n
+            a = best[i]
+            b = best[i + 1]
+            for j in range(i + 2, end):
+                c = best[j]
+                d = best[(j + 1) % n]
+                delta = dist[a][c] + dist[b][d] - dist[a][b] - dist[c][d]
+                if delta < -1e-9:
+                    best[i + 1 : j + 1] = reversed(best[i + 1 : j + 1])
+                    changed = True
+                    improved = True
+                    break
+            if improved:
+                break
+        if not improved:
+            break
+    return best, changed
+
+
 def order_crossover(left: list[int], right: list[int], rng: random.Random) -> list[int]:
     """OX: copy a slice from the first parent and fill the rest in the second parent's order."""
 
@@ -404,10 +440,16 @@ class TspAdapter(DomainAdapter):
             return payload, notes
         body = dict(payload)
         tour, changed = repair_tour(body.get("tour"), self.n)
-        body["tour"] = tour
         if changed:
             notes.append(f"tour repaired to a permutation of 0..{self.n - 1}")
             _LOG.info("tour repaired to a permutation of 0..%s", self.n - 1)
+        before = tour_length(tour, self.dist)
+        improved, shortened = two_opt_improve(tour, self.dist)
+        body["tour"] = improved
+        if shortened:
+            after = tour_length(improved, self.dist)
+            notes.append(f"2-opt shortened the tour from {before:.4f} to {after:.4f}")
+            _LOG.info("2-opt shortened the tour from %.4f to %.4f", before, after)
         description = body.get("description")
         if not isinstance(description, str) or not description.strip():
             body["description"] = "repaired permutation tour"
@@ -489,6 +531,44 @@ class TspAdapter(DomainAdapter):
             )
         return rows
 
+    def uses_memetic_fallback(self) -> bool:
+        return True
+
+    def algorithmic_offspring(
+        self,
+        payloads: list[dict[str, Any]],
+        rng: random.Random,
+        count: int,
+    ) -> list[tuple[str, dict[str, Any]]]:
+        """OX, ERX, swap, and 2-opt. A fresh random tour is mixed in so 2-opt does not collapse the pool."""
+
+        tours: list[list[int]] = []
+        for payload in payloads:
+            tour = payload.get("tour") if isinstance(payload, dict) else None
+            if is_permutation(tour, self.n):
+                tours.append([int(city) for city in tour])
+        if not tours:
+            tours.append(rng.sample(range(self.n), self.n))
+        operators = ("OX", "ERX", "swap", "2-opt")
+        children: list[tuple[str, dict[str, Any]]] = []
+        for index in range(max(0, count)):
+            op = operators[index % len(operators)]
+            left = tours[rng.randrange(len(tours))]
+            if len(tours) == 1 or index % 5 == 4:
+                right = rng.sample(range(self.n), self.n)
+            else:
+                right = tours[rng.randrange(len(tours))]
+            if op == "OX":
+                child = order_crossover(left, right, rng)
+            elif op == "ERX":
+                child = edge_recombination(left, right, rng)
+            elif op == "swap":
+                child = random_swap(left, rng)
+            else:
+                child = random_two_opt(left, rng)
+            children.append((op, {"tour": child, "description": f"algorithmic {op}"}))
+        return children
+
     def local_perturbations(self, payload: dict[str, Any], rng: random.Random, count: int) -> list[dict[str, Any]]:
         tour = payload.get("tour")
         if not is_permutation(tour, self.n):
@@ -540,6 +620,13 @@ class TspAdapter(DomainAdapter):
             data_split=split,  # type: ignore[arg-type]
             elapsed_ms=max(0, int((time.perf_counter() - started) * 1000)),
         )
+
+    def observe_generation(self, generation: int, best_fitness: float | None) -> None:
+        """Record the population best even when a generation accepts no new tour."""
+
+        if isinstance(best_fitness, bool) or not isinstance(best_fitness, (int, float)):
+            return
+        self.trace.append((int(generation), -float(best_fitness), time.perf_counter()))
 
     def convergence(self) -> list[dict[str, Any]]:
         """Best tour length so far at the end of each generation, in wall-clock milliseconds."""
