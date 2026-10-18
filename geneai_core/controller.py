@@ -100,6 +100,8 @@ class EvolutionController:
         seen_hashes: set[str] = set()
         counters = {"mutation": 0, "crossover": 0, "immigrant": 0, "seed": 0, "repair": 0}
         call_serial = 0
+        # Default 8 matches the Veri deployment concurrency_target. Proposals
+        # are awaited one at a time; the cap applies if calls overlap.
         semaphore = asyncio.Semaphore(config.max_concurrent_model_calls)
         population: list[Individual] = []
         generations_completed = 0

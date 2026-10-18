@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from types import SimpleNamespace
 
@@ -18,7 +19,14 @@ from geneai_core.providers.creao_cli_unverified import UnverifiedCreaoCliProvide
 from geneai_core.providers.frontier import FrontierProvider
 from geneai_core.providers.mock import MockModelProvider
 from geneai_core.providers.openai_compat import reject_chat_completions_base
-from geneai_core.providers.veri import veri_deployment_base_url
+from geneai_core.providers.veri import (
+    EXAMPLE_BASE_URL,
+    EXAMPLE_DEPLOYMENT_ID,
+    EXAMPLE_MODEL,
+    VERI_CONCURRENCY_TARGET,
+    veri_deployment_base_url,
+)
+from geneai_core.schemas import EvolutionConfig
 
 
 TOY_SCHEMA = {
@@ -42,6 +50,11 @@ TOY_SCHEMA = {
 
 
 def test_veri_base_url_matches_docs() -> None:
+    assert veri_deployment_base_url(EXAMPLE_DEPLOYMENT_ID) == EXAMPLE_BASE_URL
+    assert EXAMPLE_DEPLOYMENT_ID == "bfe84d51e141"
+    assert EXAMPLE_MODEL == "geneai-qwen7b"
+    assert VERI_CONCURRENCY_TARGET == 8
+    assert EvolutionConfig().max_concurrent_model_calls == VERI_CONCURRENCY_TARGET
     assert veri_deployment_base_url("dep_123") == "https://api.veri.studio/v1/deployments/dep_123"
     with pytest.raises(ValueError):
         veri_deployment_base_url("dep/chat/completions")
@@ -251,3 +264,129 @@ async def test_veri_provider_parses_a_fake_completion() -> None:
     assert proposal.provider_run_id == "chatcmpl-test"
     assert proposal.prompt_tokens == 3
     assert proposal.mode == "live"
+
+
+def test_veri_from_env_defaults_the_public_deployment(monkeypatch: pytest.MonkeyPatch) -> None:
+    from geneai_core.providers.veri import VeriProvider
+
+    monkeypatch.setenv("VERI_API_KEY", "vk_test")
+    monkeypatch.delenv("VERI_DEPLOYMENT_ID", raising=False)
+    monkeypatch.delenv("VERI_MODEL", raising=False)
+    provider = VeriProvider.from_env()
+    assert provider.deployment_id == EXAMPLE_DEPLOYMENT_ID
+    assert provider.model == EXAMPLE_MODEL
+    assert provider.base_url == EXAMPLE_BASE_URL
+    assert provider.in_flight_limit == VERI_CONCURRENCY_TARGET
+
+
+def _completion(content: str, completion_id: str = "chatcmpl-wake") -> SimpleNamespace:
+    message = SimpleNamespace(content=content)
+    choice = SimpleNamespace(message=message, finish_reason="stop")
+    usage = SimpleNamespace(prompt_tokens=2, completion_tokens=3, total_tokens=5)
+    return SimpleNamespace(id=completion_id, model=EXAMPLE_MODEL, choices=[choice], usage=usage, model_extra={})
+
+
+class _StatusError(Exception):
+    def __init__(self, status_code: int, code: str, retry_after: str) -> None:
+        super().__init__(code)
+        self.status_code = status_code
+        self.body = {"error": {"code": code, "retry_after_seconds": int(retry_after)}}
+        self.response = SimpleNamespace(headers={"retry-after": retry_after})
+
+
+@pytest.mark.asyncio
+async def test_veri_retries_503_deployment_waking_then_succeeds() -> None:
+    from geneai_core.providers.veri import VeriProvider
+
+    calls = {"n": 0}
+    delays: list[float] = []
+
+    class Completions:
+        async def create(self, **kwargs):
+            calls["n"] += 1
+            if calls["n"] < 3:
+                raise _StatusError(503, "deployment_waking", "30")
+            return _completion('{"payload":{"ok":true},"hypothesis":"awake"}')
+
+    async def sleeper(delay: float) -> None:
+        delays.append(delay)
+
+    client = SimpleNamespace(chat=SimpleNamespace(completions=Completions()), close=None)
+    provider = VeriProvider(
+        api_key="vk_test",
+        deployment_id=EXAMPLE_DEPLOYMENT_ID,
+        model=EXAMPLE_MODEL,
+        client=client,
+        sleeper=sleeper,
+        wake_timeout_s=180,
+    )
+    proposal = await provider.propose("say json", {"type": "object"}, call_id="wake")
+    assert calls["n"] == 3
+    assert delays == [30.0, 30.0]
+    assert proposal.payload == {"ok": True}
+    assert proposal.hypothesis == "awake"
+
+
+@pytest.mark.asyncio
+async def test_veri_stops_retrying_when_the_wake_budget_is_spent() -> None:
+    from geneai_core.providers.veri import VeriProvider
+
+    class Completions:
+        async def create(self, **kwargs):
+            raise _StatusError(503, "deployment_waking", "30")
+
+    client = SimpleNamespace(chat=SimpleNamespace(completions=Completions()), close=None)
+    provider = VeriProvider(
+        api_key="vk_test",
+        deployment_id=EXAMPLE_DEPLOYMENT_ID,
+        model=EXAMPLE_MODEL,
+        client=client,
+        sleeper=lambda _delay: _async_none(),
+        wake_timeout_s=30,
+    )
+    with pytest.raises(ProviderError) as caught:
+        await provider.propose("say json", {"type": "object"}, call_id="cold")
+    assert caught.value.retryable is True
+    assert caught.value.status_code == 503
+    assert caught.value.code == "deployment_waking"
+
+
+async def _async_none() -> None:
+    return None
+
+
+@pytest.mark.asyncio
+async def test_veri_caps_in_flight_calls_at_the_deployment_target() -> None:
+    from geneai_core.providers.veri import VeriProvider
+
+    state = {"current": 0, "max_seen": 0}
+    release = asyncio.Event()
+    entered = asyncio.Event()
+
+    class Completions:
+        async def create(self, **kwargs):
+            state["current"] += 1
+            state["max_seen"] = max(state["max_seen"], state["current"])
+            if state["current"] >= VERI_CONCURRENCY_TARGET:
+                entered.set()
+            await release.wait()
+            state["current"] -= 1
+            return _completion('{"payload":{"ok":true},"hypothesis":"slot"}')
+
+    client = SimpleNamespace(chat=SimpleNamespace(completions=Completions()), close=None)
+    provider = VeriProvider(
+        api_key="vk_test",
+        deployment_id=EXAMPLE_DEPLOYMENT_ID,
+        model=EXAMPLE_MODEL,
+        client=client,
+    )
+    tasks = [
+        asyncio.create_task(provider.propose("say json", {"type": "object"}, call_id=f"c{i}"))
+        for i in range(VERI_CONCURRENCY_TARGET + 4)
+    ]
+    await asyncio.wait_for(entered.wait(), timeout=2)
+    assert state["current"] == VERI_CONCURRENCY_TARGET
+    release.set()
+    proposals = await asyncio.gather(*tasks)
+    assert state["max_seen"] == VERI_CONCURRENCY_TARGET
+    assert len(proposals) == VERI_CONCURRENCY_TARGET + 4

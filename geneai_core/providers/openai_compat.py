@@ -6,6 +6,7 @@ base URL, not the absolute chat URL.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 from typing import Any
@@ -36,6 +37,9 @@ class OpenAICompatibleProvider:
         max_tokens: int = 800,
         max_attempts: int = 4,
         mode: str = "live",
+        in_flight_limit: int | None = None,
+        wake_timeout_s: float = 180.0,
+        sleeper: Any | None = None,
     ) -> None:
         if not api_key:
             raise ProviderError(f"{name} api key is empty")
@@ -49,6 +53,10 @@ class OpenAICompatibleProvider:
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.max_attempts = max_attempts
+        self.wake_timeout_s = wake_timeout_s
+        self.in_flight_limit = in_flight_limit
+        self._in_flight = asyncio.Semaphore(in_flight_limit) if in_flight_limit else None
+        self._sleeper = sleeper
         self._client = client
         self._api_key = api_key
 
@@ -57,7 +65,14 @@ class OpenAICompatibleProvider:
             return self._client
         from openai import AsyncOpenAI
 
-        self._client = AsyncOpenAI(api_key=self._api_key, base_url=self.base_url, timeout=120.0)
+        # The SDK's own retries give up before a GPU cold start. This client
+        # retries 429/503 itself and honors Retry-After.
+        self._client = AsyncOpenAI(
+            api_key=self._api_key,
+            base_url=self.base_url,
+            timeout=120.0,
+            max_retries=0,
+        )
         return self._client
 
     async def aclose(self) -> None:
@@ -126,8 +141,9 @@ class OpenAICompatibleProvider:
     async def _complete(self, messages: list[dict[str, str]]) -> tuple[str, Any, bool]:
         client = self._client_or_create()
         use_format = True
-        last_error: Exception | None = None
-        for attempt in range(self.max_attempts):
+        slept = 0.0
+        timeouts = 0
+        while True:
             kwargs: dict[str, Any] = {
                 "model": self.model,
                 "messages": messages,
@@ -137,21 +153,35 @@ class OpenAICompatibleProvider:
             if use_format:
                 kwargs["response_format"] = {"type": "json_object"}
             try:
-                response = await client.chat.completions.create(**kwargs)
+                response = await self._create(client, kwargs)
             except Exception as exc:
-                last_error = exc
                 status = getattr(exc, "status_code", None)
+                code = _error_code(exc)
                 if use_format and status in {400, 422}:
                     use_format = False
                     continue
-                if status in {429, 503, 408} and attempt + 1 < self.max_attempts:
-                    await _sleep_retry(exc, attempt)
+                if status in {429, 503}:
+                    waking = status == 503
+                    delay = _retry_delay(exc, waking=waking)
+                    if self.wake_timeout_s <= 0 or slept + delay > self.wake_timeout_s:
+                        raise ProviderError(
+                            f"{self.name} chat completion failed after retries: {code or status}",
+                            retryable=True,
+                            status_code=status,
+                            code=code or ("deployment_waking" if waking else None),
+                        ) from exc
+                    await self._sleep(delay)
+                    slept += delay
+                    continue
+                if status == 408 and timeouts + 1 < self.max_attempts:
+                    timeouts += 1
+                    await self._sleep(min(2 ** (timeouts - 1), 8))
                     continue
                 raise ProviderError(
                     f"{self.name} chat completion failed: {exc.__class__.__name__}",
                     retryable=status in {429, 503, 408},
                     status_code=status,
-                    code=_error_code(exc),
+                    code=code,
                 ) from exc
             error_body = _embedded_error(response)
             if error_body is not None:
@@ -166,10 +196,16 @@ class OpenAICompatibleProvider:
             if not text:
                 raise ProviderError(f"{self.name} returned empty content")
             return text, response, use_format
-        raise ProviderError(
-            f"{self.name} chat completion failed after retries",
-            retryable=True,
-        ) from last_error
+
+    async def _create(self, client: Any, kwargs: dict[str, Any]) -> Any:
+        if self._in_flight is None:
+            return await client.chat.completions.create(**kwargs)
+        async with self._in_flight:
+            return await client.chat.completions.create(**kwargs)
+
+    async def _sleep(self, delay: float) -> None:
+        sleeper = self._sleeper or asyncio.sleep
+        await sleeper(delay)
 
 
 def _usage_int(usage: Any, name: str) -> int | None:
@@ -210,18 +246,52 @@ def _error_code(exc: Exception) -> str | None:
     return None
 
 
-async def _sleep_retry(exc: Exception, attempt: int) -> None:
-    import asyncio
+def _retry_delay(exc: Exception, *, waking: bool) -> float:
+    """Seconds to wait before another 429 or 503. Waking GPUs advertise ~30s."""
 
-    delay = min(2**attempt, 8)
+    header = _header_retry_after(exc)
+    body_seconds = _body_retry_after(exc)
+    if header is not None:
+        delay = header
+    elif body_seconds is not None:
+        delay = body_seconds
+    elif waking:
+        delay = 30.0
+    else:
+        delay = 2.0
+    if delay <= 0:
+        delay = 30.0 if waking else 2.0
+    cap = 60.0 if waking else 20.0
+    return min(delay, cap)
+
+
+def _header_retry_after(exc: Exception) -> float | None:
     response = getattr(exc, "response", None)
     headers = getattr(response, "headers", None) or {}
-    retry_after = None
-    if hasattr(headers, "get"):
-        retry_after = headers.get("retry-after") or headers.get("Retry-After")
-    if retry_after is not None:
-        try:
-            delay = min(float(retry_after), 20.0)
-        except (TypeError, ValueError):
-            pass
-    await asyncio.sleep(delay)
+    if not hasattr(headers, "get"):
+        return None
+    raw = headers.get("retry-after") or headers.get("Retry-After")
+    if raw is None:
+        return None
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def _body_retry_after(exc: Exception) -> float | None:
+    body = getattr(exc, "body", None)
+    if not isinstance(body, dict):
+        return None
+    error = body.get("error")
+    raw = None
+    if isinstance(error, dict):
+        raw = error.get("retry_after_seconds")
+    if raw is None:
+        raw = body.get("retry_after_seconds")
+    if raw is None:
+        return None
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return None

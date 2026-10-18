@@ -22,11 +22,13 @@ Not implemented: shopping, cloud, quant, Browser Use, one-shot runner, API, UI.
 - The Mutator input is `{task, parents:[{genome, fitness}], operator: mutate|crossover}`.
   The output is `{children:[{genome, rationale}]}`.
 - `CREAO_APP_ID` for this project is `0ed64fee-5003-4d56-a83b-c5f369d7a39c`.
-- Veri base URL is `https://api.veri.studio/v1/deployments/{VERI_DEPLOYMENT_ID}`.
+- Veri base URL is `https://api.veri.studio/v1/deployments/bfe84d51e141`.
+  The OpenAI model field is `geneai-qwen7b`. Cap in-flight calls at 8 and
+  retry 429/503 (`deployment_waking`) with Retry-After.
 - Mock output stays `provider_mode=mock`. Do not relabel it live or recorded.
 - The controller must not import a concrete domain or sponsor client.
 - Secrets stay in the environment. `.env.example` has empty secrets and the
-  public app id.
+  public CREAO app id and Veri deployment id.
 
 ## Commands
 

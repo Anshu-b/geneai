@@ -100,7 +100,9 @@ class EvolutionConfig(BaseModel):
     max_evaluations: int = 150
     max_wall_seconds: int = 300
     max_usd_estimate: float = 5.0
-    max_concurrent_model_calls: int = 3
+    # In-flight cap for provider calls. 8 matches the Veri deployment
+    # concurrency_target so a fan-out cannot exceed that GPU setpoint.
+    max_concurrent_model_calls: int = 8
     finalist_count: int = 4
     finalist_family_cap: int = 2
 

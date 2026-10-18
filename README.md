@@ -29,8 +29,11 @@ uv run python scripts/export_replay.py runs/<run_id>/export.json
 
 Copy `.env.example` to `.env`.
 
-Veri needs `VERI_API_KEY`, `VERI_DEPLOYMENT_ID`, and `VERI_MODEL`. The client
-uses `https://api.veri.studio/v1/deployments/{id}` as the OpenAI base URL.
+Veri needs `VERI_API_KEY`. The deployment id and model default to
+`bfe84d51e141` and `geneai-qwen7b`
+(`https://api.veri.studio/v1/deployments/bfe84d51e141`). That deployment is
+Qwen/Qwen2.5-7B-Instruct on vLLM, 1x L4-24GB, concurrency 8, about $1.05/hr.
+The client caps in-flight calls at 8 and retries 429/503 while a cold start wakes.
 
 CREAO needs a `capi_` key in `CREAO_API_KEY`. The GeneAI Mutator app id is
 `CREAO_APP_ID=0ed64fee-5003-4d56-a83b-c5f369d7a39c`. Calls go to

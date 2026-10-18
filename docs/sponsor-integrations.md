@@ -9,20 +9,32 @@ Credentials were not present here, so live smoke tests are blocked until
 Docs: https://docs.veri.studio/quickstart and
 https://docs.veri.studio/deployments/openai-compat
 
-`VeriProvider` constructs an OpenAI client with:
+`VERI_API_KEY` is the only secret required for a live call. When the other
+variables are unset, `VeriProvider.from_env` uses the deployment created
+externally (HTTP 201):
 
 ```text
-base_url = https://api.veri.studio/v1/deployments/{VERI_DEPLOYMENT_ID}
-api_key  = VERI_API_KEY
-model    = VERI_MODEL
+base_url = https://api.veri.studio/v1/deployments/bfe84d51e141
+model    = geneai-qwen7b
 ```
 
+`model` is the deployment name, which the OpenAI client sends as the model
+field. The served weights are `Qwen/Qwen2.5-7B-Instruct` on vLLM, 1x L4-24GB,
+`concurrency_target` 8, about $1.05/hr. That hourly figure is deployment
+billing. `cost_usd` on a proposal stays null unless a chat response actually
+carries a price.
+
 The SDK appends `/chat/completions`. A base URL that already ends in
-`/chat/completions` is rejected. `response_format: json_object` is requested
-once; a 400/422 retries without it. HTTP 429/503/408 retry with `Retry-After`
-when present, bounded. Token usage is stored when the response includes it.
-`cost_usd` stays null unless a response actually carries a price. Scaled-to-zero
-deployments return 503 `deployment_waking`.
+`/chat/completions` is rejected. The SDK's own retries are disabled
+(`max_retries=0`) because they give up before a GPU cold start.
+`response_format: json_object` is requested once; a 400/422 retries without it.
+HTTP 429 and 503 retry until `VERI_WAKE_TIMEOUT_SECONDS` (default 180), sleeping
+`Retry-After` or the body's `retry_after_seconds` (default 30s on a wake, each
+sleep capped at 60s). A 503 with no code is treated as `deployment_waking`.
+HTTP 408 retries a few times with a short backoff. In-flight chat completions
+are capped at 8 (`VERI_CONCURRENCY` overrides that). The engine's
+`max_concurrent_model_calls` default is the same 8. Token usage is stored when
+the response includes it.
 
 Phase 1 role: seed genomes and random immigrants. Fitness still comes from the
 domain evaluator.
