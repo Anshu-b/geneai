@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Header } from "@/components/header";
+import { Architecture } from "@/components/about/architecture";
 
 export const metadata: Metadata = { title: "About" };
 
@@ -28,6 +29,7 @@ export default function AboutPage() {
           </p>
         </div>
       </main>
+      <Architecture />
     </>
   );
 }
