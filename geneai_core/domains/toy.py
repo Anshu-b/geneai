@@ -1,9 +1,11 @@
 """Deterministic toy objective used to prove the engine.
 
-The phenotype is a point in a shifted Rastrigin basin. Train, validation, and
-test use disjoint shifts derived from the run seed so selection cannot peek at
-the held-out test. Families are different parametrizations of that point, not
-separate engines.
+The phenotype is a point in a shifted Rastrigin landscape. Train, validation,
+and test are the same distribution: each is 32 disjoint instances whose basin
+shifts are i.i.d. draws from [-0.8, 0.8]^2, taken from one seed stream
+(indices 0-31, 32-63, 64-95). Fitness is the mean over that split. The test
+instances are held out, not a harder basin. Families are different
+parametrizations of the point, not separate engines.
 """
 
 from __future__ import annotations
@@ -21,14 +23,28 @@ FAMILIES = ("weighted_policy", "offset_policy", "scaled_policy")
 COMPLEXITY = {"weighted_policy": 0.02, "offset_policy": 0.04, "scaled_policy": 0.03}
 LAMBDA_COST = 0.05
 LAMBDA_COMPLEXITY = 0.5
+# Same count and same box for every split. One instance per split made test
+# look like a different problem whenever its single basin missed the champion.
+INSTANCES_PER_SPLIT = 32
+SHIFT_HALF_WIDTH = 0.8
+_SPLIT_START = {"train": 0, "validation": INSTANCES_PER_SPLIT, "test": 2 * INSTANCES_PER_SPLIT}
 
 
-def _shift(seed: int, split: str) -> tuple[float, float]:
-    # Disjoint, deterministic basins. The numbers are part of the dataset hash.
-    digest = hashlib.sha256(f"toy-shift-v1|{seed}|{split}".encode("utf-8")).digest()
-    first = (int.from_bytes(digest[:4], "big") / 2**32) * 1.6 - 0.8
-    second = (int.from_bytes(digest[4:8], "big") / 2**32) * 1.6 - 0.8
+def instance_shift(seed: int, index: int) -> tuple[float, float]:
+    """One basin shift. Index order is the only thing that separates splits."""
+
+    digest = hashlib.sha256(f"toy-instance-v2|{seed}|{index}".encode("utf-8")).digest()
+    span = 2.0 * SHIFT_HALF_WIDTH
+    first = (int.from_bytes(digest[:4], "big") / 2**32) * span - SHIFT_HALF_WIDTH
+    second = (int.from_bytes(digest[4:8], "big") / 2**32) * span - SHIFT_HALF_WIDTH
     return (round(first, 6), round(second, 6))
+
+
+def split_shifts(seed: int, split: str) -> list[tuple[float, float]]:
+    if split not in _SPLIT_START:
+        raise ValueError(f"unknown split {split}")
+    start = _SPLIT_START[split]
+    return [instance_shift(seed, start + offset) for offset in range(INSTANCES_PER_SPLIT)]
 
 
 def phenotype(payload: dict[str, Any]) -> tuple[float, float]:
@@ -53,7 +69,7 @@ def rastrigin(x: float, y: float, shift: tuple[float, float]) -> float:
 
 class ToyOptimizationAdapter(DomainAdapter):
     name = "toy_optimization"
-    evaluator_version = "toy-rastrigin-v1"
+    evaluator_version = "toy-rastrigin-v2"
 
     def genome_schema(self) -> dict[str, Any]:
         lo, hi = BOUNDS
@@ -80,8 +96,9 @@ class ToyOptimizationAdapter(DomainAdapter):
         self._seed = seed
 
         def digest(split: str) -> str:
-            shift = _shift(seed, split)
-            raw = f"{self.evaluator_version}|{split}|{seed}|{shift[0]}|{shift[1]}"
+            shifts = split_shifts(seed, split)
+            packed = ",".join(f"{x}:{y}" for x, y in shifts)
+            raw = f"{self.evaluator_version}|{split}|{seed}|{INSTANCES_PER_SPLIT}|{packed}"
             return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
         return {
@@ -167,10 +184,11 @@ class ToyOptimizationAdapter(DomainAdapter):
                 data_split=split,  # type: ignore[arg-type]
                 elapsed_ms=max(0, int((time.perf_counter() - started) * 1000)),
             )
-        shift = _shift(self._seed, split)
+        shifts = split_shifts(self._seed, split)
         x, y = phenotype(genome.payload)
-        raw = rastrigin(x, y, shift)
-        quality = 1.0 / (1.0 + raw)
+        raws = [rastrigin(x, y, shift) for shift in shifts]
+        raw = sum(raws) / len(raws)
+        quality = sum(1.0 / (1.0 + value) for value in raws) / len(raws)
         cost = (abs(x) + abs(y)) / 10.24
         complexity = COMPLEXITY[genome.payload["family"]]
         fitness = quality - LAMBDA_COST * cost - LAMBDA_COMPLEXITY * complexity
@@ -181,6 +199,7 @@ class ToyOptimizationAdapter(DomainAdapter):
             "complexity": complexity,
             "phenotype_x": x,
             "phenotype_y": y,
+            "instance_count": float(len(shifts)),
         }
         return Evaluation(
             genome_id=genome.id,
@@ -189,9 +208,9 @@ class ToyOptimizationAdapter(DomainAdapter):
             metrics=metrics,
             constraint_violations=[],
             feedback=(
-                f"{split} quality={quality:.4f} rastrigin={raw:.4f} "
-                f"cost={cost:.4f} complexity={complexity:.3f}. "
-                "Move the phenotype toward the basin without leaving the bounds."
+                f"{split} mean quality={quality:.4f} mean rastrigin={raw:.4f} "
+                f"over {len(shifts)} instances. cost={cost:.4f} complexity={complexity:.3f}. "
+                "Move the phenotype toward the shared shift distribution without leaving the bounds."
             ),
             evaluator_version=self.evaluator_version,
             data_split=split,  # type: ignore[arg-type]

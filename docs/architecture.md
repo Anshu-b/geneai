@@ -37,6 +37,8 @@ Generation 0 seeds a population on the train split. Generations 1..N:
 After the loop, finalists are chosen from train scores with a family cap, scored
 once on validation, and the winner is frozen. That champion is evaluated once
 on the held-out test split. The test split is not read before `champion.frozen`.
+On the toy domain, train, validation, and test are 32 disjoint shifts from the
+same [-0.8, 0.8]^2 distribution. Test is not a harder basin.
 
 Stopping conditions: generation limit, model-call cap (Veri and CREAO both
 count), evaluation cap, wall clock, estimated USD, or cancel. A stop returns

@@ -24,7 +24,7 @@ def toy_objective() -> ObjectiveSpec:
             "Families are weighted_policy, offset_policy, and scaled_policy."
         ),
         constraints={"x_min": -5.12, "x_max": 5.12, "y_min": -5.12, "y_max": 5.12},
-        evaluation_version="toy-rastrigin-v1",
+        evaluation_version="toy-rastrigin-v2",
     )
 
 

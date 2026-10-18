@@ -6,11 +6,40 @@ from pathlib import Path
 import pytest
 
 from geneai_core.controller import EvolutionController
-from geneai_core.domains.toy import ToyOptimizationAdapter
+from geneai_core.domains.toy import (
+    INSTANCES_PER_SPLIT,
+    SHIFT_HALF_WIDTH,
+    ToyOptimizationAdapter,
+    split_shifts,
+)
 from geneai_core.experiments import execute_toy_run, toy_objective
 from geneai_core.providers.mock import MockAgentProvider, MockModelProvider
 from geneai_core.schemas import EvolutionConfig
 from geneai_core.store import RunRepository, verify_export
+
+
+def test_toy_held_out_split_matches_the_train_distribution() -> None:
+    groups = {name: split_shifts(42, name) for name in ("train", "validation", "test")}
+    assert [len(shifts) for shifts in groups.values()] == [INSTANCES_PER_SPLIT] * 3
+    pooled = [shift for shifts in groups.values() for shift in shifts]
+    assert len(set(pooled)) == len(pooled)
+    assert all(abs(coord) <= SHIFT_HALF_WIDTH + 1e-9 for shift in pooled for coord in shift)
+    adapter = ToyOptimizationAdapter(seed=42)
+    genome = type(
+        "Genome",
+        (),
+        {
+            "id": "g0001",
+            "payload": {
+                "family": "weighted_policy",
+                "params": {"x": 0.0, "y": 0.0},
+                "description": "origin",
+            },
+        },
+    )()
+    scores = {name: adapter.evaluate(genome, name).fitness for name in groups}
+    assert all(score is not None and score > 0 for score in scores.values())
+    assert max(scores.values()) / min(scores.values()) < 3
 
 
 @pytest.mark.asyncio
