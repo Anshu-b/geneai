@@ -164,7 +164,9 @@ export function takeaway(file: LiquidFile): string {
   const gv = geneai?.splits?.validation.fitness;
   const ov = others.map((c) => c.splits?.validation.fitness).filter((v): v is number => typeof v === "number");
   const valNote = gv != null && ov.length ? ` On validation, where the champion was chosen, it scores ${gv.toFixed(2)} vs a best alternative of ${Math.max(...ov).toFixed(2)}.` : "";
-  return headline() + valNote;
+  const twin = others.find((c) => c.key !== "one_shot" && (["train", "validation", "test"] as const).every((sp) => c.splits?.[sp].fitness === geneai?.splits?.[sp].fitness));
+  const twinNote = twin ? ` Its scores equal the ${twin.label} baseline on every split, so on these scenarios the champion behaves like that rule.` : "";
+  return headline() + valNote + twinNote;
   function headline(): string {
   if (g! > b + 1e-9) return `On the held-out test scenarios GeneAI's policy scores ${g!.toFixed(2)}, ${gap} better than the best alternative (${best.label}, ${b.toFixed(2)}).`;
   if (Math.abs(g! - b) <= 1e-9) return `On the held-out test scenarios GeneAI's policy ties the best alternative (${best.label}) at ${g!.toFixed(2)}.`;

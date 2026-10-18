@@ -6,8 +6,9 @@ import { LineageSvg } from "@/components/lab/lineage-svg";
 import { parseExport } from "@/lib/parse";
 import { ancestryIds, genomeMap, layoutRun, projectRun, type Projection } from "@/lib/project";
 import type { RunExport } from "@/lib/types";
+import { RankLegend } from "@/components/rank-legend";
+import { GENEAI_ROW, RANK_CLASS, rankColumn } from "@/lib/rank";
 import {
-  bestIndices,
   parseLiquid,
   SOURCE_COLOR,
   SOURCE_LABEL,
@@ -261,11 +262,11 @@ function Scoreboard({ file }: { file: LiquidFile }) {
     { key: "val", label: "Validation fitness", hint: `${file.variants.validation?.length ?? 0} scenarios`, better: "higher", get: (c) => c.splits?.validation.fitness, fmt: (v) => v.toFixed(2) },
     { key: "test", label: "Held-out test fitness", hint: `${file.variants.test?.length ?? 0} unseen scenarios`, better: "higher", get: (c) => c.splits?.test.fitness, fmt: (v) => v.toFixed(2) },
   ];
-  const winners = cols.map((col) => bestIndices(rows.map((r) => (r.valid ? col.get(r) : null)), col.better));
+  const ranks = cols.map((col) => rankColumn(rows.map((r) => (r.valid ? col.get(r) : null)), col.better));
   return (
     <section className="mt-14" data-testid="liquid-scoreboard">
       <h2 className="font-serif text-3xl tracking-tight text-ivory">Every policy, same evaluator</h2>
-      <p className="mt-2 max-w-3xl text-sm text-dim">Green marks the best value in each column (ties share it). Fitness = −(modeled cost + risk penalty) in dollars, averaged over scenario variants; 0 is perfect. Fitness is a score, not a bill.</p>
+      <p className="mt-2 max-w-3xl text-sm text-dim">Fitness = −(modeled cost + risk penalty) in dollars, averaged over scenario variants; 0 is perfect. Fitness is a score, not a bill.</p>
       <div className="mt-5 overflow-x-auto">
         <table className="w-full min-w-[760px] text-sm">
           <thead>
@@ -278,14 +279,14 @@ function Scoreboard({ file }: { file: LiquidFile }) {
           </thead>
           <tbody className="font-mono">
             {rows.map((r, ri) => (
-              <tr key={r.key} className={`border-t border-line ${r.key === "geneai" ? "bg-teal/5" : ""}`}>
+              <tr key={r.key} className={`border-t border-line ${r.key === "geneai" ? GENEAI_ROW : ""}`}>
                 <td className="py-2 pr-3 font-sans text-ivory">{r.label}<span className="block text-[11px] text-faint">{r.provider}</span></td>
                 {cols.map((c, ci) => {
                   const v = r.valid ? c.get(r) : null;
-                  const win = winners[ci].has(ri);
+                  const rank = ranks[ci][ri];
                   return (
-                    <td key={c.key} className={win ? "font-semibold text-teal" : "text-dim"}>
-                      {v == null ? (r.valid ? "Not recorded" : "invalid") : <span className={win ? "rounded bg-teal/15 px-1.5 py-0.5" : ""}>{win ? "✓ " : ""}{c.fmt(v)}</span>}
+                    <td key={c.key} className="py-1.5">
+                      {v == null ? <span className="text-faint">{r.valid ? "Not recorded" : "invalid"}</span> : <span className={RANK_CLASS[rank]}>{rank === "best" ? "✓ " : ""}{c.fmt(v)}</span>}
                     </td>
                   );
                 })}
@@ -294,6 +295,7 @@ function Scoreboard({ file }: { file: LiquidFile }) {
           </tbody>
         </table>
       </div>
+      <RankLegend note="Same evaluator and constraints for every row." />
       <p className="mt-4 max-w-3xl text-base text-ivory" data-testid="liquid-takeaway">{takeaway(file)}</p>
     </section>
   );
@@ -377,7 +379,7 @@ function FitnessStrip({ projection }: { projection: Projection }) {
   const d = points.map((p, i) => `${i === 0 ? "M" : "L"}${xOf(i)},${yOf(p.fitness)}`).join(" ");
   return (
     <figure className="mt-5 mb-3" data-testid="fitness-generations">
-      <figcaption className="kicker">Best training fitness in each generation. Higher is better.{flat ? " The best training score did not change in this run." : ""}</figcaption>
+      <figcaption className="kicker">Best training fitness in each generation. Higher is better. The champion is chosen on validation, so it need not be the training best.{flat ? " The best training score did not change in this run." : ""}</figcaption>
       <svg viewBox={`0 0 ${width} ${height}`} className="mt-2 h-auto w-full" role="img" aria-label="Best fitness by generation">
         <path d={d} fill="none" stroke="var(--teal)" strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" />
         {points.map((p, i) => (
