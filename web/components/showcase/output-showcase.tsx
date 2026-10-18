@@ -3,12 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   budgetLine,
-  cloudVerdict,
-  exampleMissLine,
   interpretShowcaseResponse,
+  isManualBaseline,
   isSampleShowcase,
+  keyScoreLines,
   originCredit,
-  shoppingSplitLine,
   type CloudPolicy,
   type OutfitCard,
   type ShowcaseFile,
@@ -61,84 +60,37 @@ export function OutputShowcase({ src }: { src: string }) {
 function ShowcaseBody({ file }: { file: ShowcaseFile }) {
   const sample = isSampleShowcase(file);
   return (
-    <section className="glass mt-8 rounded-3xl p-4 md:p-6" data-testid="output-showcase">
+    <section className="mt-8" data-testid="output-showcase">
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <p className="kicker">What each system actually produced</p>
-          <h2 className="mt-2 font-serif text-3xl tracking-tight text-ivory md:text-4xl">The output, not just the score.</h2>
-        </div>
+        <p className="kicker">What they produced</p>
         {sample ? (
           <span className="rounded-full border border-amber/50 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.16em] text-amber" data-testid="showcase-sample">
             Sample
           </span>
         ) : null}
       </div>
-      <p className="mt-3 max-w-3xl text-sm leading-relaxed text-dim">{file.case_note}</p>
-      <p className="mt-1 font-mono text-[10px] text-faint">
-        {file.split || "split"} · {file.case_id} · {file.run_id}
-      </p>
       {file.domain === "shopping" && file.shopping ? <ShoppingShowcase file={file} /> : null}
       {file.domain === "cloud_scheduling" && file.cloud ? <CloudShowcaseView file={file} /> : null}
+      <ScoreLines file={file} />
     </section>
   );
 }
 
 function CloudShowcaseView({ file }: { file: ShowcaseFile }) {
   const cloud = file.cloud!;
-  const [key, setKey] = useState(cloud.policies[0]?.key ?? "");
-  const policy = cloud.policies.find((item) => item.key === key) ?? cloud.policies[0];
-  const verdict = useMemo(() => cloudVerdict(cloud.policies), [cloud.policies]);
-  const example = useMemo(() => exampleMissLine(cloud.policies), [cloud.policies]);
-  const splitCount = cloud.policies.find((item) => item.aggregate?.n_cases)?.aggregate?.n_cases;
-  if (!policy) return <p className="mt-4 text-sm text-dim">This showcase has no policies.</p>;
+  const policies = cloud.policies.filter((policy) => !isManualBaseline(policy.key, policy.provider));
+  if (policies.length === 0) return <p className="mt-4 text-sm text-dim">This showcase has no agentic policies.</p>;
   return (
-    <div className="mt-6 space-y-5">
-      <p className="text-base leading-relaxed text-ivory" data-testid="showcase-verdict">{verdict}</p>
-      {splitCount ? (
-        <div data-testid="showcase-aggregate">
-          <p className="kicker">Across all {splitCount} held-out test cases</p>
-          <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-            {cloud.policies.filter((item) => item.aggregate).map((item) => (
-              <div key={item.key} className="rounded-2xl border border-line bg-raise/40 px-3 py-3">
-                <p className="font-serif text-lg text-ivory">{item.label}</p>
-                <p className="mt-2 text-sm text-dim">
-                  {item.aggregate!.sla_misses} deadlines missed in total
-                </p>
-                <p className="mt-1 font-mono text-[11px] text-faint">
-                  mean finish {item.aggregate!.avg_completion_min} min · {item.aggregate!.energy_kwh} kWh · {item.aggregate!.hard_deadline_misses} hard
-                </p>
-              </div>
-            ))}
+    <div className="mt-4 grid gap-4 lg:grid-cols-2">
+      {policies.map((policy) => (
+        <article key={policy.key} className="glass rounded-3xl p-4">
+          <h2 className="font-serif text-2xl text-ivory">{policy.label}</h2>
+          <PolicyDetail policy={policy} />
+          <div className="mt-4">
+            <Gantt cloud={cloud} policy={policy} />
           </div>
-        </div>
-      ) : null}
-      <div>
-        <p className="kicker">One example case</p>
-        <p className="mt-2 text-sm leading-relaxed text-ivory" data-testid="showcase-example">{example}</p>
-      </div>
-      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-        {cloud.policies.map((item) => (
-          <button
-            key={item.key}
-            type="button"
-            onClick={() => setKey(item.key)}
-            aria-pressed={item.key === policy.key}
-            className={`lift rounded-2xl border px-3 py-3 text-left ${item.key === policy.key ? "border-teal bg-teal/10" : "border-line bg-raise/40"}`}
-          >
-            <span className="block font-serif text-lg text-ivory">{item.label}</span>
-            <span className="mt-1 block font-mono text-[10px] uppercase tracking-widest text-faint">{item.provider || "provider"} {item.genome_id ? `· ${item.genome_id}` : ""}</span>
-            {item.feasible && item.summary ? (
-              <span className="mt-2 block text-sm text-dim">
-                {item.summary.avg_completion_min} min avg · {item.summary.hard_deadline_misses} hard misses · {item.summary.energy_kwh} kWh
-              </span>
-            ) : (
-              <span className="mt-2 block text-sm text-danger">Infeasible</span>
-            )}
-          </button>
-        ))}
-      </div>
-      <PolicyDetail policy={policy} />
-      <Gantt cloud={cloud} policy={policy} />
+        </article>
+      ))}
     </div>
   );
 }
@@ -205,50 +157,25 @@ function Gantt({ cloud, policy }: { cloud: NonNullable<ShowcaseFile["cloud"]>; p
 
 function ShoppingShowcase({ file }: { file: ShowcaseFile }) {
   const shopping = file.shopping!;
-  const shopper = shopping.shopper;
-  const split = shoppingSplitLine(shopping.outfits);
-  const shoppers = shopping.outfits.find((outfit) => outfit.aggregate?.n_shoppers)?.aggregate?.n_shoppers;
+  const outfits = shopping.outfits.filter((outfit) => !isManualBaseline(outfit.key, outfit.provider));
   return (
-    <div className="mt-6 space-y-5">
-      {split ? <p className="text-base leading-relaxed text-ivory" data-testid="showcase-verdict">{split}</p> : null}
-      {shoppers ? (
-        <div data-testid="showcase-aggregate">
-          <p className="kicker">Across all {shoppers} held-out shoppers</p>
-          <div className="mt-3 grid gap-2 md:grid-cols-3">
-            {shopping.outfits.filter((outfit) => outfit.aggregate).map((outfit) => (
-              <div key={outfit.key} className="rounded-2xl border border-line bg-raise/40 px-3 py-3">
-                <p className="font-serif text-lg text-ivory">{outfit.label}</p>
-                <p className="mt-2 text-sm text-dim">
-                  feasible {outfit.aggregate!.feasible_count} of {outfit.aggregate!.n_shoppers}
-                </p>
-                <p className="mt-1 font-mono text-[11px] text-faint">
-                  mean ${outfit.aggregate!.total_usd_mean} of ${outfit.aggregate!.budget_usd_mean}
-                  {outfit.aggregate!.score_mean != null ? ` · score ${outfit.aggregate!.score_mean}` : ""}
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : null}
-      <p className="kicker">One example shopper</p>
-      <article className="rounded-2xl border border-line bg-raise/50 p-4">
-        <p className="kicker">Shopper {shopper.id}</p>
-        <h3 className="mt-2 font-serif text-2xl text-ivory">{shopper.style || "Shopper profile"}</h3>
-        {shopper.notes ? <p className="mt-2 max-w-3xl text-sm leading-relaxed text-dim">{shopper.notes}</p> : null}
-        <dl className="mt-3 flex flex-wrap gap-x-6 gap-y-2 text-sm">
-          <div><dt className="kicker">Budget</dt><dd className="text-ivory">${shopper.budget_usd}</dd></div>
-          <div><dt className="kicker">Size</dt><dd className="text-ivory">{shopper.apparel_size || "—"}{shopper.shoe_size != null ? ` · shoe ${shopper.shoe_size}` : ""}</dd></div>
-          {shopper.occasions?.length ? <div><dt className="kicker">Occasions</dt><dd className="text-ivory">{shopper.occasions.join(", ")}</dd></div> : null}
-          {shopper.likes?.length ? <div><dt className="kicker">Likes</dt><dd className="text-ivory">{shopper.likes.join(", ")}</dd></div> : null}
-          {shopper.dislikes?.length ? <div><dt className="kicker">Dislikes</dt><dd className="text-ivory">{shopper.dislikes.join(", ")}</dd></div> : null}
-        </dl>
-      </article>
-      <div className="grid gap-4 lg:grid-cols-3">
-        {shopping.outfits.map((outfit) => (
-          <Outfit key={outfit.key} outfit={outfit} budget={shopper.budget_usd} />
-        ))}
-      </div>
+    <div className="mt-4 grid gap-4 lg:grid-cols-2">
+      {outfits.map((outfit) => (
+        <Outfit key={outfit.key} outfit={outfit} budget={shopping.shopper.budget_usd} />
+      ))}
     </div>
+  );
+}
+
+function ScoreLines({ file }: { file: ShowcaseFile }) {
+  const lines = useMemo(() => keyScoreLines(file), [file]);
+  if (lines.length === 0) return null;
+  return (
+    <ul className="mt-4 space-y-1" data-testid="key-scores">
+      {lines.map((line) => (
+        <li key={line} className="text-base leading-relaxed text-ivory">{line}</li>
+      ))}
+    </ul>
   );
 }
 

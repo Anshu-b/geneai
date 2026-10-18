@@ -27,6 +27,7 @@ interface Props {
   beatPhase: string;
   playing: boolean;
   reduced: boolean;
+  compact?: boolean;
 }
 
 function shapePoints(kind: string, r: number): string | null {
@@ -64,6 +65,7 @@ export function LineageSvg({
   beatPhase,
   playing,
   reduced,
+  compact = false,
 }: Props) {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -162,7 +164,7 @@ export function LineageSvg({
 
   return (
     <div className="relative">
-      <div className="absolute right-3 top-3 z-10 flex gap-1">
+      {compact ? null : <div className="absolute right-3 top-3 z-10 flex gap-1">
         <button type="button" className="panel px-2 py-1 font-mono text-[10px] uppercase tracking-widest" onClick={() => { userScaled.current = true; setScale((value) => Math.max(0.32, value - 0.1)); }}>
           Smaller
         </button>
@@ -172,8 +174,8 @@ export function LineageSvg({
         <button type="button" className="panel px-2 py-1 font-mono text-[10px] uppercase tracking-widest" onClick={fitView}>
           Fit
         </button>
-      </div>
-      <div ref={scrollerRef} className="lineage-stage ghost-scroll h-[68vh] min-h-[520px] overflow-auto rounded-md border border-line" data-testid="lineage-svg">
+      </div>}
+      <div ref={scrollerRef} className={`lineage-stage ghost-scroll overflow-auto rounded-md border border-line ${compact ? "h-[340px]" : "h-[68vh] min-h-[520px]"}`} data-testid="lineage-svg">
         <svg
           ref={svgRef}
           width={layout.width * scale}

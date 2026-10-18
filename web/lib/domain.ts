@@ -27,6 +27,13 @@ export function metricLabel(key: string): string {
   return METRIC_LABELS[key] ?? key.replaceAll("_", " ");
 }
 
+export function objectiveSentence(prompt: string): string {
+  const trimmed = prompt.replace(/\s+/g, " ").trim();
+  const end = trimmed.search(/[.!?](\s|$)/);
+  if (end === -1) return trimmed;
+  return trimmed.slice(0, end + 1);
+}
+
 export function fitnessHelp(domain: string): string {
   if (domain === "cloud_scheduling") {
     return "Higher is better. Cloud fitness is negative: the evaluator penalizes completion time, SLA misses, hard-deadline tardiness, and energy. Capacity violations are infeasible.";

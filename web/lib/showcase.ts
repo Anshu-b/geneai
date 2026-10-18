@@ -170,6 +170,61 @@ export function isSampleShowcase(file: ShowcaseFile): boolean {
   return `${file.case_id} ${file.case_note}`.toLowerCase().includes("sample");
 }
 
+const BASELINE_KEY = /round_robin|shortest_job|least_loaded|deadline_weighted|neutral_outfit|best_baseline|handwritten|(^|[^a-z])baseline([^a-z]|$)/;
+
+/** Hand-written schedulers and outfit templates. Agentic arms stay visible. */
+export function isManualBaseline(key: string, provider?: string | null): boolean {
+  return BASELINE_KEY.test(`${key} ${provider ?? ""}`.toLowerCase());
+}
+
+export function keyScoreLines(file: ShowcaseFile): string[] {
+  if (file.domain === "cloud_scheduling" && file.cloud) return cloudScoreLines(file.cloud.policies.filter((policy) => !isManualBaseline(policy.key, policy.provider)));
+  if (file.domain === "shopping" && file.shopping) {
+    return shoppingScoreLines(
+      file.shopping.outfits.filter((outfit) => !isManualBaseline(outfit.key, outfit.provider)),
+      file.shopping.shopper.budget_usd,
+    );
+  }
+  return [];
+}
+
+function cloudScoreLines(policies: CloudPolicy[]): string[] {
+  const pair = agenticPair(policies);
+  if (!pair) return [];
+  const [gene, other] = pair;
+  const lines: string[] = [];
+  if (gene.summary && other.summary) {
+    lines.push(`Missed deadlines: ${gene.summary.sla_misses} vs ${other.summary.sla_misses}. ${gene.label}, then ${other.label}.`);
+    lines.push(`Average finish: ${compact(gene.summary.avg_completion_min)} min vs ${compact(other.summary.avg_completion_min)} min.`);
+  }
+  if (gene.aggregate && other.aggregate && gene.aggregate.n_cases > 0) {
+    lines.push(`Across ${gene.aggregate.n_cases} held-out cases, missed deadlines: ${gene.aggregate.sla_misses} vs ${other.aggregate.sla_misses}.`);
+  }
+  return lines.slice(0, 3);
+}
+
+function shoppingScoreLines(outfits: OutfitCard[], budget: number): string[] {
+  const pair = agenticPair(outfits);
+  if (!pair) return [];
+  const [gene, other] = pair;
+  const lines = [`Spend on this shopper: $${compact(gene.total_usd, 0)} vs $${compact(other.total_usd, 0)}, against a $${compact(budget, 0)} budget.`];
+  if (gene.aggregate && other.aggregate && gene.aggregate.n_shoppers > 0) {
+    lines.push(`Feasible for ${gene.aggregate.feasible_count} of ${gene.aggregate.n_shoppers} held-out shoppers vs ${other.aggregate.feasible_count} of ${other.aggregate.n_shoppers}.`);
+    if (gene.aggregate.score_mean != null && other.aggregate.score_mean != null) {
+      lines.push(`Mean score: ${compact(gene.aggregate.score_mean, 2)} vs ${compact(other.aggregate.score_mean, 2)}. Higher fits the shopper better.`);
+    }
+  }
+  return lines.slice(0, 3);
+}
+
+function agenticPair<T extends { key: string }>(items: T[]): [T, T] | null {
+  if (items.length < 2) return null;
+  const gene = items.find((item) => item.key === "champion" || item.key === "geneai") ?? items[0];
+  const other = items.find((item) => item.key !== gene.key && /gpt|one_shot|openai/i.test(item.key)) ?? items.find((item) => item.key !== gene.key);
+  if (!other) return null;
+  return [gene, other];
+}
+
 export function interpretShowcaseResponse(status: number, body: unknown): ShowcaseLoad {
   if (status === 404) return { status: "missing" };
   if (status < 200 || status >= 300) return { status: "invalid", message: `Showcase request failed (${status}).` };

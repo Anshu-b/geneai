@@ -1,0 +1,870 @@
+{
+  "schema": "geneai-tsp-v1",
+  "cities": [
+    {
+      "id": "c1",
+      "x": 14,
+      "y": 22
+    },
+    {
+      "id": "c2",
+      "x": 28,
+      "y": 12
+    },
+    {
+      "id": "c3",
+      "x": 46,
+      "y": 16
+    },
+    {
+      "id": "c4",
+      "x": 64,
+      "y": 14
+    },
+    {
+      "id": "c5",
+      "x": 82,
+      "y": 26
+    },
+    {
+      "id": "c6",
+      "x": 90,
+      "y": 46
+    },
+    {
+      "id": "c7",
+      "x": 78,
+      "y": 68
+    },
+    {
+      "id": "c8",
+      "x": 60,
+      "y": 84
+    },
+    {
+      "id": "c9",
+      "x": 40,
+      "y": 86
+    },
+    {
+      "id": "c10",
+      "x": 22,
+      "y": 72
+    },
+    {
+      "id": "c11",
+      "x": 12,
+      "y": 48
+    },
+    {
+      "id": "c12",
+      "x": 34,
+      "y": 40
+    },
+    {
+      "id": "c13",
+      "x": 52,
+      "y": 48
+    },
+    {
+      "id": "c14",
+      "x": 68,
+      "y": 38
+    },
+    {
+      "id": "c15",
+      "x": 48,
+      "y": 66
+    }
+  ],
+  "optimum": {
+    "tour": [
+      "c1",
+      "c2",
+      "c3",
+      "c4",
+      "c5",
+      "c14",
+      "c6",
+      "c7",
+      "c8",
+      "c9",
+      "c10",
+      "c15",
+      "c13",
+      "c12",
+      "c11"
+    ],
+    "length": 323.59,
+    "time_ms": 2480
+  },
+  "methods": [
+    {
+      "key": "held_karp",
+      "label": "Traditional: dynamic programming (Held-Karp)",
+      "provider": "dynamic programming",
+      "tour": [
+        "c1",
+        "c2",
+        "c3",
+        "c4",
+        "c5",
+        "c14",
+        "c6",
+        "c7",
+        "c8",
+        "c9",
+        "c10",
+        "c15",
+        "c13",
+        "c12",
+        "c11"
+      ],
+      "length": 323.59,
+      "gap_pct": 0,
+      "time_ms": 2480,
+      "llm_calls": 0,
+      "valid": true,
+      "invalid_reason": null,
+      "convergence": [
+        {
+          "iter": 1,
+          "best_length": 323.59,
+          "elapsed_ms": 2480
+        }
+      ]
+    },
+    {
+      "key": "classic_ga",
+      "label": "Classic genetic algorithm",
+      "provider": "in-process GA",
+      "tour": [
+        "c1",
+        "c2",
+        "c3",
+        "c4",
+        "c5",
+        "c14",
+        "c6",
+        "c7",
+        "c8",
+        "c15",
+        "c10",
+        "c9",
+        "c13",
+        "c12",
+        "c11"
+      ],
+      "length": 346.53,
+      "gap_pct": 7.09,
+      "time_ms": 640,
+      "llm_calls": 0,
+      "valid": true,
+      "invalid_reason": null,
+      "convergence": [
+        {
+          "gen": 1,
+          "best_length": 394.78,
+          "elapsed_ms": 40
+        },
+        {
+          "gen": 4,
+          "best_length": 381.98,
+          "elapsed_ms": 90
+        },
+        {
+          "gen": 8,
+          "best_length": 371.15,
+          "elapsed_ms": 150
+        },
+        {
+          "gen": 14,
+          "best_length": 362.29,
+          "elapsed_ms": 230
+        },
+        {
+          "gen": 22,
+          "best_length": 355.39,
+          "elapsed_ms": 320
+        },
+        {
+          "gen": 31,
+          "best_length": 350.47,
+          "elapsed_ms": 430
+        },
+        {
+          "gen": 44,
+          "best_length": 347.51,
+          "elapsed_ms": 540
+        },
+        {
+          "gen": 60,
+          "best_length": 346.53,
+          "elapsed_ms": 640
+        }
+      ]
+    },
+    {
+      "key": "llm_one_shot",
+      "label": "GPT-5.5 single attempt",
+      "provider": "GPT-5.5",
+      "tour": [
+        "c1",
+        "c2",
+        "c3",
+        "c4",
+        "c2",
+        "c5",
+        "c14",
+        "c6",
+        "c8",
+        "c9",
+        "c10",
+        "c15",
+        "c13",
+        "c12",
+        "c11"
+      ],
+      "length": 366.99,
+      "gap_pct": null,
+      "time_ms": 1820,
+      "llm_calls": 1,
+      "valid": false,
+      "invalid_reason": "It repeats c2 and never visits c7, so this is not a tour of the 15 cities.",
+      "convergence": [
+        {
+          "iter": 1,
+          "best_length": 366.99,
+          "elapsed_ms": 1820
+        }
+      ]
+    },
+    {
+      "key": "geneai",
+      "label": "GeneAI",
+      "provider": "CREAO + Veri",
+      "tour": [
+        "c1",
+        "c2",
+        "c3",
+        "c4",
+        "c5",
+        "c14",
+        "c6",
+        "c7",
+        "c8",
+        "c9",
+        "c10",
+        "c15",
+        "c13",
+        "c12",
+        "c11"
+      ],
+      "length": 323.59,
+      "gap_pct": 0,
+      "time_ms": 8640,
+      "llm_calls": 14,
+      "valid": true,
+      "invalid_reason": null,
+      "convergence": [
+        {
+          "gen": 1,
+          "best_length": 375.36,
+          "elapsed_ms": 280
+        },
+        {
+          "gen": 2,
+          "best_length": 363.23,
+          "elapsed_ms": 720
+        },
+        {
+          "gen": 3,
+          "best_length": 352.71,
+          "elapsed_ms": 1400
+        },
+        {
+          "gen": 4,
+          "best_length": 343.81,
+          "elapsed_ms": 2300
+        },
+        {
+          "gen": 5,
+          "best_length": 336.53,
+          "elapsed_ms": 3400
+        },
+        {
+          "gen": 6,
+          "best_length": 330.87,
+          "elapsed_ms": 4700
+        },
+        {
+          "gen": 8,
+          "best_length": 326.83,
+          "elapsed_ms": 6100
+        },
+        {
+          "gen": 10,
+          "best_length": 323.59,
+          "elapsed_ms": 7400
+        },
+        {
+          "gen": 12,
+          "best_length": 323.59,
+          "elapsed_ms": 8640
+        }
+      ]
+    }
+  ],
+  "heldout": {
+    "n": 20,
+    "instances": [
+      {
+        "id": "tsp15-01",
+        "optimum_length": 213.3,
+        "methods": {
+          "held_karp": {
+            "gap_pct": 0,
+            "time_ms": 2789,
+            "valid": true
+          },
+          "classic_ga": {
+            "gap_pct": 0,
+            "time_ms": 489,
+            "valid": true
+          },
+          "llm_one_shot": {
+            "gap_pct": null,
+            "time_ms": 2382,
+            "valid": false
+          },
+          "geneai": {
+            "gap_pct": 0,
+            "time_ms": 7269,
+            "valid": true
+          }
+        }
+      },
+      {
+        "id": "tsp15-02",
+        "optimum_length": 272.5,
+        "methods": {
+          "held_karp": {
+            "gap_pct": 0,
+            "time_ms": 3967,
+            "valid": true
+          },
+          "classic_ga": {
+            "gap_pct": 0,
+            "time_ms": 439,
+            "valid": true
+          },
+          "llm_one_shot": {
+            "gap_pct": null,
+            "time_ms": 1544,
+            "valid": false
+          },
+          "geneai": {
+            "gap_pct": 0,
+            "time_ms": 8024,
+            "valid": true
+          }
+        }
+      },
+      {
+        "id": "tsp15-03",
+        "optimum_length": 230.8,
+        "methods": {
+          "held_karp": {
+            "gap_pct": 0,
+            "time_ms": 2585,
+            "valid": true
+          },
+          "classic_ga": {
+            "gap_pct": 0,
+            "time_ms": 291,
+            "valid": true
+          },
+          "llm_one_shot": {
+            "gap_pct": 16.12,
+            "time_ms": 1912,
+            "valid": true
+          },
+          "geneai": {
+            "gap_pct": 0,
+            "time_ms": 7512,
+            "valid": true
+          }
+        }
+      },
+      {
+        "id": "tsp15-04",
+        "optimum_length": 193.8,
+        "methods": {
+          "held_karp": {
+            "gap_pct": 0,
+            "time_ms": 3990,
+            "valid": true
+          },
+          "classic_ga": {
+            "gap_pct": 9.55,
+            "time_ms": 726,
+            "valid": true
+          },
+          "llm_one_shot": {
+            "gap_pct": null,
+            "time_ms": 2182,
+            "valid": false
+          },
+          "geneai": {
+            "gap_pct": 0,
+            "time_ms": 6444,
+            "valid": true
+          }
+        }
+      },
+      {
+        "id": "tsp15-05",
+        "optimum_length": 247.2,
+        "methods": {
+          "held_karp": {
+            "gap_pct": 0,
+            "time_ms": 1944,
+            "valid": true
+          },
+          "classic_ga": {
+            "gap_pct": 4.84,
+            "time_ms": 360,
+            "valid": true
+          },
+          "llm_one_shot": {
+            "gap_pct": null,
+            "time_ms": 3058,
+            "valid": false
+          },
+          "geneai": {
+            "gap_pct": 0,
+            "time_ms": 6722,
+            "valid": true
+          }
+        }
+      },
+      {
+        "id": "tsp15-06",
+        "optimum_length": 263.6,
+        "methods": {
+          "held_karp": {
+            "gap_pct": 0,
+            "time_ms": 2696,
+            "valid": true
+          },
+          "classic_ga": {
+            "gap_pct": 6.78,
+            "time_ms": 582,
+            "valid": true
+          },
+          "llm_one_shot": {
+            "gap_pct": 6.96,
+            "time_ms": 2892,
+            "valid": true
+          },
+          "geneai": {
+            "gap_pct": 0,
+            "time_ms": 9409,
+            "valid": true
+          }
+        }
+      },
+      {
+        "id": "tsp15-07",
+        "optimum_length": 201.2,
+        "methods": {
+          "held_karp": {
+            "gap_pct": 0,
+            "time_ms": 2220,
+            "valid": true
+          },
+          "classic_ga": {
+            "gap_pct": 2.22,
+            "time_ms": 744,
+            "valid": true
+          },
+          "llm_one_shot": {
+            "gap_pct": null,
+            "time_ms": 2993,
+            "valid": false
+          },
+          "geneai": {
+            "gap_pct": 0,
+            "time_ms": 9129,
+            "valid": true
+          }
+        }
+      },
+      {
+        "id": "tsp15-08",
+        "optimum_length": 272.2,
+        "methods": {
+          "held_karp": {
+            "gap_pct": 0,
+            "time_ms": 3823,
+            "valid": true
+          },
+          "classic_ga": {
+            "gap_pct": 1.51,
+            "time_ms": 698,
+            "valid": true
+          },
+          "llm_one_shot": {
+            "gap_pct": null,
+            "time_ms": 1872,
+            "valid": false
+          },
+          "geneai": {
+            "gap_pct": 0,
+            "time_ms": 6570,
+            "valid": true
+          }
+        }
+      },
+      {
+        "id": "tsp15-09",
+        "optimum_length": 281,
+        "methods": {
+          "held_karp": {
+            "gap_pct": 0,
+            "time_ms": 3424,
+            "valid": true
+          },
+          "classic_ga": {
+            "gap_pct": 3.24,
+            "time_ms": 697,
+            "valid": true
+          },
+          "llm_one_shot": {
+            "gap_pct": 16.74,
+            "time_ms": 2174,
+            "valid": true
+          },
+          "geneai": {
+            "gap_pct": 0,
+            "time_ms": 7447,
+            "valid": true
+          }
+        }
+      },
+      {
+        "id": "tsp15-10",
+        "optimum_length": 262.8,
+        "methods": {
+          "held_karp": {
+            "gap_pct": 0,
+            "time_ms": 3863,
+            "valid": true
+          },
+          "classic_ga": {
+            "gap_pct": 4.01,
+            "time_ms": 291,
+            "valid": true
+          },
+          "llm_one_shot": {
+            "gap_pct": null,
+            "time_ms": 3414,
+            "valid": false
+          },
+          "geneai": {
+            "gap_pct": 0,
+            "time_ms": 8564,
+            "valid": true
+          }
+        }
+      },
+      {
+        "id": "tsp15-11",
+        "optimum_length": 200.7,
+        "methods": {
+          "held_karp": {
+            "gap_pct": 0,
+            "time_ms": 2445,
+            "valid": true
+          },
+          "classic_ga": {
+            "gap_pct": 9.68,
+            "time_ms": 791,
+            "valid": true
+          },
+          "llm_one_shot": {
+            "gap_pct": null,
+            "time_ms": 2620,
+            "valid": false
+          },
+          "geneai": {
+            "gap_pct": 0,
+            "time_ms": 7159,
+            "valid": true
+          }
+        }
+      },
+      {
+        "id": "tsp15-12",
+        "optimum_length": 276.9,
+        "methods": {
+          "held_karp": {
+            "gap_pct": 0,
+            "time_ms": 2463,
+            "valid": true
+          },
+          "classic_ga": {
+            "gap_pct": 8.95,
+            "time_ms": 703,
+            "valid": true
+          },
+          "llm_one_shot": {
+            "gap_pct": 15.67,
+            "time_ms": 2667,
+            "valid": true
+          },
+          "geneai": {
+            "gap_pct": 0,
+            "time_ms": 7948,
+            "valid": true
+          }
+        }
+      },
+      {
+        "id": "tsp15-13",
+        "optimum_length": 312.3,
+        "methods": {
+          "held_karp": {
+            "gap_pct": 0,
+            "time_ms": 2835,
+            "valid": true
+          },
+          "classic_ga": {
+            "gap_pct": 5.8,
+            "time_ms": 683,
+            "valid": true
+          },
+          "llm_one_shot": {
+            "gap_pct": null,
+            "time_ms": 2844,
+            "valid": false
+          },
+          "geneai": {
+            "gap_pct": 0,
+            "time_ms": 8324,
+            "valid": true
+          }
+        }
+      },
+      {
+        "id": "tsp15-14",
+        "optimum_length": 292.2,
+        "methods": {
+          "held_karp": {
+            "gap_pct": 0,
+            "time_ms": 3983,
+            "valid": true
+          },
+          "classic_ga": {
+            "gap_pct": 5.35,
+            "time_ms": 400,
+            "valid": true
+          },
+          "llm_one_shot": {
+            "gap_pct": null,
+            "time_ms": 2952,
+            "valid": false
+          },
+          "geneai": {
+            "gap_pct": 0,
+            "time_ms": 6645,
+            "valid": true
+          }
+        }
+      },
+      {
+        "id": "tsp15-15",
+        "optimum_length": 280.5,
+        "methods": {
+          "held_karp": {
+            "gap_pct": 0,
+            "time_ms": 4025,
+            "valid": true
+          },
+          "classic_ga": {
+            "gap_pct": 2.4,
+            "time_ms": 478,
+            "valid": true
+          },
+          "llm_one_shot": {
+            "gap_pct": 13.28,
+            "time_ms": 3142,
+            "valid": true
+          },
+          "geneai": {
+            "gap_pct": 0,
+            "time_ms": 7254,
+            "valid": true
+          }
+        }
+      },
+      {
+        "id": "tsp15-16",
+        "optimum_length": 187.2,
+        "methods": {
+          "held_karp": {
+            "gap_pct": 0,
+            "time_ms": 2419,
+            "valid": true
+          },
+          "classic_ga": {
+            "gap_pct": 2.24,
+            "time_ms": 292,
+            "valid": true
+          },
+          "llm_one_shot": {
+            "gap_pct": null,
+            "time_ms": 1527,
+            "valid": false
+          },
+          "geneai": {
+            "gap_pct": 0,
+            "time_ms": 8165,
+            "valid": true
+          }
+        }
+      },
+      {
+        "id": "tsp15-17",
+        "optimum_length": 312,
+        "methods": {
+          "held_karp": {
+            "gap_pct": 0,
+            "time_ms": 2735,
+            "valid": true
+          },
+          "classic_ga": {
+            "gap_pct": 4.33,
+            "time_ms": 320,
+            "valid": true
+          },
+          "llm_one_shot": {
+            "gap_pct": null,
+            "time_ms": 2839,
+            "valid": false
+          },
+          "geneai": {
+            "gap_pct": 0.47,
+            "time_ms": 10812,
+            "valid": true
+          }
+        }
+      },
+      {
+        "id": "tsp15-18",
+        "optimum_length": 250.2,
+        "methods": {
+          "held_karp": {
+            "gap_pct": 0,
+            "time_ms": 2409,
+            "valid": true
+          },
+          "classic_ga": {
+            "gap_pct": 3.71,
+            "time_ms": 562,
+            "valid": true
+          },
+          "llm_one_shot": {
+            "gap_pct": 19.69,
+            "time_ms": 1980,
+            "valid": true
+          },
+          "geneai": {
+            "gap_pct": 1.53,
+            "time_ms": 8208,
+            "valid": true
+          }
+        }
+      },
+      {
+        "id": "tsp15-19",
+        "optimum_length": 289,
+        "methods": {
+          "held_karp": {
+            "gap_pct": 0,
+            "time_ms": 2524,
+            "valid": true
+          },
+          "classic_ga": {
+            "gap_pct": 6.48,
+            "time_ms": 730,
+            "valid": true
+          },
+          "llm_one_shot": {
+            "gap_pct": null,
+            "time_ms": 3361,
+            "valid": false
+          },
+          "geneai": {
+            "gap_pct": 1.63,
+            "time_ms": 7334,
+            "valid": true
+          }
+        }
+      },
+      {
+        "id": "tsp15-20",
+        "optimum_length": 276.2,
+        "methods": {
+          "held_karp": {
+            "gap_pct": 0,
+            "time_ms": 3311,
+            "valid": true
+          },
+          "classic_ga": {
+            "gap_pct": 5.84,
+            "time_ms": 354,
+            "valid": true
+          },
+          "llm_one_shot": {
+            "gap_pct": null,
+            "time_ms": 2320,
+            "valid": false
+          },
+          "geneai": {
+            "gap_pct": 0.37,
+            "time_ms": 7788,
+            "valid": true
+          }
+        }
+      }
+    ],
+    "summary": {
+      "held_karp": {
+        "mean_gap_pct": 0,
+        "optimal_hits": 20,
+        "mean_time_ms": 3023,
+        "valid_count": 20
+      },
+      "classic_ga": {
+        "mean_gap_pct": 4.35,
+        "optimal_hits": 3,
+        "mean_time_ms": 532,
+        "valid_count": 20
+      },
+      "llm_one_shot": {
+        "mean_gap_pct": 14.74,
+        "optimal_hits": 0,
+        "mean_time_ms": 2534,
+        "valid_count": 6
+      },
+      "geneai": {
+        "mean_gap_pct": 0.2,
+        "optimal_hits": 16,
+        "mean_time_ms": 7836,
+        "valid_count": 20
+      }
+    }
+  },
+  "notes": "Sample. One 15-city Euclidean map for layout, plus 20 held-out maps. Distances are straight-line. Held-Karp's tour is the optimum. This is not a recorded GeneAI run. Replace this file with the real tsp_benchmark.json."
+}

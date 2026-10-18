@@ -254,6 +254,26 @@ input[type="range"]::-moz-range-thumb {
   transform: translateY(-2px);
 }
 
+.btn-ink {
+  background-color: var(--ivory);
+  color: var(--bg);
+}
+
+.btn-ink:hover {
+  background-color: var(--ivory);
+  color: var(--bg);
+}
+
+@keyframes loop-orbit {
+  to {
+    stroke-dashoffset: -280;
+  }
+}
+
+.loop-orbit {
+  animation: loop-orbit 9s linear infinite;
+}
+
 :root {
   --job-interactive: #7ee0c6;
   --job-batch: #e4c27a;

@@ -1,21 +1,23 @@
 "use client";
 
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion, useScroll, useSpring } from "framer-motion";
 import Link from "next/link";
 import { useState } from "react";
 import { Header } from "@/components/header";
 import { LivingField } from "@/components/home/living-field";
+import { GeneBridge, GeneticAlgorithms, NaturalSelection } from "@/components/home/story";
 import { ToyLandscape } from "@/components/home/toy-landscape";
+import { TspShowdown } from "@/components/home/tsp-showdown";
 
 const STAGES = [
   { id: "seed", title: "Seed", copy: "The first generation drops in any hand-written baselines, then fills the remaining slots from the model." },
   { id: "evaluate", title: "Evaluate", copy: "Each candidate is scored on the training cases. That score is the only signal selection uses." },
   { id: "select", title: "Select", copy: "A tournament of three picks parents. A small novelty bonus and a family cap keep one family from taking over." },
-  { id: "vary", title: "Mutate / cross", copy: "Parents are changed or crossed. CREAO handles a few of these calls. Veri handles the bulk." },
+  { id: "vary", title: "Mutate / cross", copy: "Mutation is a Veri mutate, a random copy error done in bulk. Breeding is crossover: two parents mix, and CREAO makes a few of those calls." },
   { id: "repair", title: "Repair", copy: "If a child breaks the rules, it gets one repair attempt. If that fails, the child is dropped." },
-  { id: "dedup", title: "Dedup", copy: "Two genomes with the same payload are not both kept. Duplicates are rejected." },
-  { id: "prune", title: "Prune", copy: "Losers leave the living population. They stay in the log, so the lineage can still show them." },
-  { id: "elites", title: "Elites", copy: "The best few are copied forward unchanged, under the same id. A few random immigrants arrive with no parents." },
+  { id: "dedup", title: "Dedup", copy: "A twin is not kept twice. Two genomes with the same payload are not both kept." },
+  { id: "prune", title: "Prune", copy: "Death is prune. The unfit leave the living population and stay in the log." },
+  { id: "elites", title: "Elites", copy: "The fittest survive as elites, copied forward with the same id. Immigration is a newcomer with no parents." },
 ];
 
 const rise = {
@@ -23,18 +25,65 @@ const rise = {
   show: { opacity: 1, y: 0, transition: { duration: 0.7, ease: [0.22, 1, 0.36, 1] as const } },
 };
 
+function LoopRing({
+  stage,
+  reduced,
+  onPick,
+}: {
+  stage: string;
+  reduced: boolean;
+  onPick: (stage: (typeof STAGES)[number]) => void;
+}) {
+  const radius = 138;
+  return (
+    <div className="relative mx-auto mt-10 w-full max-w-xl">
+      <svg viewBox="0 0 400 400" className="h-auto w-full" role="img" aria-label="Evolutionary loop">
+        <circle cx="200" cy="200" r={radius} fill="none" stroke="var(--line)" strokeWidth="1" />
+        <circle
+          cx="200"
+          cy="200"
+          r={radius}
+          fill="none"
+          stroke="var(--teal)"
+          strokeWidth="2"
+          strokeDasharray="36 240"
+          className={reduced ? undefined : "loop-orbit"}
+          style={{ transformOrigin: "200px 200px" }}
+        />
+        {STAGES.map((item, index) => {
+          const angle = (index / STAGES.length) * Math.PI * 2 - Math.PI / 2;
+          const x = 200 + Math.cos(angle) * radius;
+          const y = 200 + Math.sin(angle) * radius;
+          const active = item.id === stage;
+          return (
+            <g key={item.id} onClick={() => onPick(item)} className="cursor-pointer">
+              <circle cx={x} cy={y} r={active ? 15 : 9} fill={active ? "var(--teal)" : "var(--raise)"} stroke="var(--ivory)" strokeWidth="1" />
+              <text x={x} y={y + (index < 4 ? -20 : 24)} textAnchor="middle" fill="var(--dim)" fontSize="11" fontFamily="IBM Plex Mono, ui-monospace, monospace">
+                {item.title}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
+
 export function HomeExperience() {
   const reduced = useReducedMotion();
+  const { scrollYProgress } = useScroll();
+  const progress = useSpring(scrollYProgress, { stiffness: 120, damping: 24, restDelta: 0.001 });
   const [stage, setStage] = useState(STAGES[0]);
   const [frozen, setFrozen] = useState(false);
 
   return (
     <div data-testid="architecture-home">
+      <motion.div className="fixed inset-x-0 top-0 z-40 h-[3px] origin-left bg-teal" style={{ scaleX: reduced ? 1 : progress }} />
       <Header />
       <section className="relative min-h-[100svh] overflow-hidden">
         <LivingField />
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-bg via-bg/88 to-bg/20" />
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-bg to-transparent" />
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-bg from-0% via-bg/80 via-34% to-transparent to-62%" />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-bg to-transparent" />
         <div className="relative z-10 mx-auto flex min-h-[100svh] max-w-[1600px] flex-col justify-end px-4 pb-16 pt-28 md:px-6 md:pb-24">
           <p className="kicker">GeneAI · the engine</p>
           <h1 className="mt-4 max-w-4xl font-serif text-[clamp(3.4rem,8vw,7.4rem)] leading-[0.9] tracking-tight text-ivory">
@@ -45,23 +94,50 @@ export function HomeExperience() {
             A population of policies is scored, crossed, and pruned. The survivor is chosen on validation. The test is read once.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
-            <Link href="/cloud" className="lift rounded-full bg-ivory px-5 py-2.5 text-sm text-bg">Open the cloud run</Link>
+            <Link href="/cloud" data-testid="hero-cta" className="btn-ink lift rounded-full px-5 py-2.5 text-sm font-medium">Open the cloud run</Link>
             <Link href="/shopping" className="lift rounded-full border border-line bg-raise/40 px-5 py-2.5 text-sm text-ivory backdrop-blur">See a shopping run</Link>
           </div>
         </div>
       </section>
 
       <main className="mx-auto max-w-[1600px] px-4 md:px-6">
+        <motion.section className="py-24 md:py-32" initial={reduced ? false : "hidden"} whileInView="show" viewport={{ once: true, margin: "-12%" }} variants={rise}>
+          <p className="kicker">In the wild</p>
+          <h2 className="mt-3 max-w-3xl font-serif text-4xl tracking-tight text-ivory md:text-6xl">Natural selection</h2>
+          <p className="mt-4 max-w-2xl text-base leading-relaxed text-dim">
+            Genes pass on. Some copies are wrong, some children mix two parents, strangers arrive, and the unfit die off. What fits the world is what remains.
+          </p>
+          <div className="mt-8">
+            <NaturalSelection />
+          </div>
+        </motion.section>
+
+        <motion.section className="pb-24 md:pb-32" initial={reduced ? false : "hidden"} whileInView="show" viewport={{ once: true, margin: "-12%" }} variants={rise}>
+          <p className="kicker">Borrowed in the 1970s</p>
+          <h2 className="mt-3 max-w-3xl font-serif text-4xl tracking-tight text-ivory md:text-6xl">Genetic algorithms</h2>
+          <p className="mt-4 max-w-2xl text-base leading-relaxed text-dim">
+            John Holland wrote this loop down as a search. A genome is a candidate solution. A fitness function is the score. The operators stay the same.
+          </p>
+          <div className="mt-8">
+            <GeneticAlgorithms />
+          </div>
+        </motion.section>
+
         <motion.section
-          className="py-24 md:py-32"
+          className="pb-24 md:pb-32"
           initial={reduced ? false : "hidden"}
           whileInView="show"
           viewport={{ once: true, margin: "-12%" }}
           variants={rise}
         >
-          <p className="kicker">The loop</p>
-          <h2 className="mt-3 max-w-2xl font-serif text-4xl tracking-tight text-ivory md:text-6xl">Same steps, every generation.</h2>
-          <div className="mt-10 grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-8">
+          <p className="kicker">The same loop, on policies</p>
+          <h2 className="mt-3 max-w-3xl font-serif text-4xl tracking-tight text-ivory md:text-6xl">Same steps, every agentic generation.</h2>
+          <p className="mt-4 max-w-2xl text-base leading-relaxed text-dim">
+            The creature becomes a policy. The stripes are the rules it carries. Each biological step has an operator in the engine.
+          </p>
+          <GeneBridge />
+          <LoopRing stage={stage.id} reduced={!!reduced} onPick={setStage} />
+          <div className="mt-8 grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-8">
             {STAGES.map((item, index) => {
               const active = item.id === stage.id;
               return (
@@ -171,6 +247,10 @@ export function HomeExperience() {
           </div>
         </motion.section>
 
+        <motion.section className="pb-24 md:pb-32" initial={reduced ? false : "hidden"} whileInView="show" viewport={{ once: true, margin: "-12%" }} variants={rise}>
+          <TspShowdown />
+        </motion.section>
+
         <section className="pb-28">
           <div className="glass flex flex-col items-start justify-between gap-6 rounded-3xl px-6 py-8 md:flex-row md:items-center md:px-10">
             <div>
@@ -178,7 +258,7 @@ export function HomeExperience() {
               <h2 className="mt-2 font-serif text-4xl text-ivory">Watch the search, then read what it produced.</h2>
             </div>
             <div className="flex flex-wrap gap-3">
-              <Link href="/cloud" className="lift rounded-full bg-ivory px-5 py-2.5 text-sm text-bg">Cloud scheduling</Link>
+              <Link href="/cloud" className="btn-ink lift rounded-full px-5 py-2.5 text-sm font-medium">Cloud scheduling</Link>
               <Link href="/shopping" className="lift rounded-full border border-line px-5 py-2.5 text-sm">Shopping</Link>
             </div>
           </div>
